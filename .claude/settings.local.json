@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell([Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-ChildItem \"D:\\\\Projects\\\\OMG\" | Where-Object { $_.Extension -eq \".md\" } | ForEach-Object { Write-Host \"File: $\\($_.Name\\)\" })",
+      "PowerShell(Get-ChildItem \"D:\\\\Projects\\\\OMG\\\\src\" -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object FullName, LastWriteTime | Sort-Object FullName)",
+      "PowerShell(Get-ChildItem \"D:\\\\Projects\\\\OMG\\\\server\" -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object FullName, LastWriteTime)",
+      "PowerShell(Get-ChildItem *)"
+    ]
+  }
+}

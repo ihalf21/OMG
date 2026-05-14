@@ -1,0 +1,1121 @@
+{
+  "engineers": [
+    {
+      "id": "e1",
+      "name": "Васьтиков Анатолий",
+      "role": "lead",
+      "regularTask": null,
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e2",
+      "name": "Шевцов Артем",
+      "role": "responsible",
+      "regularTask": "Релиз",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {
+        "Релиз": 5,
+        "Смоук": 3,
+        "Синхронизация": 0,
+        "Регресс": 4,
+        "Приёмка": 3,
+        "Спецзадачи": 5
+      }
+    },
+    {
+      "id": "e3",
+      "name": "Бычкова Елена",
+      "role": "engineer",
+      "regularTask": "Релиз",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {
+        "Регресс": 5,
+        "Спецзадачи": 3,
+        "Смоук": 3
+      }
+    },
+    {
+      "id": "e4",
+      "name": "Виттих Анна",
+      "role": "engineer",
+      "regularTask": "Релиз",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {
+        "Синхронизация": 5,
+        "Смоук": 3
+      }
+    },
+    {
+      "id": "e5",
+      "name": "Шишев Дамир",
+      "role": "engineer",
+      "regularTask": "Релиз",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {
+        "Регресс": 5,
+        "Релиз": 3
+      }
+    },
+    {
+      "id": "e6",
+      "name": "Макунина Мария",
+      "role": "responsible",
+      "regularTask": "Регресс",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {
+        "Регресс": 5,
+        "Смоук": 5,
+        "Релиз": 1
+      }
+    },
+    {
+      "id": "e7",
+      "name": "Мишкина Оксана",
+      "role": "engineer",
+      "regularTask": "Регресс",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {
+        "Смоук": 3,
+        "Регресс": 1
+      }
+    },
+    {
+      "id": "e8",
+      "name": "Кожевников Никита",
+      "role": "engineer",
+      "regularTask": "Регресс",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {
+        "Синхронизация": 5,
+        "Релиз": 3,
+        "Регресс": 3
+      }
+    },
+    {
+      "id": "e9",
+      "name": "Бествитский Илья",
+      "role": "responsible",
+      "regularTask": "Смоук",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {
+        "Регресс": 5,
+        "Спецзадачи": 3
+      }
+    },
+    {
+      "id": "e10",
+      "name": "Кравцов Никита",
+      "role": "engineer",
+      "regularTask": "Смоук",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {
+        "Спецзадачи": 5
+      }
+    },
+    {
+      "id": "e1778497106496",
+      "name": "Маслов Олег",
+      "role": "intern",
+      "regularTask": "Смоук",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778497138792",
+      "name": "Первушевский Александр",
+      "role": "responsible",
+      "regularTask": "Спецзадачи",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778497150390",
+      "name": "Заяц Семен",
+      "role": "responsible",
+      "regularTask": "Синхронизация",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778581929421",
+      "name": "Соломатов Иван",
+      "role": "engineer",
+      "regularTask": "Смоук",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778581951197",
+      "name": "Асафов Олег",
+      "role": "engineer",
+      "regularTask": "Смоук",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778581962769",
+      "name": "Игнатьева Татьяна",
+      "role": "engineer",
+      "regularTask": "Смоук",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778581971011",
+      "name": "Тищенко Артем",
+      "role": "engineer",
+      "regularTask": "Смоук",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778581979681",
+      "name": "Железнова Юлия",
+      "role": "engineer",
+      "regularTask": "Смоук",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778581995689",
+      "name": "Петрушина Елизавета",
+      "role": "intern",
+      "regularTask": "Релиз",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {
+        "Релиз": 2,
+        "Регресс": 1,
+        "Смоук": 1
+      }
+    },
+    {
+      "id": "e1778582022659",
+      "name": "Мамченко Владислав",
+      "role": "engineer",
+      "regularTask": "Регресс",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582035351",
+      "name": "Кузнецова Анна",
+      "role": "engineer",
+      "regularTask": "Регресс",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582059568",
+      "name": "Туишева Виктория",
+      "role": "engineer",
+      "regularTask": "Регресс",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582074085",
+      "name": "Потехин Богдан",
+      "role": "engineer",
+      "regularTask": "Регресс",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582095102",
+      "name": "Низамутдинова Анастасия",
+      "role": "engineer",
+      "regularTask": "Регресс",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582111659",
+      "name": "Величко Инна",
+      "role": "intern",
+      "regularTask": "Регресс",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582125867",
+      "name": "Аванесова Мария",
+      "role": "intern",
+      "regularTask": "Регресс",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582136685",
+      "name": "Столярчук Вероника",
+      "role": "intern",
+      "regularTask": "Регресс",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582147314",
+      "name": "Скребнев Михаил",
+      "role": "engineer",
+      "regularTask": "Синхронизация",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582158451",
+      "name": "Анвари Тимур",
+      "role": "engineer",
+      "regularTask": "Синхронизация",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582166873",
+      "name": "Кабанин Владислав",
+      "role": "engineer",
+      "regularTask": "Синхронизация",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582178576",
+      "name": "Гладких Алина",
+      "role": "engineer",
+      "regularTask": "Синхронизация",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582211321",
+      "name": "Демидёнок Яна",
+      "role": "engineer",
+      "regularTask": "Синхронизация",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582221055",
+      "name": "Смирнов Александр",
+      "role": "intern",
+      "regularTask": "Синхронизация",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582231066",
+      "name": "Терехова Татьяна",
+      "role": "intern",
+      "regularTask": "Синхронизация",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    },
+    {
+      "id": "e1778582755113",
+      "name": "Андреев Андрей",
+      "role": "engineer",
+      "regularTask": "Смоук",
+      "status": "active",
+      "vacationFrom": null,
+      "vacationTo": null,
+      "experience": {}
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1778497252872",
+      "name": "Релиз 3025.0.0 на main",
+      "status": "done",
+      "startDate": "2026-05-08",
+      "deadline": "2026-05-13",
+      "direction": "Релиз",
+      "estimateHours": 62,
+      "totalCases": 34,
+      "doneCases": 28,
+      "assignedEngineers": [
+        "e2",
+        "e5",
+        "e3",
+        "e1778581995689",
+        "e4"
+      ],
+      "hoursAnalysis": 0,
+      "hoursActualize": 0,
+      "hoursDevelopment": 0,
+      "hoursTesting": 0,
+      "sortOrder": 0,
+      "completedDate": "2026-05-13"
+    },
+    {
+      "id": "t1778498252817",
+      "name": "Регресс 3025.0.0",
+      "status": "active",
+      "startDate": "2026-05-08",
+      "deadline": "2026-05-22",
+      "direction": "Регресс",
+      "estimateHours": 194,
+      "totalCases": 58,
+      "doneCases": 0,
+      "assignedEngineers": [
+        "e6",
+        "e8",
+        "e7",
+        "e1778582022659",
+        "e1778582035351",
+        "e1778582059568",
+        "e1778582074085",
+        "e1778582095102",
+        "e1778582111659"
+      ],
+      "sortOrder": 0,
+      "hoursAnalysis": 34,
+      "hoursActualize": 102,
+      "hoursDevelopment": 0,
+      "hoursTesting": 58
+    },
+    {
+      "id": "t1778499544395",
+      "name": "Смоук экспл ЦАО",
+      "direction": "Смоук",
+      "status": "archived",
+      "startDate": "2026-05-12",
+      "deadline": null,
+      "estimateHours": 125,
+      "hoursAnalysis": 0,
+      "hoursActualize": 0,
+      "hoursDevelopment": 0,
+      "hoursTesting": 125,
+      "totalCases": 250,
+      "doneCases": 0,
+      "assignedEngineers": [
+        "e9",
+        "e10",
+        "e1778497106496"
+      ],
+      "completedDate": null,
+      "sortOrder": 2,
+      "archivedDate": "2026-05-12"
+    },
+    {
+      "id": "t1778501275831",
+      "name": "Смоук экспл ВАО",
+      "direction": "Смоук",
+      "status": "archived",
+      "startDate": "2026-05-22",
+      "deadline": null,
+      "dependsOn": "t1778499544395",
+      "estimateHours": 125,
+      "hoursAnalysis": 0,
+      "hoursActualize": 0,
+      "hoursDevelopment": 0,
+      "hoursTesting": 125,
+      "totalCases": 250,
+      "doneCases": 0,
+      "assignedEngineers": [
+        "e9",
+        "e10",
+        "e1778497106496"
+      ],
+      "completedDate": null,
+      "sortOrder": 3,
+      "archivedDate": "2026-05-12"
+    },
+    {
+      "id": "t1778619615382",
+      "name": "Смоук 3025",
+      "direction": "Смоук",
+      "status": "active",
+      "startDate": "2026-05-08",
+      "deadline": "2026-05-22",
+      "dependsOn": null,
+      "estimateHours": 168,
+      "totalCases": null,
+      "doneCases": 0,
+      "assignedEngineers": [
+        "e9",
+        "e10",
+        "e1778497106496",
+        "e1778581929421",
+        "e1778581979681",
+        "e1778581971011"
+      ],
+      "completedDate": null,
+      "sortOrder": 1,
+      "createdDate": "2026-05-12",
+      "hoursAnalysis": 34,
+      "hoursActualize": 34,
+      "hoursDevelopment": 0,
+      "hoursTesting": 100
+    },
+    {
+      "id": "t1778619760528",
+      "name": "Смоук на экспл ТАО",
+      "direction": "Смоук",
+      "status": "active",
+      "startDate": "2026-05-12",
+      "deadline": "2026-05-29",
+      "dependsOn": null,
+      "estimateHours": 189,
+      "totalCases": null,
+      "doneCases": 0,
+      "assignedEngineers": [
+        "e1778581951197",
+        "e1778581962769",
+        "e1778582125867",
+        "e1778582136685",
+        "e1778582755113"
+      ],
+      "completedDate": null,
+      "sortOrder": 4,
+      "createdDate": "2026-05-12",
+      "hoursAnalysis": 0,
+      "hoursActualize": 0,
+      "hoursDevelopment": 0,
+      "hoursTesting": 189
+    },
+    {
+      "id": "t1778619783296",
+      "name": "Смоук экспл НАО",
+      "direction": "Смоук",
+      "status": "active",
+      "startDate": "2026-05-20",
+      "deadline": "2026-05-29",
+      "dependsOn": "t1778619760528",
+      "estimateHours": 189,
+      "totalCases": null,
+      "doneCases": 0,
+      "assignedEngineers": [],
+      "completedDate": null,
+      "sortOrder": 5,
+      "createdDate": "2026-05-12",
+      "hoursAnalysis": 0,
+      "hoursActualize": 0,
+      "hoursDevelopment": 0,
+      "hoursTesting": 189
+    },
+    {
+      "id": "t1778620065219",
+      "name": "Синхронизация ПС, МСП",
+      "direction": "Синхронизация",
+      "status": "active",
+      "startDate": "2026-05-13",
+      "deadline": "2026-05-15",
+      "dependsOn": null,
+      "estimateHours": 130,
+      "totalCases": null,
+      "doneCases": 0,
+      "assignedEngineers": [
+        "e1778497150390",
+        "e1778582158451",
+        "e1778582166873",
+        "e1778582178576",
+        "e1778582211321",
+        "e1778582231066",
+        "e1778582221055"
+      ],
+      "completedDate": null,
+      "sortOrder": 2,
+      "createdDate": "2026-05-12",
+      "hoursAnalysis": 0,
+      "hoursActualize": 0,
+      "hoursDevelopment": 0,
+      "hoursTesting": 130
+    },
+    {
+      "id": "t1778620235678",
+      "name": "Приемка Заявка 2",
+      "direction": "Приёмка",
+      "status": "active",
+      "startDate": "2026-05-04",
+      "deadline": null,
+      "dependsOn": null,
+      "estimateHours": 8,
+      "totalCases": null,
+      "doneCases": 0,
+      "assignedEngineers": [
+        "e1778497138792",
+        "e1778582147314"
+      ],
+      "completedDate": null,
+      "sortOrder": 3,
+      "createdDate": "2026-05-12",
+      "hoursAnalysis": 0,
+      "hoursActualize": 0,
+      "hoursDevelopment": 0,
+      "hoursTesting": 0
+    }
+  ],
+  "history": [
+    {
+      "id": "h1",
+      "date": "2025-05-09",
+      "engineerId": "e3",
+      "type": "switch",
+      "fromTask": "t5",
+      "toTask": "t4",
+      "note": "Срочный хот-фикс"
+    },
+    {
+      "id": "h2",
+      "date": "2025-05-06",
+      "engineerId": "e8",
+      "type": "switch",
+      "fromTask": "t2",
+      "toTask": "t1",
+      "note": "Усиление команды релиза"
+    },
+    {
+      "id": "h3",
+      "date": "2025-05-08",
+      "engineerId": "e5",
+      "type": "sick",
+      "fromTask": "t5",
+      "toTask": null,
+      "note": ""
+    },
+    {
+      "id": "h4",
+      "date": "2025-05-01",
+      "engineerId": "e4",
+      "type": "vacation",
+      "fromTask": "t2",
+      "toTask": null,
+      "note": "Плановый отпуск"
+    },
+    {
+      "id": "h1778497009071",
+      "date": "2026-05-11",
+      "engineerId": "e5",
+      "type": "return",
+      "fromTask": null,
+      "toTask": null,
+      "note": "Выход с больничного"
+    },
+    {
+      "id": "h1778497258054",
+      "date": "2026-05-11",
+      "engineerId": "e2",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778497252872",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778497259053",
+      "date": "2026-05-11",
+      "engineerId": "e5",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778497252872",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778497260080",
+      "date": "2026-05-11",
+      "engineerId": "e3",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778497252872",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778497332216",
+      "date": "2026-05-11",
+      "engineerId": "e7",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778497252872",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778497336547",
+      "date": "2026-05-11",
+      "engineerId": "e1778497106496",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778497252872",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778498257673",
+      "date": "2026-05-11",
+      "engineerId": "e6",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778498252817",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778498258782",
+      "date": "2026-05-11",
+      "engineerId": "e8",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778498252817",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778498259648",
+      "date": "2026-05-11",
+      "engineerId": "e7",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778498252817",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778499044530",
+      "date": "2026-05-11",
+      "engineerId": "e1778498289342",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778498252817",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778499045356",
+      "date": "2026-05-11",
+      "engineerId": "e1778498296992",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778498252817",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778499303376",
+      "date": "2026-05-11",
+      "engineerId": "e1778498289342",
+      "type": "return",
+      "fromTask": "t1778498252817",
+      "toTask": null,
+      "note": "Возврат на домашнюю"
+    },
+    {
+      "id": "h1778499311677",
+      "date": "2026-05-11",
+      "engineerId": "e1778498296992",
+      "type": "return",
+      "fromTask": "t1778498252817",
+      "toTask": null,
+      "note": "Возврат на домашнюю"
+    },
+    {
+      "id": "h1778499553006",
+      "date": "2026-05-11",
+      "engineerId": "e9",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778499544395",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778499553989",
+      "date": "2026-05-11",
+      "engineerId": "e10",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778499544395",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778499555256",
+      "date": "2026-05-11",
+      "engineerId": "e1778497106496",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778499544395",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619379364",
+      "date": "2026-05-12",
+      "engineerId": "e1778497106496",
+      "type": "return",
+      "fromTask": "t1778497252872",
+      "toTask": null,
+      "note": "Возврат на домашнюю"
+    },
+    {
+      "id": "h1778619380261",
+      "date": "2026-05-12",
+      "engineerId": "e7",
+      "type": "return",
+      "fromTask": "t1778497252872",
+      "toTask": null,
+      "note": "Возврат на домашнюю"
+    },
+    {
+      "id": "h1778619392294",
+      "date": "2026-05-12",
+      "engineerId": "e1778581995689",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778497252872",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619394211",
+      "date": "2026-05-12",
+      "engineerId": "e4",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778497252872",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619533385",
+      "date": "2026-05-12",
+      "engineerId": "e1778582022659",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778498252817",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619534163",
+      "date": "2026-05-12",
+      "engineerId": "e1778582035351",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778498252817",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619535429",
+      "date": "2026-05-12",
+      "engineerId": "e1778582059568",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778498252817",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619543440",
+      "date": "2026-05-12",
+      "engineerId": "e1778582074085",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778498252817",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619544973",
+      "date": "2026-05-12",
+      "engineerId": "e1778582095102",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778498252817",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619548734",
+      "date": "2026-05-12",
+      "engineerId": "e1778582111659",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778498252817",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619621328",
+      "date": "2026-05-13",
+      "engineerId": "e9",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619615382",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619623166",
+      "date": "2026-05-13",
+      "engineerId": "e10",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619615382",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619624778",
+      "date": "2026-05-13",
+      "engineerId": "e1778497106496",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619615382",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619625793",
+      "date": "2026-05-13",
+      "engineerId": "e1778581929421",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619615382",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619629218",
+      "date": "2026-05-13",
+      "engineerId": "e1778581979681",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619615382",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619842738",
+      "date": "2026-05-13",
+      "engineerId": "e1778581951197",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619760528",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619846937",
+      "date": "2026-05-13",
+      "engineerId": "e1778581962769",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619760528",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619850442",
+      "date": "2026-05-13",
+      "engineerId": "e1778581971011",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619760528",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619865048",
+      "date": "2026-05-13",
+      "engineerId": "e1778582125867",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619760528",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619869789",
+      "date": "2026-05-13",
+      "engineerId": "e1778582136685",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619760528",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619878148",
+      "date": "2026-05-13",
+      "engineerId": "e1778582755113",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619760528",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619885286",
+      "date": "2026-05-13",
+      "engineerId": "e1778582211321",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619760528",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619889602",
+      "date": "2026-05-13",
+      "engineerId": "e1778582178576",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619760528",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778619898310",
+      "date": "2026-05-13",
+      "engineerId": "e1778581971011",
+      "type": "return",
+      "fromTask": "t1778619760528",
+      "toTask": null,
+      "note": "Возврат на домашнюю"
+    },
+    {
+      "id": "h1778619904601",
+      "date": "2026-05-13",
+      "engineerId": "e1778581971011",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778619615382",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778620072436",
+      "date": "2026-05-13",
+      "engineerId": "e1778497150390",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778620065219",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778620074168",
+      "date": "2026-05-13",
+      "engineerId": "e1778582158451",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778620065219",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778620075199",
+      "date": "2026-05-13",
+      "engineerId": "e1778582166873",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778620065219",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778620076516",
+      "date": "2026-05-13",
+      "engineerId": "e1778582178576",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778620065219",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778620078120",
+      "date": "2026-05-13",
+      "engineerId": "e1778582211321",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778620065219",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778620081409",
+      "date": "2026-05-13",
+      "engineerId": "e1778582231066",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778620065219",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778620082616",
+      "date": "2026-05-13",
+      "engineerId": "e1778582221055",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778620065219",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778620244004",
+      "date": "2026-05-13",
+      "engineerId": "e1778497138792",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778620235678",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778620249467",
+      "date": "2026-05-13",
+      "engineerId": "e1778582147314",
+      "type": "switch",
+      "fromTask": null,
+      "toTask": "t1778620235678",
+      "note": "Добавлен на задачу"
+    },
+    {
+      "id": "h1778657353494",
+      "date": "2026-05-13",
+      "engineerId": "e1778582178576",
+      "type": "return",
+      "fromTask": "t1778619760528",
+      "toTask": null,
+      "note": "Возврат на домашнюю"
+    },
+    {
+      "id": "h1778657356299",
+      "date": "2026-05-13",
+      "engineerId": "e1778582211321",
+      "type": "return",
+      "fromTask": "t1778619760528",
+      "toTask": null,
+      "note": "Возврат на домашнюю"
+    }
+  ]
+}

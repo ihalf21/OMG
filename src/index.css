@@ -1,0 +1,105 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary:     #FFFFFF;
+  --bg-secondary:   #F2F1ED;
+  --bg-tertiary:    #E8E7E3;
+  --text-primary:   #1A1A18;
+  --text-secondary: #4A4A47;
+  --text-tertiary:  #7A7A77;
+  --border-light:   #D8D7D3;
+  --border-mid:     #C4C3BF;
+  --accent:         #1D9E75;
+  --accent-hover:   #0F6E56;
+  --accent-bg:      #D8F4EC;
+  --success:        #1D9E75;
+  --success-bg:     #D8F4EC;
+  --red:            #D93B3A;
+  --red-bg:         #FAEAEA;
+  --amber:          #D98B1A;
+  --amber-bg:       #FAF0DC;
+  --blue:           #2E7AD4;
+  --blue-bg:        #DCEcFA;
+  --shadow-sm:      0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md:      0 4px 12px rgba(0,0,0,0.12);
+  --font:           -apple-system, 'Segoe UI', sans-serif;
+  /* Максимальная ширина приложения — для 2К мониторов */
+  --app-max-width:  1440px;
+}
+
+[data-theme="dark"] {
+  --bg-primary:     #1E1E1E;
+  --bg-secondary:   #252525;
+  --bg-tertiary:    #2C2C2C;
+  --text-primary:   #F0EFE9;
+  --text-secondary: #B8B7B1;
+  --text-tertiary:  #888880;
+  --border-light:   #383838;
+  --border-mid:     #484848;
+  --accent:         #F0883E;
+  --accent-hover:   #D4701F;
+  --accent-bg:      #3A2510;
+  --success:        #2EBD8A;
+  --success-bg:     #0D2E22;
+  --red:            #E05555;
+  --red-bg:         #3A1515;
+  --amber:          #F0A030;
+  --amber-bg:       #3A2A10;
+  --blue:           #5A9FE8;
+  --blue-bg:        #152A40;
+  --shadow-sm:      0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md:      0 4px 16px rgba(0,0,0,0.5);
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-tertiary);
+}
+
+body {
+  font-family: var(--font);
+  color: var(--text-primary);
+  font-size: 15px;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  transition: background 0.2s, color 0.2s;
+}
+
+/* Центрирующая обёртка — ограничивает ширину на 2К */
+#root {
+  width: 100%;
+  max-width: var(--app-max-width);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  /* Тонкие вертикальные границы чтобы отделить от серых полей */
+  box-shadow: 0 0 0 0.5px var(--border-light);
+}
+
+button { font-family: var(--font); cursor: pointer; }
+input, select, textarea { font-family: var(--font); }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
+
+.omg-tooltip {
+  position: fixed;
+  background: var(--bg-primary);
+  border: 0.5px solid var(--border-mid);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+  z-index: 9999;
+  pointer-events: none;
+  box-shadow: var(--shadow-md);
+  display: none;
+  max-width: 280px;
+  line-height: 1.5;
+}
+.omg-tooltip.visible { display: block; }
+.omg-tooltip-title { font-weight: 600; margin-bottom: 5px; font-size: 14px; }
+.omg-tooltip-row { color: var(--text-secondary); margin-top: 3px; }
