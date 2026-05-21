@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Avatar, RoleBadge, StatusBadge, StarRating, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, Modal, ModalFooter, FormRow, Input, DateRangePicker } from '../components/UI';
+import { Avatar, RoleBadge, StatusBadge, StarRating, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, Modal, ModalFooter, FormRow, Input, DateRangePicker, useConfirm } from '../components/UI';
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
+
+const selectStyle = { fontSize:13, border:'1.5px solid var(--border-mid)', borderRadius:4, padding:'4px 8px', background:'var(--bg-secondary)', color:'var(--text-primary)', width:'100%' };
 
 // Справочник регулярных задач
 export const REGULAR_TASKS = [
@@ -16,6 +18,7 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
   const [vacFrom, setVacFrom] = useState('');
   const [vacTo, setVacTo]     = useState('');
   const [showSwitchTask, setShowSwitchTask] = useState(false);
+  const { confirm, ConfirmEl } = useConfirm();
 
   if (!eng) return <div style={{ padding:24 }}>Инженер не найден</div>;
 
@@ -56,6 +59,10 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
     updateData(prev => ({
       ...prev,
       engineers: prev.engineers.map(e => e.id===engineerId ? { ...e, status:'sick' } : e),
+      tasks: prev.tasks.map(t => ({
+        ...t,
+        assignedEngineers: (t.assignedEngineers||[]).filter(id => id !== engineerId),
+      })),
       history: [...prev.history, { id:'h'+Date.now(), date:todayStr(), engineerId, type:'sick', fromTask:currentTask?.id||null, toTask:null, note:'' }],
     }));
   }
@@ -68,13 +75,20 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
     }));
   }
 
-  function addVacation() {
+  async function addVacation() {
     if (!vacFrom || !vacTo || vacTo < vacFrom) return;
     const today = todayStr();
     const isPast    = vacTo < today;
     const isOngoing = vacFrom <= today && vacTo >= today;
 
-    if (isPast && !window.confirm('Отпуск сотрудника уже завершился. Вы уверены, что хотите добавить его?')) return;
+    if (isPast) {
+      const ok = await confirm(
+        'Отпуск уже завершился',
+        'Период отпуска в прошлом. Вы уверены, что хотите добавить его?',
+        { confirmLabel: 'Добавить', danger: false }
+      );
+      if (!ok) return;
+    }
 
     updateData(prev => {
       const preVacTask = prev.tasks.find(t => t.assignedEngineers?.includes(engineerId) && t.status === 'active');
@@ -114,6 +128,11 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
           ? { ...e, status: isOngoing ? 'vacation' : e.status, vacationFrom:vacFrom, vacationTo:vacTo }
           : e
         ),
+        // При текущем отпуске сразу снимаем с задачи
+        tasks: isOngoing ? prev.tasks.map(t => ({
+          ...t,
+          assignedEngineers: (t.assignedEngineers||[]).filter(id => id !== engineerId),
+        })) : prev.tasks,
         history: newHistory,
       };
     });
@@ -160,10 +179,9 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
     setShowSwitchTask(false);
   }
 
-  const selectStyle = { fontSize:13, border:'1.5px solid var(--border-mid)', borderRadius:4, padding:'4px 8px', background:'var(--bg-secondary)', color:'var(--text-primary)', width:'100%' };
-
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
+      {ConfirmEl}
       <PageTopbar title={eng.name}>
         <BackBtn onClick={onBack} label="Команда"/>
         {!editMode

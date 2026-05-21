@@ -2,17 +2,39 @@ import React, { useState } from 'react';
 import { calcForecast, statusColor, statusLabel, statusBadgeStyle, getDerivedDeadline } from '../utils/forecast';
 import { REGULAR_TASKS } from './EngineerCard';
 import { formatDateShort } from '../utils/dates';
-import { Avatar, Card, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, ProgressBar, useTooltip, useResizableColumns, ResizeHandle } from '../components/UI';
+import { Avatar, Card, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, ProgressBar, DatePicker, useTooltip, useResizableColumns, ResizeHandle, useConfirm } from '../components/UI';
+
+const EMPTY_FORM = { name:'', direction:'', startDate:'', deadline:'', totalCases:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'' };
+
+function FilterBtn({ val, cur, set, children }) {
+  const active = cur === val;
+  return (
+    <button onClick={() => set(val)} style={{
+      padding:'7px 14px', fontSize:13, cursor:'pointer',
+      border:`1.5px solid ${active?'var(--accent)':'var(--border-mid)'}`,
+      borderRadius:6,
+      background:active?'var(--accent-bg)':'var(--bg-secondary)',
+      color:active?'var(--accent)':'var(--text-secondary)',
+      fontWeight:active?600:400, transition:'all 0.15s',
+    }}>{children}</button>
+  );
+}
+
+function DoneIcon({ task }) {
+  if (task.status !== 'done') return null;
+  const onTime = !task.deadline || !task.completedDate || task.completedDate <= task.deadline;
+  return <span title={onTime?'Завершено вовремя':'Завершено с опозданием'} style={{ fontSize:18 }}>{onTime?'👍':'👎'}</span>;
+}
 
 export default function Tasks({ data, updateData, navigate }) {
   const { engineers, tasks } = data;
   const [filterStatus, setFilterStatus] = useState('active');
   const [filterDl,     setFilterDl]     = useState('all');
   const [showModal, setShowModal] = useState(false);
-  const [modalStep, setModalStep] = useState(1);
   const [form, setForm] = useState({ name:'', direction:'', startDate:'', deadline:'', totalCases:'', hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'' });
   const [showArchive, setShowArchive] = useState(false);
   const { show, move, hide, TooltipEl } = useTooltip();
+  const { confirm, ConfirmEl } = useConfirm();
   const { widths: colWidths, startResize } = useResizableColumns('omg_tasks_cols', [280, 130, 110, 140, 110, 170]);
 
   const activeTasks = tasks.filter(t => t.status === 'active');
@@ -49,33 +71,34 @@ export default function Tasks({ data, updateData, navigate }) {
     }));
   }
 
-  function deleteForever(taskId) {
-    if (!window.confirm('Удалить задачу навсегда? Это действие нельзя отменить.')) return;
+  async function deleteForever(taskId) {
+    const ok = await confirm(
+      'Удалить навсегда?',
+      'Задача будет удалена безвозвратно. Это действие нельзя отменить.',
+      { confirmLabel: 'Удалить навсегда' }
+    );
+    if (!ok) return;
     updateData(prev => ({
       ...prev,
       tasks: prev.tasks.filter(t => t.id !== taskId),
     }));
   }
 
-  const EMPTY_FORM = { name:'', direction:'', startDate:'', deadline:'', totalCases:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'' };
-
   function createTask(skipHours = false) {
     if (!form.name.trim()) return;
     const hoursBreakdown = skipHours ? {} : {
-      hoursAnalysis:    parseInt(form.hoursAnalysis)    || 0,
-      hoursActualize:   parseInt(form.hoursActualize)   || 0,
-      hoursDevelopment: parseInt(form.hoursDevelopment) || 0,
-      hoursTesting:     parseInt(form.hoursTesting)     || 0,
+      hoursAnalysis:    Math.max(0, parseInt(form.hoursAnalysis)    || 0),
+      hoursActualize:   Math.max(0, parseInt(form.hoursActualize)   || 0),
+      hoursDevelopment: Math.max(0, parseInt(form.hoursDevelopment) || 0),
+      hoursTesting:     Math.max(0, parseInt(form.hoursTesting)     || 0),
     };
     const totalFromBreakdown = Object.values(hoursBreakdown).reduce((s,v) => s+v, 0);
 
-    // Зависимость: дата старта = расчётная дата завершения родителя
-    let startDate = form.startDate || null;
+    // Для зависимых задач дата старта считается динамически на Ганте — не сохраняем
+    let startDate = form.dependsOn ? null : (form.startDate || null);
     let assignedEngineers = [];
     if (form.dependsOn) {
       const parent = tasks.find(t => t.id === form.dependsOn);
-      const parentFc = parent ? forecasts[parent.id] : null;
-      if (parentFc?.forecastDate && !startDate) startDate = parentFc.forecastDate;
       if (parent?.assignedEngineers?.length) assignedEngineers = [...parent.assignedEngineers];
     }
 
@@ -88,7 +111,7 @@ export default function Tasks({ data, updateData, navigate }) {
       startDate:   startDate || null,
       deadline:    form.deadline  || null,
       dependsOn:   form.dependsOn || null,
-      estimateHours: totalFromBreakdown > 0 ? totalFromBreakdown : 8,
+      estimateHours: totalFromBreakdown > 0 ? totalFromBreakdown : null,
       ...hoursBreakdown,
       totalCases:  form.totalCases ? parseInt(form.totalCases) : null,
       doneCases:   0,
@@ -98,34 +121,13 @@ export default function Tasks({ data, updateData, navigate }) {
       createdDate: new Date().toISOString().slice(0,10), // дата добавления для soft-start
     }]}));
     setShowModal(false);
-    setModalStep(1);
     setForm(EMPTY_FORM);
-  }
-
-  function FilterBtn({ val, cur, set, children }) {
-    const active = cur === val;
-    return (
-      <button onClick={() => set(val)} style={{
-        padding:'7px 14px', fontSize:13, cursor:'pointer',
-        border:`1.5px solid ${active?'var(--accent)':'var(--border-mid)'}`,
-        borderRadius:6,
-        background:active?'var(--accent-bg)':'var(--bg-secondary)',
-        color:active?'var(--accent)':'var(--text-secondary)',
-        fontWeight:active?600:400, transition:'all 0.15s',
-      }}>{children}</button>
-    );
-  }
-
-  // Done task icon
-  function DoneIcon({ task }) {
-    if (task.status !== 'done') return null;
-    const onTime = !task.deadline || !task.completedDate || task.completedDate <= task.deadline;
-    return <span title={onTime?'Завершено вовремя':'Завершено с опозданием'} style={{ fontSize:18 }}>{onTime?'👍':'👎'}</span>;
   }
 
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
       {TooltipEl}
+      {ConfirmEl}
       <PageTopbar title="Задачи">
         <BtnSecondary onClick={() => setShowArchive(true)} style={{ position:'relative' }}>
           🗄 Архив
@@ -187,7 +189,7 @@ export default function Tasks({ data, updateData, navigate }) {
                         <div style={{ width:8, height:8, borderRadius:'50%', background:barColor, flexShrink:0 }}/>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:14, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{task.name}</div>
-                          <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>старт {formatDateShort(task.startDate)} · {task.estimateHours} чч{task.direction ? ` · ${task.direction}` : ''}</div>
+                          <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>старт {formatDateShort(task.startDate)}{task.estimateHours ? ` · ${task.estimateHours} чч` : ''}{task.direction ? ` · ${task.direction}` : ''}</div>
                         </div>
                         <DoneIcon task={task}/>
                       </div>
@@ -230,7 +232,7 @@ export default function Tasks({ data, updateData, navigate }) {
       </div>
 
       {showModal && (
-        <Modal title="Новая задача" onClose={() => { setShowModal(false); setModalStep(1); }}>
+        <Modal title="Новая задача" onClose={() => setShowModal(false)}>
           <FormRow label="Название"><Input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Введите название задачи"/></FormRow>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
             <FormRow label="Направление">
@@ -240,7 +242,7 @@ export default function Tasks({ data, updateData, navigate }) {
               </Select>
             </FormRow>
             <FormRow label="Дата старта" hint="Оставьте пустым — задача будет плановой">
-              <Input type="date" value={form.startDate} onChange={e=>setForm(f=>({...f,startDate:e.target.value}))}/>
+              <DatePicker value={form.startDate} onChange={v => setForm(f=>({...f,startDate:v}))} placeholder="Плановая задача (без даты)"/>
             </FormRow>
           </div>
           <FormRow label="Зависит от задачи" hint="Стартует после завершения выбранной, инженеры переносятся автоматически">
@@ -251,7 +253,9 @@ export default function Tasks({ data, updateData, navigate }) {
               ))}
             </Select>
           </FormRow>
-          <FormRow label="Дедлайн (опционально)"><Input type="date" value={form.deadline} onChange={e=>setForm(f=>({...f,deadline:e.target.value}))}/></FormRow>
+          <FormRow label="Дедлайн (опционально)">
+            <DatePicker value={form.deadline} onChange={v => setForm(f=>({...f,deadline:v}))} placeholder="Без дедлайна"/>
+          </FormRow>
           <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:4, padding:'8px 12px', background:'var(--bg-secondary)', borderRadius:6 }}>
             💡 Оценку трудозатрат можно добавить в разделе <strong>Оценка</strong> после создания задачи
           </div>

@@ -57,7 +57,7 @@ export function effectiveCapacityFull(task, engineers) {
  *   deadlineStatus   — 'ok' | 'risk' | 'overdue' | null
  *   capacity         — текущая эффективная мощность (ед/день)
  */
-export function calcForecast(task, engineers, deadlineOverride = null) {
+export function calcForecast(task, engineers, deadlineOverride = null, startOverride = null) {
   const cap = effectiveCapacity(task, engineers);         // эфф. мощность сегодня
   const capFull = effectiveCapacityFull(task, engineers); // полная (для авто-прогресса)
   const totalHours = task.estimateHours || 0;
@@ -83,11 +83,19 @@ export function calcForecast(task, engineers, deadlineOverride = null) {
   // Рабочих дней до завершения
   // cap * HOURS_PER_DAY = часов в день от текущей команды
   const hoursPerDay = cap * HOURS_PER_DAY;
-  const daysLeft = hoursPerDay > 0 ? Math.ceil(remainingHours / hoursPerDay) : null;
+  const daysLeft = (hoursPerDay > 0 && totalHours > 0) ? Math.max(1, Math.round(remainingHours / hoursPerDay)) : null;
 
   let forecastDate = null;
   if (daysLeft !== null) {
-    forecastDate = addWorkdays(todayStr(), daysLeft);
+    const today = todayStr();
+    let baseDate;
+    if (startOverride) {
+      baseDate = startOverride > today ? startOverride : today;
+    } else {
+      baseDate = task.startDate && task.startDate > today ? task.startDate : today;
+    }
+    // daysLeft — количество занятых рабочих дней, последний день = start + (daysLeft-1)
+    forecastDate = addWorkdays(baseDate, Math.max(0, daysLeft - 1));
   }
 
   // Эффективный дедлайн: переданный override имеет приоритет над собственным
@@ -113,7 +121,7 @@ export function calcForecast(task, engineers, deadlineOverride = null) {
     }
   }
 
-  return { progressPct, hoursLeft: remainingHours, daysLeft, forecastDate, deadlineStatus, capacity: cap, effectiveDeadline: effectiveDl };
+  return { progressPct, hoursLeft: totalHours > 0 ? remainingHours : null, daysLeft, forecastDate, deadlineStatus, capacity: cap, effectiveDeadline: effectiveDl };
 }
 
 export function statusColor(status) {
@@ -155,27 +163,31 @@ export function fmtHours(h) {
 
 /**
  * Вычислить дату старта зависимой задачи с учётом полудня.
- * Если родитель заканчивается с остатком > 4 часов в последний день → старт в тот же день (вторая половина)
- * Если остаток ≤ 4 часов → старт на следующий рабочий день.
- * Возвращает { date: 'YYYY-MM-DD', halfDay: boolean }
+ * Использует фактический прогресс родителя (elapsed-based).
+ * Применяется когда родитель уже НАЧАТ (task.startDate установлен).
  */
 export function calcDependentStart(parentTask, parentEngineers) {
   const fc = calcForecast(parentTask, parentEngineers);
   if (!fc.forecastDate) return { date: null, halfDay: false };
+  // Дочерняя задача всегда стартует на следующий рабочий день после конца бара родителя.
+  // Math.round в calcForecast определяет длину бара; +1 даёт старт дочерней.
+  return { date: addWorkdays(fc.forecastDate, 1), halfDay: false };
+}
 
-  const hoursLeft = fc.hoursLeft || 0;
-  const hoursPerDay = fc.capacity * HOURS_PER_DAY;
-  // Остаток часов в последний день
-  const hoursInLastDay = hoursPerDay > 0 ? hoursLeft % hoursPerDay : 0;
-  const remainsInLastDay = hoursInLastDay > 0 ? hoursInLastDay : (hoursPerDay > 0 ? hoursPerDay : 0);
-
-  if (remainsInLastDay > 4) {
-    // Больше 4 часов — старт в тот же день (вторая половина)
-    return { date: fc.forecastDate, halfDay: true };
-  } else {
-    // 4 часа и меньше — старт на следующий рабочий день
-    return { date: addWorkdays(fc.forecastDate, 1), halfDay: false };
-  }
+/**
+ * Schedule-forward: вычислить когда закончится родитель, если он стартует в parentDynStart.
+ * НЕ считает elapsed. Используется для цепочки ещё не начатых задач.
+ * Возвращает дату старта дочерней задачи.
+ */
+export function calcScheduledChildStart(parentTask, parentEngineers, parentDynStart) {
+  const cap = effectiveCapacity(parentTask, parentEngineers);
+  if (!cap || !parentDynStart) return null;
+  const totalHours = parentTask.estimateHours || 0;
+  const hoursPerDay = cap * HOURS_PER_DAY;
+  const exactDays = totalHours > 0 ? totalHours / hoursPerDay : 0;
+  const daysTotal = Math.max(1, Math.round(exactDays));
+  // addWorkdays(start, n) = первый свободный день после n рабочих дней задачи = старт дочерней
+  return addWorkdays(parentDynStart, daysTotal);
 }
 
 /**
@@ -228,10 +240,17 @@ export function getDerivedDeadline(task, allTasks, engineers, _depth = 0) {
   const childDl = getDerivedDeadline(child, allTasks, engineers, _depth + 1);
   if (!childDl) return task.deadline || null;
 
-  const childFc = calcForecast(child, engineers);
-  const childDays = childFc.capacity > 0
-    ? Math.ceil((childFc.hoursLeft || 0) / (childFc.capacity * HOURS_PER_DAY))
-    : 0;
+  // Для обратного планирования используем полную оценку (estimateHours),
+  // а не hoursLeft — иначе устаревший startDate занижает длительность.
+  const childCap = effectiveCapacity(child, engineers);
+  const childTotalHours = child.estimateHours || 0;
+  const childDays = childCap > 0
+    ? Math.max(1, Math.ceil(childTotalHours / (childCap * HOURS_PER_DAY)))
+    : (() => {
+        const parentCap = effectiveCapacity(task, engineers);
+        const estimateCap = parentCap > 0 ? parentCap : 1;
+        return Math.max(1, Math.ceil(childTotalHours / (estimateCap * HOURS_PER_DAY)));
+      })();
 
   const derived = childDays > 0 ? subtractWorkdays(childDl, childDays) : childDl;
 

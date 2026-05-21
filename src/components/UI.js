@@ -163,7 +163,7 @@ export function BackBtn({ onClick, label='Назад' }) {
   return (
     <button onClick={onClick} style={{
       display:'flex', alignItems:'center', gap:6, fontSize:14,
-      color:'var(--text-secondary)', padding:'7px 12px',
+      color:'var(--text-secondary)', padding:'8px 14px',
       border:'1.5px solid var(--border-mid)', borderRadius:6,
       background:'var(--bg-secondary)', cursor:'pointer', fontWeight:500,
     }}
@@ -313,9 +313,67 @@ export function ResizeHandle({ onMouseDown }) {
   );
 }
 
-// ── DateRangePicker ───────────────────────────────────────────────────────────
-const CAL_MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-const CAL_DAYS   = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+// ── ConfirmDialog + useConfirm ────────────────────────────────────────────────
+
+export function ConfirmDialog({ open, title, message, confirmLabel='Подтвердить', danger=true, onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <div
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000 }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div style={{ background:'var(--bg-primary)', borderRadius:12, border:'0.5px solid var(--border-light)', padding:28, width:420, maxWidth:'95vw', boxShadow:'0 8px 40px rgba(0,0,0,0.25)' }}>
+        <div style={{ fontSize:16, fontWeight:700, marginBottom:10, color:'var(--text-primary)' }}>{title}</div>
+        <div style={{ fontSize:14, color:'var(--text-secondary)', lineHeight:1.6, marginBottom:24, whiteSpace:'pre-line' }}>{message}</div>
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+          <BtnSecondary onClick={onCancel}>Отмена</BtnSecondary>
+          {danger
+            ? <BtnDanger onClick={onConfirm}>{confirmLabel}</BtnDanger>
+            : <BtnPrimary onClick={onConfirm}>{confirmLabel}</BtnPrimary>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function useConfirm() {
+  const [state, setState] = React.useState({ open:false, title:'', message:'', confirmLabel:'Подтвердить', danger:true, resolve:null });
+
+  const confirm = React.useCallback((title, message, opts = {}) => {
+    return new Promise(resolve => {
+      setState({ open:true, title, message, confirmLabel:opts.confirmLabel||'Подтвердить', danger:opts.danger!==false, resolve });
+    });
+  }, []);
+
+  function handleConfirm() {
+    state.resolve?.(true);
+    setState(s => ({ ...s, open:false, resolve:null }));
+  }
+
+  function handleCancel() {
+    state.resolve?.(false);
+    setState(s => ({ ...s, open:false, resolve:null }));
+  }
+
+  const ConfirmEl = (
+    <ConfirmDialog
+      open={state.open}
+      title={state.title}
+      message={state.message}
+      confirmLabel={state.confirmLabel}
+      danger={state.danger}
+      onConfirm={handleConfirm}
+      onCancel={handleCancel}
+    />
+  );
+
+  return { confirm, ConfirmEl };
+}
+
+// ── DateRangePicker / DatePicker ──────────────────────────────────────────────
+const CAL_MONTHS  = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const CAL_DAYS    = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+const CAL_NAV_BTN = { background:'none', border:'none', cursor:'pointer', fontSize:20, lineHeight:1, color:'var(--text-secondary)', padding:'2px 12px', borderRadius:6 };
 
 function buildCells(year, month) {
   const firstDow = new Date(year, month, 1).getDay();
@@ -363,11 +421,6 @@ export function DateRangePicker({ from, to, onChange }) {
 
   const cells = buildCells(vy, vm);
 
-  const navBtn = {
-    background:'none', border:'none', cursor:'pointer', fontSize:20, lineHeight:1,
-    color:'var(--text-secondary)', padding:'2px 12px', borderRadius:6,
-  };
-
   return (
     <div>
       {/* Selected dates */}
@@ -394,11 +447,11 @@ export function DateRangePicker({ from, to, onChange }) {
 
         {/* Month navigation */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 4px', borderBottom:'0.5px solid var(--border-light)' }}>
-          <button style={navBtn} onClick={prevMonth}>‹</button>
+          <button style={CAL_NAV_BTN} onClick={prevMonth}>‹</button>
           <span style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)' }}>
             {CAL_MONTHS[vm]} {vy}
           </span>
-          <button style={navBtn} onClick={nextMonth}>›</button>
+          <button style={CAL_NAV_BTN} onClick={nextMonth}>›</button>
         </div>
 
         {/* Day-of-week headers */}
@@ -453,6 +506,124 @@ export function DateRangePicker({ from, to, onChange }) {
         <span>·</span>
         <span>Конец — последний день отпуска</span>
       </div>
+    </div>
+  );
+}
+
+// ── DatePicker (single date) ──────────────────────────────────────────────────
+export function DatePicker({ value, onChange, placeholder = 'Выбрать дату', clearable = true }) {
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const init = value ? new Date(value + 'T00:00:00') : new Date();
+
+  const [open, setOpen] = React.useState(false);
+  const [vy, setVy] = React.useState(init.getFullYear());
+  const [vm, setVm] = React.useState(init.getMonth());
+
+  function prevMonth() { if (vm === 0) { setVm(11); setVy(y => y-1); } else setVm(m => m-1); }
+  function nextMonth() { if (vm === 11) { setVm(0); setVy(y => y+1); } else setVm(m => m+1); }
+
+  function handleDayClick(d) {
+    onChange(toISO(vy, vm, d));
+    setOpen(false);
+  }
+
+  const cells = buildCells(vy, vm);
+
+  return (
+    <div>
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width:'100%', padding:'9px 11px', textAlign:'left',
+          border:`1.5px solid ${open ? 'var(--accent)' : 'var(--border-mid)'}`,
+          borderRadius:6, fontSize:14,
+          background:'var(--bg-secondary)',
+          color: value ? 'var(--text-primary)' : 'var(--text-tertiary)',
+          cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between',
+          transition:'border-color 0.15s',
+        }}
+        onMouseEnter={e => { if (!open) e.currentTarget.style.borderColor = 'var(--border-primary)'; }}
+        onMouseLeave={e => { if (!open) e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
+      >
+        <span>{value ? fmtRu(value) : placeholder}</span>
+        <span style={{ fontSize:13, opacity:0.5, flexShrink:0 }}>▾</span>
+      </button>
+
+      {/* Calendar dropdown */}
+      {open && (
+        <div style={{ marginTop:6, background:'var(--bg-secondary)', border:'0.5px solid var(--border-light)', borderRadius:10, overflow:'hidden' }}>
+
+          {/* Month navigation */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 4px', borderBottom:'0.5px solid var(--border-light)' }}>
+            <button type="button" style={CAL_NAV_BTN} onClick={prevMonth}>‹</button>
+            <span style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)' }}>{CAL_MONTHS[vm]} {vy}</span>
+            <button type="button" style={CAL_NAV_BTN} onClick={nextMonth}>›</button>
+          </div>
+
+          {/* Day-of-week headers */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'10px 10px 2px' }}>
+            {CAL_DAYS.map((d, i) => (
+              <div key={d} style={{ textAlign:'center', fontSize:11, fontWeight:600, paddingBottom:4,
+                color: i >= 5 ? 'var(--text-tertiary)' : 'var(--text-secondary)' }}>
+                {d}
+              </div>
+            ))}
+          </div>
+
+          {/* Day cells */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'2px 10px 12px', gap:2 }}>
+            {cells.map((d, i) => {
+              if (!d) return <div key={i}/>;
+              const s = toISO(vy, vm, d);
+              const isSel  = s === value;
+              const isTod  = s === todayISO;
+              const wkend  = (i % 7) >= 5;
+              return (
+                <div
+                  key={i}
+                  onClick={() => handleDayClick(d)}
+                  onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--accent-bg)'; }}
+                  onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = isSel ? 'var(--accent)' : 'transparent'; }}
+                  style={{
+                    textAlign:'center', padding:'7px 0', borderRadius:6,
+                    cursor:'pointer', fontSize:13, userSelect:'none',
+                    fontWeight: isSel ? 700 : 400,
+                    background: isSel ? 'var(--accent)' : 'transparent',
+                    color: isSel ? '#fff' : wkend ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                    outline: isTod && !isSel ? '1.5px solid var(--accent)' : 'none',
+                    outlineOffset: '-2px',
+                    transition: 'background 0.1s',
+                  }}
+                >
+                  {d}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Clear / Today row */}
+          <div style={{ padding:'6px 10px 10px', borderTop:'0.5px solid var(--border-light)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <button
+              type="button"
+              onClick={() => { onChange(todayISO); setOpen(false); }}
+              style={{ fontSize:12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer', padding:'4px 6px', borderRadius:4, fontWeight:500 }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-bg)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >Сегодня</button>
+            {clearable && value && (
+              <button
+                type="button"
+                onClick={() => { onChange(''); setOpen(false); }}
+                style={{ fontSize:12, color:'var(--text-tertiary)', background:'none', border:'none', cursor:'pointer', padding:'4px 6px', borderRadius:4 }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = 'var(--red-bg)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-tertiary)'; e.currentTarget.style.background = 'none'; }}
+              >× Очистить</button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

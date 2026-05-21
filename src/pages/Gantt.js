@@ -1,10 +1,8 @@
 // src/pages/Gantt.js
 import React, { useState, useMemo } from 'react';
-import { getMonthDays, todayStr } from '../utils/dates';
-import { calcForecast, statusColor, getDerivedDeadline } from '../utils/forecast';
+import { getMonthDays, todayStr, addWorkdays } from '../utils/dates';
+import { calcForecast, calcDependentStart, calcScheduledChildStart, statusColor, getDerivedDeadline, HOURS_PER_DAY } from '../utils/forecast';
 import { Avatar, PageTopbar, useTooltip } from '../components/UI';
-
-const HOURS_PER_DAY = 8;
 
 export default function Gantt({ data, updateData, navigate }) {
   const { engineers, tasks } = data;
@@ -19,52 +17,179 @@ export default function Gantt({ data, updateData, navigate }) {
   const [dragEng, setDragEng]         = useState(null); // { engId, fromTaskId }
   const [dragEngOver, setDragEngOver] = useState(null); // taskId — цель при drag инженера
   const ganttBodyRef = React.useRef(null);
+  const weekRowRef   = React.useRef(null);
+  const [weekRowH, setWeekRowH] = useState(0);
   const { show, move, hide, TooltipEl } = useTooltip();
 
   const [showDone, setShowDone]       = useState(false);
+  const [hoveredCol, setHoveredCol]   = useState(null);
 
   const allDays = useMemo(() => getMonthDays(year, month), [year, month]);
   const days  = useMemo(() => hideOff ? allDays.filter(d => !d.off) : allDays, [allDays, hideOff]);
+
+  React.useLayoutEffect(() => {
+    if (weekRowRef.current) setWeekRowH(weekRowRef.current.offsetHeight);
+  }, [days]);
   const DAYS  = days.length;
 
-  // Сортируем задачи по sortOrder, показываем только те что пересекаются с текущим месяцем
+  // Все активные задачи без фильтра по месяцу (нужны для расчёта цепочек)
+  const allActiveTasks = useMemo(() =>
+    tasks.filter(t => t.status === 'active')
+      .sort((a,b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)),
+  [tasks]);
+
+  // Для каждой задачи — эффективная команда:
+  // если задача не имеет инженеров, наследуем от ближайшего предка с командой.
+  // Это позволяет планировать длинные цепочки: команда переходит с задачи на задачу.
+  const inheritedEngIds = useMemo(() => {
+    const cache = {};
+    function get(taskId, depth) {
+      if (depth > 9 || cache[taskId] !== undefined) return cache[taskId] || [];
+      const task = allActiveTasks.find(t => t.id === taskId);
+      if (!task) { cache[taskId] = []; return []; }
+      const own = task.assignedEngineers || [];
+      if (!task.dependsOn) { cache[taskId] = own; return own; }
+      const parentIds = get(task.dependsOn, depth + 1);
+      if (own.length === 0) { cache[taskId] = parentIds; return parentIds; }
+      // Дочерняя задача с доп. инженерами: унаследованная команда + свои (без дублей)
+      const merged = [...new Set([...parentIds, ...own])];
+      cache[taskId] = merged; return merged;
+    }
+    allActiveTasks.forEach(t => get(t.id, 0));
+    return cache;
+  }, [allActiveTasks]);
+
+  // Динамические даты старта по цепочке зависимостей (до 9 уровней).
+  // Зависимые задачи используют унаследованную команду для расчёта длительности.
+  const dynamicStarts = useMemo(() => {
+    const cache = {};
+    function getDynStart(taskId, depth) {
+      if (depth > 9) return null;
+      if (cache[taskId] !== undefined) return cache[taskId];
+      const task = allActiveTasks.find(t => t.id === taskId);
+      if (!task) { cache[taskId] = null; return null; }
+      if (!task.dependsOn) { cache[taskId] = task.startDate || null; return cache[taskId]; }
+      const parent = allActiveTasks.find(t => t.id === task.dependsOn);
+      if (!parent) { cache[taskId] = task.startDate || null; return cache[taskId]; }
+      const parentDynStart = getDynStart(parent.id, depth + 1);
+      // Задача с унаследованной командой для корректного расчёта capacity
+      const parentEff = { ...parent, assignedEngineers: inheritedEngIds[parent.id] || [] };
+
+      let date;
+      if (!parent.dependsOn && parent.startDate) {
+        // Корневая запущенная задача — elapsed-based прогресс
+        const { date: d } = calcDependentStart(parentEff, engineers);
+        if (d) { date = d; }
+        else {
+          // Нет ни унаследованных инженеров — используем дедлайн или оценку
+          if (parent.deadline) date = addWorkdays(parent.deadline, 1);
+          else { const hrs = parent.estimateHours || HOURS_PER_DAY; date = addWorkdays(parent.startDate, Math.round(hrs / HOURS_PER_DAY)); }
+        }
+      } else {
+        // Зависимая или ещё не начатая задача — schedule-forward без учёта elapsed
+        if (!parentDynStart) { cache[taskId] = null; return null; }
+        const d = calcScheduledChildStart(parentEff, engineers, parentDynStart);
+        if (d) { date = d; }
+        else {
+          if (parent.deadline) date = addWorkdays(parent.deadline, 1);
+          else { const hrs = parent.estimateHours || HOURS_PER_DAY; date = addWorkdays(parentDynStart, Math.round(hrs / HOURS_PER_DAY)); }
+        }
+      }
+
+      cache[taskId] = date;
+      return date;
+    }
+    allActiveTasks.forEach(t => getDynStart(t.id, 0));
+    return cache;
+  }, [allActiveTasks, engineers, inheritedEngIds]);
+
+  // Эффективный дедлайн:
+  // - Дедлайн всей цепочки = максимальный (самый поздний) дедлайн любого её звена
+  // - Листовая задача получает этот дедлайн как жёсткий (красная линия)
+  // - Каждая родительская задача — мягкий дедлайн назад от листа (жёлтая линия)
+  const effectiveDls = useMemo(() => {
+    const result = {};
+    const leafIds = new Set(
+      allActiveTasks.filter(t => !allActiveTasks.some(c => c.dependsOn === t.id)).map(t => t.id)
+    );
+
+    // Максимальный дедлайн в линейной цепочке от данной задачи до листа
+    function chainMaxDl(taskId, depth = 0) {
+      if (depth > 9) return null;
+      const task = allActiveTasks.find(t => t.id === taskId);
+      if (!task) return null;
+      const child = allActiveTasks.find(t => t.dependsOn === taskId);
+      const childMax = child ? chainMaxDl(child.id, depth + 1) : null;
+      if (!task.deadline && !childMax) return null;
+      if (!task.deadline) return childMax;
+      if (!childMax) return task.deadline;
+      return task.deadline > childMax ? task.deadline : childMax;
+    }
+
+    // Шаг 1: каждой листовой задаче — максимальный дедлайн всей её цепочки
+    allActiveTasks.forEach(t => {
+      if (!leafIds.has(t.id)) return;
+      let rootId = t.id, cur = t;
+      for (let i = 0; i < 9; i++) {
+        if (!cur.dependsOn) break;
+        const p = allActiveTasks.find(x => x.id === cur.dependsOn);
+        if (!p) break;
+        rootId = p.id; cur = p;
+      }
+      const dl = chainMaxDl(rootId);
+      if (dl) result[t.id] = dl;
+    });
+
+    // Шаг 2: родительские задачи — мягкий дедлайн назад от листа,
+    // с учётом унаследованной команды для точного расчёта длительности
+    const tasksForDl = allActiveTasks.map(t => ({
+      ...t,
+      assignedEngineers: inheritedEngIds[t.id] || t.assignedEngineers || [],
+      deadline: leafIds.has(t.id) ? (result[t.id] || null) : null,
+    }));
+    allActiveTasks.forEach(t => {
+      if (leafIds.has(t.id)) return;
+      const derived = getDerivedDeadline({ ...t, deadline: null }, tasksForDl, engineers);
+      if (derived) result[t.id] = derived;
+    });
+
+    return result;
+  }, [allActiveTasks, engineers, inheritedEngIds]);
+
+  // Прогнозы: зависимые задачи используют унаследованную команду и dynStart вместо startDate
+  const forecasts = useMemo(() => {
+    const result = {};
+    allActiveTasks.forEach(t => {
+      const dynStart = dynamicStarts[t.id];
+      const engIds = inheritedEngIds[t.id] || t.assignedEngineers || [];
+      // Для зависимых: убираем устаревший startDate, подставляем inherited engineers и dynStart
+      const taskForFc = t.dependsOn
+        ? { ...t, assignedEngineers: engIds, startDate: null }
+        : { ...t, assignedEngineers: engIds };
+      const startOverride = t.dependsOn && dynStart ? dynStart : null;
+      result[t.id] = calcForecast(taskForFc, engineers, effectiveDls[t.id] || null, startOverride);
+    });
+    tasks.filter(t => t.status === 'done').forEach(t => {
+      result[t.id] = calcForecast(t, engineers);
+    });
+    return result;
+  }, [allActiveTasks, dynamicStarts, effectiveDls, engineers, inheritedEngIds, tasks]);
+
+  // Активные задачи, пересекающиеся с текущим месяцем (используем динамические даты)
   const activeTasks = useMemo(() => {
     const monthStart = `${year}-${String(month+1).padStart(2,'0')}-01`;
     const lastDay    = new Date(year, month+1, 0).getDate();
     const monthEnd   = `${year}-${String(month+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
-    const todayS     = new Date().toISOString().slice(0,10);
-
-    const active = tasks.filter(t => {
-      if (t.status !== 'active') return false;
-      // Если дедлайн задачи попадает в текущий месяц — всегда показываем
-      // (даже если старт ещё не наступил: задача уже просрочена или вот-вот)
+    return allActiveTasks.filter(t => {
       if (t.deadline && t.deadline >= monthStart && t.deadline <= monthEnd) return true;
-      // Определяем эффективную дату старта
-      const effStart = t.startDate || t.createdDate || todayS;
-      // Задача начинается до конца месяца
+      const effStart = dynamicStarts[t.id] || t.createdDate || todayStr();
       if (effStart > monthEnd) return false;
-      // Задача заканчивается после начала месяца (или нет даты конца)
-      const fc = calcForecast(t, engineers);
-      const endDate = fc?.forecastDate || monthEnd;
+      const fc = forecasts[t.id];
+      const endDate = fc?.forecastDate || t.deadline || monthEnd;
       if (endDate < monthStart) return false;
       return true;
     });
-    return [...active].sort((a,b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
-  }, [tasks, year, month, engineers]);
-
-  // Эффективный дедлайн для каждой задачи: свой или расчётный по цепочке
-  const effectiveDls = {};
-  activeTasks.forEach(t => {
-    if (t.deadline) {
-      effectiveDls[t.id] = t.deadline;
-    } else {
-      const derived = getDerivedDeadline(t, activeTasks, engineers);
-      if (derived) effectiveDls[t.id] = derived;
-    }
-  });
-
-  const forecasts = {};
-  tasks.forEach(t => { forecasts[t.id] = calcForecast(t, engineers, effectiveDls[t.id] || null); });
+  }, [allActiveTasks, dynamicStarts, forecasts, year, month]);
 
   // Завершённые задачи — фильтруем по completedDate в текущем месяце
   const doneTasks = useMemo(() => {
@@ -137,17 +262,11 @@ export default function Gantt({ data, updateData, navigate }) {
         {days.map((d,i) => (
           <div key={i} style={{
             flex:1, height:'100%',
-            background: d.today ? 'rgba(29,158,117,0.06)' : 'transparent',
-            borderRight: i < DAYS-1 ? `0.5px solid ${d.today ? 'rgba(29,158,117,0.25)' : 'var(--border-light)'}` : 'none',
+            background: d.holiday ? 'var(--bg-tertiary)' : d.weekend ? 'var(--bg-secondary)' : 'transparent',
           }}/>
         ))}
       </div>
     );
-  }
-
-  function TodayLine() {
-    if (todayIdx < 0) return null;
-    return <div style={{ position:'absolute', top:0, bottom:0, left:L(todayIdx), width:1.5, background:'var(--accent)', opacity:0.5, zIndex:5, pointerEvents:'none' }}/>;
   }
 
   function fmtDate(str) {
@@ -156,43 +275,16 @@ export default function Gantt({ data, updateData, navigate }) {
     return new Date(y, m-1, d).toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
   }
 
-  // Эффективная дата старта + смещение на полдня если зависимая
+  // Эффективная дата старта:
+  // - независимые задачи: startDate или createdDate
+  // - зависимые: всегда dynStart из цепочки (игнорируем хранимый startDate — может быть устаревшим)
   function effectiveStart(task) {
-    // Если дата старта задана — используем её
-    // Иначе soft-start: createdDate (фиксируется при создании), меняется ежедневно до завтра если не задана
-    return task.startDate || task.createdDate || todayStr();
+    if (!task.dependsOn) return task.startDate || task.createdDate || todayStr();
+    if (dynamicStarts[task.id]) return dynamicStarts[task.id];
+    const parent = allActiveTasks.find(t => t.id === task.dependsOn);
+    return dynamicStarts[parent?.id] || task.createdDate || todayStr();
   }
 
-  // Рассчитываем полудень для задачи: возвращает { endOffset, startOffset }
-  // endOffset: сколько вычесть из правого края полосы (0 или 0.5)
-  // startOffset: сколько добавить к левому краю полосы (0 или 0.5)
-  function getHalfDayOffsets(task) {
-    // Смещение правого края (окончание)
-    let endOffset = 0;
-    if (task.id) {
-      // Ищем дочерние задачи — если они стартуют в тот же день что мы заканчиваем
-      const child = tasks.find(t => t.dependsOn === task.id && t.startDate === forecasts[task.id]?.forecastDate);
-      if (child) {
-        const fc = forecasts[task.id];
-        const hoursPerDay = (fc?.capacity || 1) * HOURS_PER_DAY;
-        const hoursInLastDay = hoursPerDay > 0 ? (fc?.hoursLeft || 0) % hoursPerDay : 0;
-        endOffset = hoursInLastDay > 4 ? 0.5 : 0;
-      }
-    }
-
-    // Смещение левого края (начало) — для дочерней задачи
-    let startOffset = 0;
-    if (task.dependsOn && task.startDate) {
-      const parent = tasks.find(t => t.id === task.dependsOn);
-      const parentFc = parent ? forecasts[parent.id] : null;
-      if (parentFc?.forecastDate === task.startDate) {
-        const hoursPerDay = (parentFc?.capacity || 1) * HOURS_PER_DAY;
-        const hoursInLastDay = hoursPerDay > 0 ? (parentFc?.hoursLeft || 0) % hoursPerDay : 0;
-        startOffset = hoursInLastDay > 4 ? 0.5 : 0;
-      }
-    }
-    return { endOffset, startOffset };
-  }
 
   // Drag-and-drop: поменять задачи местами
   function handleDrop(fromIdx, toIdx) {
@@ -227,50 +319,63 @@ export default function Gantt({ data, updateData, navigate }) {
     setDragEngOver(null);
   }
 
-  // Строим данные для стрелки зависимости при наведении
-  function getDependencyArrow(hovId) {
-    if (!hovId || !ganttBodyRef.current) return null;
+  // Собираем все задачи цепочки (вверх к корню + вниз к листу) для подсветки и стрелок
+  function getChain(hovId) {
     const allVisible = [...activeTasks, ...doneTasks];
     const task = allVisible.find(t => t.id === hovId);
-    if (!task) return null;
-
-    let parentTask, childTask;
-    if (task.dependsOn) {
-      parentTask = allVisible.find(t => t.id === task.dependsOn);
-      childTask  = task;
-    } else {
-      childTask  = allVisible.find(t => t.dependsOn === task.id);
-      parentTask = task;
+    if (!task) return [];
+    const chain = [task];
+    let cur = task;
+    for (let i = 0; i < 9; i++) {
+      if (!cur.dependsOn) break;
+      const parent = allVisible.find(t => t.id === cur.dependsOn);
+      if (!parent) break;
+      chain.unshift(parent);
+      cur = parent;
     }
-    if (!parentTask || !childTask) return null;
+    cur = task;
+    for (let i = 0; i < 9; i++) {
+      const child = allVisible.find(t => t.dependsOn === cur.id);
+      if (!child) break;
+      chain.push(child);
+      cur = child;
+    }
+    return chain;
+  }
 
+  // Строим данные для стрелок зависимости при наведении (все пары цепочки)
+  function getDependencyArrows(hovId) {
+    if (!hovId || !ganttBodyRef.current) return [];
+    const chain = getChain(hovId);
+    if (chain.length < 2) return [];
     const base = ganttBodyRef.current.getBoundingClientRect();
-    const pEl  = document.getElementById(`bar-${parentTask.id}`);
-    const cEl  = document.getElementById(`bar-${childTask.id}`);
-    if (!pEl || !cEl) return null;
-
-    const pr = pEl.getBoundingClientRect();
-    const cr = cEl.getBoundingClientRect();
-
-    // Определяем направление: дочерняя выше или ниже родителя
-    const childIsBelow = cr.top >= pr.top;
-
-    // Точка выхода: 90% ширины родителя
-    const x1 = pr.left - base.left + pr.width * 0.9;
-    // Выходит снизу если дочерняя ниже, сверху если дочерняя выше
-    const y1 = childIsBelow
-      ? pr.bottom - base.top        // нижний край родителя
-      : pr.top - base.top;          // верхний край родителя
-
-    // Точка входа: левый край дочерней, середина по высоте
-    const x2 = cr.left - base.left;
-    const y2 = cr.top - base.top + cr.height / 2;
-
-    return { x1, y1, x2, y2 };
+    const arrows = [];
+    for (let i = 0; i < chain.length - 1; i++) {
+      const pTask = chain[i];
+      const cTask = chain[i + 1];
+      const pEl = document.getElementById(`bar-${pTask.id}`);
+      const cEl = document.getElementById(`bar-${cTask.id}`);
+      if (!pEl || !cEl) continue;
+      const pr = pEl.getBoundingClientRect();
+      const cr = cEl.getBoundingClientRect();
+      const childIsBelow = cr.top >= pr.top;
+      arrows.push({
+        key: `${pTask.id}-${cTask.id}`,
+        x1: pr.left - base.left + pr.width * 0.9,
+        y1: childIsBelow ? pr.bottom - base.top : pr.top - base.top,
+        x2: cr.left - base.left,
+        y2: cr.top - base.top + cr.height / 2,
+      });
+    }
+    return arrows;
   }
 
   const workdaysCount = allDays.filter(d => !d.off).length;
-  const depArrow = getDependencyArrow(hoveredTask);
+  const depArrows = getDependencyArrows(hoveredTask);
+  const hoveredChainIds = useMemo(() => {
+    if (!hoveredTask) return new Set();
+    return new Set(getChain(hoveredTask).map(t => t.id));
+  }, [hoveredTask, activeTasks, doneTasks]); // getChain зависит от activeTasks и doneTasks
 
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
@@ -309,7 +414,22 @@ export default function Gantt({ data, updateData, navigate }) {
       </PageTopbar>
 
       <div style={{ flex:1, overflow:'auto', padding:'16px 20px' }} onMouseMove={move}>
-        <div ref={ganttBodyRef} style={{ minWidth: hideOff ? 600 : 860, position:'relative' }}>
+        <div ref={ganttBodyRef} style={{ minWidth: hideOff ? 600 : 860, position:'relative' }}
+          onMouseLeave={() => setHoveredCol(null)}
+        >
+          {/* Глобальный оверлей: подсветка сегодня и ховера колонки — от строки дат до низа */}
+          <div style={{ position:'absolute', top:weekRowH, bottom:0, left:LABEL_W, right:0, display:'flex', pointerEvents:'none', zIndex:0 }}>
+            {days.map((d, i) => (
+              <div key={i} style={{
+                flex:1,
+                background: hoveredCol === i
+                  ? 'rgba(240,160,48,0.08)'
+                  : d.today ? 'rgba(29,158,117,0.08)'
+                  : 'transparent',
+                borderRight: i < DAYS-1 ? `0.5px solid ${d.today ? 'rgba(29,158,117,0.25)' : 'var(--border-light)'}` : 'none',
+              }}/>
+            ))}
+          </div>
 
           {/* ── WEEK NUMBER ROW ── */}
           {(() => {
@@ -337,7 +457,7 @@ export default function Gantt({ data, updateData, navigate }) {
             return (
               <>
                 {/* Строка номеров недель */}
-                <div style={{ display:'flex' }}>
+                <div ref={weekRowRef} style={{ display:'flex' }}>
                   <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0 }}/>
                   <div style={{ flex:1, display:'flex', borderBottom:'0.5px solid var(--border-light)' }}>
                     {segments.map((seg, si) => (
@@ -356,7 +476,7 @@ export default function Gantt({ data, updateData, navigate }) {
                 </div>
 
                 {/* Строка чисел */}
-                <div style={{ display:'flex' }}>
+                <div style={{ display:'flex' }} onMouseLeave={() => setHoveredCol(null)}>
                   <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0 }}/>
                   <div style={{ flex:1, display:'flex', borderBottom:'0.5px solid var(--border-light)' }}>
                     {days.map((d,i) => {
@@ -366,11 +486,13 @@ export default function Gantt({ data, updateData, navigate }) {
                       const isToday = d.today;
                       const isOff   = d.off && !hideOff;
                       return (
-                        <div key={i} style={{
-                          flex:1, textAlign:'center', padding:'3px 0 2px',
-                          background: isToday ? 'rgba(29,158,117,0.07)' : isOff ? 'rgba(0,0,0,0.02)' : 'transparent',
-                          borderRight: i<DAYS-1 ? `0.5px solid ${isToday?'rgba(29,158,117,0.25)':'var(--border-light)'}` : 'none',
-                        }}>
+                        <div key={i}
+                          onMouseEnter={() => setHoveredCol(i)}
+                          style={{
+                            flex:1, textAlign:'center', padding:'3px 0 2px', cursor:'default',
+                            background: isToday ? 'rgba(29,158,117,0.07)' : isOff ? 'var(--bg-secondary)' : 'transparent',
+                            borderRight: i<DAYS-1 ? `0.5px solid ${isToday?'rgba(29,158,117,0.25)':'var(--border-light)'}` : 'none',
+                          }}>
                           <div style={{ fontSize:12, fontWeight: isToday?700:400, color: isToday?'var(--accent)': isOff?'var(--text-tertiary)':'var(--text-secondary)', lineHeight:1.3 }}>{d.day}</div>
                           <div style={{ fontSize:9, color: isToday?'var(--accent)': isOff?'var(--text-tertiary)':'var(--text-tertiary)', lineHeight:1.2, fontWeight: isToday?700:400 }}>{dowRu}</div>
                         </div>
@@ -387,8 +509,8 @@ export default function Gantt({ data, updateData, navigate }) {
                       <div key={i} style={{
                         flex:1, height:13,
                         background: d.today ? 'rgba(29,158,117,0.18)'
-                          : (!hideOff && d.holiday) ? 'rgba(0,0,0,0.06)'
-                          : (!hideOff && d.weekend) ? 'rgba(0,0,0,0.04)'
+                          : d.holiday ? 'var(--bg-tertiary)'
+                          : d.weekend ? 'var(--bg-secondary)'
                           : 'transparent',
                         borderRight: i<DAYS-1 ? `0.5px solid ${d.today?'rgba(29,158,117,0.25)':'var(--border-light)'}` : 'none',
                         display:'flex', alignItems:'center', justifyContent:'center',
@@ -406,27 +528,37 @@ export default function Gantt({ data, updateData, navigate }) {
           {/* Task rows */}
           {activeTasks.map((task, rowIdx) => {
             const fc = forecasts[task.id];
-            const hasStart  = !!task.startDate;
+            const hasStart  = task.dependsOn ? false : !!task.startDate;
             // Задача без даты: серая штриховка, стартует с сегодня визуально
             const effectSt  = effectiveStart(task);
             const barColor  = hasStart ? (statusColor(fc?.deadlineStatus) || '#A8A6A0') : '#A8A6A0';
             const barBg     = hasStart ? barColor
               : 'repeating-linear-gradient(45deg,#A8A6A0,#A8A6A0 4px,#C8C7C3 4px,#C8C7C3 8px)';
-            // Порядок из task.assignedEngineers — новые добавляются в конец
-            const assignedEngs = (task.assignedEngineers||[]).map(id=>engineers.find(e=>e.id===id)).filter(Boolean);
+            // Эффективная команда: унаследованные + дополнительные на этой задаче
+            const assignedEngs = (inheritedEngIds[task.id] || task.assignedEngineers || []).map(id=>engineers.find(e=>e.id===id)).filter(Boolean);
 
-            const { endOffset, startOffset } = getHalfDayOffsets(task);
-            const barStartIdx = dateToIdxSafe(effectSt, 'next') ?? 0;
-            const barStart    = barStartIdx + startOffset;
-            const rawFcIdx    = fc?.forecastDate ? dateToIdxSafe(fc.forecastDate, 'prev') : null;
-            const barEndIdx   = rawFcIdx !== null ? Math.min(DAYS, rawFcIdx + 1) : DAYS;
-            const barEnd      = barEndIdx - endOffset;
-            const dlIdx    = task.deadline ? dateToIdxSafe(task.deadline, 'prev') : null;
-            // Расчётный дедлайн по цепочке (для задач без собственного дедлайна)
-            const derivedDl    = !task.deadline ? (effectiveDls[task.id] || null) : null;
-            const derivedDlIdx = derivedDl ? dateToIdxSafe(derivedDl, 'prev') : null;
+            const barStartIdx   = dateToIdxSafe(effectSt, 'next') ?? 0;
+            const barStart      = barStartIdx;
+            const rawFcIdx      = fc?.forecastDate ? dateToIdxSafe(fc.forecastDate, 'prev') : null;
+            const dlCapIdx      = task.deadline ? dateToIdxSafe(task.deadline, 'prev') : null;
+            const monthLastDay  = new Date(year, month + 1, 0).getDate();
+            const monthEndStr   = `${year}-${String(month+1).padStart(2,'0')}-${String(monthLastDay).padStart(2,'0')}`;
+            const fcBeyondMonth = fc?.forecastDate && fc.forecastDate > monthEndStr;
+            const barEndIdx     = rawFcIdx !== null
+              ? Math.min(DAYS, rawFcIdx + 1)
+              : fcBeyondMonth
+              ? DAYS
+              : dlCapIdx !== null ? Math.min(DAYS, dlCapIdx + 1) : barStartIdx + 2;
+            const barEnd      = barEndIdx;
+            const colSpan    = barEnd - barStart;
+            const maxAvatars = colSpan <= 1 ? 0 : colSpan === 2 ? 1 : colSpan === 3 ? 2 : colSpan <= 5 ? 4 : 6;
+            const isParent   = allActiveTasks.some(t => t.dependsOn === task.id);
+            // Жёсткий дедлайн листа — максимальный в цепочке
+            const dlIdx      = !isParent && effectiveDls[task.id] ? dateToIdxSafe(effectiveDls[task.id], 'prev') : null;
+            // Мягкий дедлайн предка — обратный расчёт от дедлайна листа
+            const chainDlIdx = isParent && effectiveDls[task.id] ? dateToIdxSafe(effectiveDls[task.id], 'prev') : null;
 
-            const isDepHovered = hoveredTask && (hoveredTask === task.id || hoveredTask === task.dependsOn || activeTasks.find(t => t.dependsOn === task.id && t.id === hoveredTask));
+            const isDepHovered = hoveredChainIds.has(task.id);
             const isDragging  = dragIdx === rowIdx;
             const isOver      = dragOver === rowIdx;
             const isEngTarget = dragEng && dragEng.fromTaskId !== task.id && dragEngOver === task.id;
@@ -472,7 +604,6 @@ export default function Gantt({ data, updateData, navigate }) {
                   </div>
                   <div style={{ flex:1, position:'relative', height:44 }}>
                     <BgCols/>
-                    <TodayLine/>
                     {barStart < barEnd && (
                       <div
                         id={`bar-${task.id}`}
@@ -482,36 +613,39 @@ export default function Gantt({ data, updateData, navigate }) {
                         style={{
                           position:'absolute', left:L(barStart), width:W(barStart,barEnd),
                           top:7, height:30, background:barBg, borderRadius:6,
-                          display:'flex', alignItems:'center', padding:'0 10px', gap:6,
+                          display:'flex', alignItems:'center',
+                          padding: colSpan <= 2 ? '0 4px' : '0 8px',
+                          gap: colSpan <= 2 ? 3 : 5,
                           cursor:'pointer', zIndex:3, overflow:'hidden',
                           boxShadow:'0 1px 4px rgba(0,0,0,0.18)',
                           opacity: hasStart ? 1 : 0.75,
                         }}
                       >
-                        <div style={{ display:'flex', alignItems:'center', flexShrink:0 }}>
-                          {assignedEngs.map((e,i) => {
-                            const initials = e.name.split(' ').slice(0,2).map(p=>p[0]).join('');
-                            const colors = ['#9FE1CB','#B5D4F4','#CECBF6','#F5C4B3','#FAC775','#C0DD97','#D3D1C7'];
-                            const bg = colors[e.name.charCodeAt(0) % colors.length];
-                            const txtColor = ['#085041','#0C447C','#3C3489','#712B13','#633806','#27500A','#444441'][e.name.charCodeAt(0) % 7];
-                            return (
-                              <span key={e.id} style={{
-                                display:'inline-flex', alignItems:'center', justifyContent:'center',
-                                width:18, height:18, borderRadius:'50%',
-                                background:bg, color:txtColor,
-                                fontSize:7, fontWeight:700,
-                                border:'1.5px solid rgba(255,255,255,0.6)',
-                                marginLeft: i>0 ? -5 : 0,
-                                flexShrink:0,
-                              }}>{initials}</span>
-                            );
-                          }).slice(0,6)}
-                          {assignedEngs.length > 6 && <span style={{ fontSize:10, color:'rgba(255,255,255,0.85)', marginLeft:4, flexShrink:0 }}>+{assignedEngs.length-6}</span>}
-                        </div>
-                        <span style={{ fontSize:12, fontWeight:700, color:'#fff', whiteSpace:'nowrap' }}>{fc?.progressPct||0}%</span>
+                        <span style={{ fontSize:12, fontWeight:700, color:'#fff', whiteSpace:'nowrap', flexShrink:0 }}>{fc?.progressPct||0}%</span>
+                        {maxAvatars > 0 && (
+                          <div style={{ display:'flex', alignItems:'center', flexShrink:0 }}>
+                            {assignedEngs.slice(0, maxAvatars).map((e,i) => {
+                              const initials = e.name.split(' ').slice(0,2).map(p=>p[0]).join('');
+                              const colors = ['#9FE1CB','#B5D4F4','#CECBF6','#F5C4B3','#FAC775','#C0DD97','#D3D1C7'];
+                              const bg = colors[e.name.charCodeAt(0) % colors.length];
+                              const txtColor = ['#085041','#0C447C','#3C3489','#712B13','#633806','#27500A','#444441'][e.name.charCodeAt(0) % 7];
+                              return (
+                                <span key={e.id} style={{
+                                  display:'inline-flex', alignItems:'center', justifyContent:'center',
+                                  width:18, height:18, borderRadius:'50%',
+                                  background:bg, color:txtColor,
+                                  fontSize:7, fontWeight:700,
+                                  border:'1.5px solid rgba(255,255,255,0.6)',
+                                  marginLeft: i>0 ? -5 : 0, flexShrink:0,
+                                }}>{initials}</span>
+                              );
+                            })}
+                            {assignedEngs.length > maxAvatars && <span style={{ fontSize:10, color:'rgba(255,255,255,0.85)', marginLeft:4, flexShrink:0 }}>+{assignedEngs.length-maxAvatars}</span>}
+                          </div>
+                        )}
                       </div>
                     )}
-                    {/* Линия жёсткого дедлайна — только при наведении */}
+                    {/* Жёсткий дедлайн (красная) — только у листа цепочки, только при наведении */}
                     {hoveredTask === task.id && dlIdx !== null && dlIdx >= 0 && dlIdx < DAYS && (
                       <div style={{
                         position:'absolute', top:0, bottom:0,
@@ -522,14 +656,15 @@ export default function Gantt({ data, updateData, navigate }) {
                         boxShadow:'0 0 6px rgba(226,75,74,0.5)',
                       }}/>
                     )}
-                    {/* Линия расчётного дедлайна по цепочке — пунктир, только при наведении */}
-                    {hoveredTask === task.id && derivedDlIdx !== null && derivedDlIdx >= 0 && derivedDlIdx < DAYS && (
+                    {/* Мягкий дедлайн (жёлтая) — у предков, только при наведении */}
+                    {hoveredTask === task.id && chainDlIdx !== null && chainDlIdx >= 0 && chainDlIdx < DAYS && (
                       <div style={{
                         position:'absolute', top:0, bottom:0,
-                        left:`calc(${Ldl(derivedDlIdx)} - 1px)`,
-                        width:2,
-                        background:'repeating-linear-gradient(to bottom, var(--amber) 0px, var(--amber) 5px, transparent 5px, transparent 10px)',
+                        left:`calc(${Ldl(chainDlIdx)} - 1px)`,
+                        width:2, background:'var(--amber)',
                         zIndex:6, pointerEvents:'none',
+                        borderRadius:1,
+                        boxShadow:'0 0 6px rgba(240,160,48,0.45)',
                       }}/>
                     )}
                   </div>
@@ -542,7 +677,6 @@ export default function Gantt({ data, updateData, navigate }) {
                 ].map(eng => {
                   const isVac      = eng.status==='vacation';
                   const isSick     = eng.status==='sick';
-                  const isSwitched = eng.regularTask !== task.regularTask;
                   const baseColor  = eng.role==='responsible' ? '#F5A830'
                     : eng.role==='intern'       ? '#C0BEFC'
                     : '#9FE1CB';
@@ -572,8 +706,7 @@ export default function Gantt({ data, updateData, navigate }) {
                       </div>
                       <div style={{ flex:1, position:'relative', height:26 }}>
                         <BgCols/>
-                        <TodayLine/>
-                        {barStart < barEnd && (
+                            {barStart < barEnd && (
                           <div
                             onClick={e => { e.stopPropagation(); navigate('engineer', eng.id); }}
                             onMouseEnter={e => show(e, eng.name, [
@@ -598,29 +731,21 @@ export default function Gantt({ data, updateData, navigate }) {
           {(() => {
             // Для каждого дня считаем: задействованы (на активных задачах) и свободны
             const nonLeadEngs = engineers.filter(e => e.role !== 'lead');
-            const engagedPerDay = days.map(day => {
+            const activeNonLead = nonLeadEngs.filter(e => e.status === 'active');
+            const engagedPerDay = [];
+            const freePerDay = [];
+            days.forEach(day => {
               const ids = new Set();
               activeTasks.forEach(task => {
                 const fc = forecasts[task.id];
                 const st = task.startDate || day.str;
                 const en = fc?.forecastDate || day.str;
                 if (st <= day.str && en >= day.str) {
-                  task.assignedEngineers?.forEach(id => ids.add(id));
+                  (inheritedEngIds[task.id] || task.assignedEngineers || []).forEach(id => ids.add(id));
                 }
               });
-              return nonLeadEngs.filter(e => ids.has(e.id) && e.status === 'active').length;
-            });
-            const freePerDay = days.map((day, i) => {
-              const ids = new Set();
-              activeTasks.forEach(task => {
-                const fc = forecasts[task.id];
-                const st = task.startDate || day.str;
-                const en = fc?.forecastDate || day.str;
-                if (st <= day.str && en >= day.str) {
-                  task.assignedEngineers?.forEach(id => ids.add(id));
-                }
-              });
-              return nonLeadEngs.filter(e => !ids.has(e.id) && e.status === 'active');
+              engagedPerDay.push(activeNonLead.filter(e => ids.has(e.id)).length);
+              freePerDay.push(activeNonLead.filter(e => !ids.has(e.id)));
             });
 
             return (
@@ -630,7 +755,7 @@ export default function Gantt({ data, updateData, navigate }) {
                   <div style={{ flex:1, display:'flex' }}>
                     {days.map((d,i) => {
                       const cnt = engagedPerDay[i];
-                      const total = nonLeadEngs.filter(e => e.status === 'active').length;
+                      const total = activeNonLead.length;
                       const p = total > 0 ? cnt / total : 0;
                       const bg = p > 0.8 ? 'var(--success-bg)' : p > 0.4 ? 'var(--amber-bg)' : 'var(--bg-secondary)';
                       const col = p > 0.8 ? 'var(--success)' : p > 0.4 ? 'var(--amber)' : 'var(--text-tertiary)';
@@ -655,7 +780,7 @@ export default function Gantt({ data, updateData, navigate }) {
                         <div key={i}
                           onClick={() => cnt > 0 && setFreeModal({ day: d, engineers: freeEngs })}
                           style={{ flex:1, height:22, background:bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:600, color:col, borderRight:i<DAYS-1?'0.5px solid var(--bg-primary)':'none', cursor: cnt > 0 ? 'pointer' : 'default' }}
-                          onMouseEnter={e => cnt > 0 && show(e, `Свободны ${d.day} мая`, freeEngs.map(e2 => `${e2.name} (${e2.regularTask||'—'})`).slice(0,5))}
+                          onMouseEnter={e => { if (!cnt) return; const rows = freeEngs.slice(0,5).map(e2=>`${e2.name} (${e2.regularTask||'—'})`); if (freeEngs.length > 5) rows.push(`и ещё ${freeEngs.length - 5} инженеров`); show(e, `Свободны ${fmtDate(d.str)}`, rows); }}
                           onMouseLeave={hide}
                         >
                           {cnt > 0 ? cnt : '—'}
@@ -684,10 +809,7 @@ export default function Gantt({ data, updateData, navigate }) {
                 const barStart = startIdx ?? 0;
                 const barEnd   = endIdx !== null ? Math.min(DAYS, endIdx + 1) : DAYS;
 
-                // Зависимость для завершённых
-                const isDepHov = hoveredTask && (hoveredTask === task.id ||
-                  hoveredTask === task.dependsOn ||
-                  doneTasks.concat(activeTasks).find(t => t.dependsOn === task.id && t.id === hoveredTask));
+                const isDepHov = hoveredChainIds.has(task.id);
 
                 return (
                   <div key={task.id}
@@ -707,8 +829,7 @@ export default function Gantt({ data, updateData, navigate }) {
                     </div>
                     <div style={{ flex:1, position:'relative', height:36 }}>
                       <BgCols/>
-                      <TodayLine/>
-                      {barStart < barEnd && (
+                        {barStart < barEnd && (
                         <div
                           id={`bar-${task.id}`}
                           onClick={() => navigate('task', task.id)}
@@ -749,8 +870,8 @@ export default function Gantt({ data, updateData, navigate }) {
             </div>
           )}
 
-          {/* Стрелка зависимости */}
-          {depArrow && (
+          {/* Стрелки зависимостей (вся цепочка) */}
+          {depArrows.length > 0 && (
             <svg style={{
               position:'absolute', top:0, left:0, width:'100%', height:'100%',
               pointerEvents:'none', overflow:'visible', zIndex:50,
@@ -761,17 +882,17 @@ export default function Gantt({ data, updateData, navigate }) {
                   <polygon points="0 0, 6 2.5, 0 5" fill="#F0A030" opacity="0.9"/>
                 </marker>
               </defs>
-              <path
-                d={`M ${depArrow.x1.toFixed(1)} ${depArrow.y1.toFixed(1)}
-                    L ${depArrow.x1.toFixed(1)} ${depArrow.y2.toFixed(1)}
-                    L ${depArrow.x2.toFixed(1)} ${depArrow.y2.toFixed(1)}`}
-                fill="none"
-                stroke="#F0A030"
-                strokeWidth="1.2"
-                strokeOpacity="0.85"
-                strokeLinejoin="round"
-                markerEnd="url(#dep-arrow)"
-              />
+              {depArrows.map(arr => (
+                <path key={arr.key}
+                  d={`M ${arr.x1.toFixed(1)} ${arr.y1.toFixed(1)} L ${arr.x1.toFixed(1)} ${arr.y2.toFixed(1)} L ${arr.x2.toFixed(1)} ${arr.y2.toFixed(1)}`}
+                  fill="none"
+                  stroke="#F0A030"
+                  strokeWidth="1.2"
+                  strokeOpacity="0.85"
+                  strokeLinejoin="round"
+                  markerEnd="url(#dep-arrow)"
+                />
+              ))}
             </svg>
           )}
 

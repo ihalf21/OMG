@@ -78,8 +78,9 @@ export default function Dashboard({ data, updateData, navigate }) {
             const fc=forecasts[task.id];
             const dl=effectiveDls[task.id];
             const isDerived=!task.deadline;
-            const barColor=statusColor(fc?.deadlineStatus);
-            const bs=statusBadgeStyle(fc?.deadlineStatus);
+            const isQueued=!!(task.dependsOn&&activeTasks.find(t=>t.id===task.dependsOn));
+            const barColor=isQueued?'#A8A6A0':statusColor(fc?.deadlineStatus);
+            const bs=isQueued?{ bg:'var(--bg-secondary)', color:'var(--text-secondary)' }:statusBadgeStyle(fc?.deadlineStatus);
             const assignedEngs=engineers.filter(e=>task.assignedEngineers?.includes(e.id));
             return (
               <Card key={task.id} onClick={()=>navigate('task',task.id)} style={{ marginBottom:8, display:'flex', alignItems:'center', gap:16 }}>
@@ -103,8 +104,8 @@ export default function Dashboard({ data, updateData, navigate }) {
                 <div style={{ flexShrink:0, textAlign:'right', minWidth:110 }}>
                   {isDerived&&<div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:2 }}>расчётный дедлайн</div>}
                   <div style={{ fontSize:13, color:'var(--text-secondary)', fontWeight:500 }}>до {formatDateShort(dl)}</div>
-                  <div style={{ marginTop:4, ...bs, fontSize:12, padding:'2px 8px', borderRadius:4, display:'inline-block', fontWeight:500 }}>{statusLabel(fc?.deadlineStatus)}</div>
-                  {fc?.deadlineStatus === 'overdue' && (() => {
+                  <div style={{ marginTop:4, ...bs, fontSize:12, padding:'2px 8px', borderRadius:4, display:'inline-block', fontWeight:500 }}>{isQueued?'В очереди':statusLabel(fc?.deadlineStatus)}</div>
+                  {!isQueued&&fc?.deadlineStatus === 'overdue' && (() => {
                     const needed = engineersNeeded(task, engineers, isDerived ? dl : null);
                     return needed > 0 ? (
                       <div style={{ marginTop:4, fontSize:11, color:'var(--red)', fontWeight:500 }}>
@@ -124,6 +125,7 @@ export default function Dashboard({ data, updateData, navigate }) {
             <SectionTitle>Задачи без дедлайна</SectionTitle>
             {tasksNoDl.map(task=>{
               const fc=forecasts[task.id];
+              const isQueued=!!(task.dependsOn&&activeTasks.find(t=>t.id===task.dependsOn));
               return (
                 <Card key={task.id} onClick={()=>navigate('task',task.id)} style={{ marginBottom:8, display:'flex', alignItems:'center', gap:16 }}>
                   <div style={{ width:9, height:9, borderRadius:'50%', background:'#A8A6A0', flexShrink:0 }}/>
@@ -131,7 +133,7 @@ export default function Dashboard({ data, updateData, navigate }) {
                     <div style={{ fontSize:15, fontWeight:600 }}>{task.name}</div>
                     <div style={{ fontSize:13, color:'var(--text-tertiary)', marginTop:3 }}>Расчёт: {fc?.forecastDate?formatDateShort(fc.forecastDate):'—'} · {task.assignedEngineers?.length||0} инж.</div>
                   </div>
-                  <div style={{ fontSize:12, padding:'3px 9px', borderRadius:4, background:'var(--bg-secondary)', color:'var(--text-secondary)', fontWeight:500 }}>В работе</div>
+                  <div style={{ fontSize:12, padding:'3px 9px', borderRadius:4, background:'var(--bg-secondary)', color:'var(--text-secondary)', fontWeight:500 }}>{isQueued?'В очереди':'В работе'}</div>
                 </Card>
               );
             })}

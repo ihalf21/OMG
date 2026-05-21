@@ -1,189 +1,750 @@
-// src/pages/Estimate.js — Оценка задач по этапам
-import React, { useState } from 'react';
-import { PageTopbar, Card, BtnPrimary, BtnSecondary, fmtHours } from '../components/UI';
-import { fmtHours as fmt } from '../utils/forecast';
+// src/pages/Estimate.js — Калькулятор трудозатрат (PERT) с шаблонами
+import React, { useState, useMemo } from 'react';
+import { PageTopbar, Card, BtnPrimary, BtnSecondary, BtnDanger } from '../components/UI';
 
-const STAGES = [
-  { key:'hoursAnalysis',    label:'Анализ',       hint:'Анализ постановки, задач, документации' },
-  { key:'hoursActualize',   label:'Актуализация',  hint:'Актуализация тестовой модели' },
-  { key:'hoursDevelopment', label:'Разработка',    hint:'Разработка тестовой модели' },
-  { key:'hoursTesting',     label:'Тестирование',  hint:'Непосредственное тестирование' },
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+
+const PCT_KEYS = new Set([
+  'envPrepPct','reportingPct','commsPct',
+  'bugPct','retestPct',
+  'noveltyPct','envInstPct','inexperiencePct','parallelPct',
+  'reservePct',
+]);
+
+const SECTIONS = [
+  {
+    id:'analysis', label:'Анализ задач',
+    params:[
+      { key:'tasksCount',      label:'Количество задач',             unit:'шт.', hint:'User stories, фичи, задачи релиза' },
+      { key:'analysisTimeMin', label:'Время анализа 1 задачи',       unit:'мин', hint:'Чтение требований, оценка влияния' },
+    ],
+  },
+  {
+    id:'tcs', label:'Тест-кейсы',
+    params:[
+      { key:'tcUpdateCount',   label:'ТК к обновлению',              unit:'шт.', hint:'Существующие ТК под новый билд' },
+      { key:'tcUpdateTimeMin', label:'Время обновления 1 ТК',        unit:'мин', hint:'Правка шагов, expected result' },
+      { key:'tcNewCount',      label:'Новых ТК создать',             unit:'шт.', hint:'На новый функционал' },
+      { key:'tcNewTimeMin',    label:'Время написания 1 нового ТК',  unit:'мин', hint:'Анализ + шаги + ревью' },
+    ],
+  },
+  {
+    id:'run', label:'Прогон / выполнение',
+    params:[
+      { key:'tcTotalCount',    label:'Всего ТК в прогоне',           unit:'шт.', hint:'Полный скоуп' },
+      { key:'tcRunTimeMin',    label:'Время выполнения 1 ТК',        unit:'мин', hint:'По статистике прошлых прогонов' },
+    ],
+  },
+  {
+    id:'overhead', label:'Накладные расходы', subtitle:'% от времени прогона',
+    params:[
+      { key:'envPrepPct',      label:'Подготовка среды и данных',    unit:'%', hint:'Обычно 10–20%' },
+      { key:'reportingPct',    label:'Анализ результатов / отчёты',  unit:'%', hint:'Обычно 10–15%' },
+      { key:'commsPct',        label:'Коммуникации (митинги, синки)', unit:'%', hint:'Обычно 8–15%' },
+    ],
+  },
+  {
+    id:'defects', label:'Дефекты и ретесты',
+    params:[
+      { key:'bugPct',          label:'% ТК, на которых найдут баги', unit:'%',   hint:'Из статистики прошлых прогонов' },
+      { key:'defectTimeMin',   label:'Время заведения 1 дефекта',    unit:'мин', hint:'Описание, шаги, скриншоты' },
+      { key:'retestPct',       label:'% ТК, требующих ретеста',      unit:'%',   hint:'После исправления' },
+      { key:'retestCoeff',     label:'Коэф. времени ретеста',        unit:'×',   hint:'1.0 = столько же, 1.5 = в 1.5 раза дольше', step:'0.1' },
+    ],
+  },
+  {
+    id:'risks', label:'Поправочные коэффициенты', subtitle:'прибавляются к итогу',
+    params:[
+      { key:'noveltyPct',      label:'Новизна функционала',           unit:'%', hint:'Сколько нового кода в релизе' },
+      { key:'envInstPct',      label:'Нестабильность тестовой среды', unit:'%', hint:'Падения, ожидания фиксов среды' },
+      { key:'inexperiencePct', label:'Неопытность команды',           unit:'%', hint:'Если есть новички' },
+      { key:'parallelPct',     label:'Параллельные активности',       unit:'%', hint:'Делят время с другими задачами' },
+    ],
+  },
+  {
+    id:'reserve', label:'Резерв',
+    params:[
+      { key:'reservePct',      label:'Резерв на непредвиденное',      unit:'%', hint:'Стандартно 15–25%' },
+    ],
+  },
 ];
 
+const DEFAULT_FORM = {
+  tasksCount:      { o:'10',  m:'15',  p:'25'  },
+  analysisTimeMin: { o:'20',  m:'30',  p:'60'  },
+  tcUpdateCount:   { o:'20',  m:'40',  p:'80'  },
+  tcUpdateTimeMin: { o:'10',  m:'15',  p:'25'  },
+  tcNewCount:      { o:'5',   m:'10',  p:'20'  },
+  tcNewTimeMin:    { o:'20',  m:'30',  p:'45'  },
+  tcTotalCount:    { o:'200', m:'250', p:'320' },
+  tcRunTimeMin:    { o:'8',   m:'12',  p:'18'  },
+  envPrepPct:      { o:'10',  m:'15',  p:'25'  },
+  reportingPct:    { o:'10',  m:'12',  p:'15'  },
+  commsPct:        { o:'8',   m:'12',  p:'15'  },
+  bugPct:          { o:'5',   m:'10',  p:'18'  },
+  defectTimeMin:   { o:'15',  m:'20',  p:'30'  },
+  retestPct:       { o:'5',   m:'10',  p:'20'  },
+  retestCoeff:     { o:'1.2', m:'1.3', p:'1.5' },
+  noveltyPct:      { o:'5',   m:'15',  p:'30'  },
+  envInstPct:      { o:'5',   m:'15',  p:'25'  },
+  inexperiencePct: { o:'0',   m:'10',  p:'30'  },
+  parallelPct:     { o:'0',   m:'10',  p:'20'  },
+  reservePct:      { o:'10',  m:'15',  p:'25'  },
+};
+
+const SCENARIO_META = [
+  { s:'o', label:'Оптимист.',  color:'#22c55e', bg:'rgba(34,197,94,0.08)',  border:'rgba(34,197,94,0.3)'  },
+  { s:'m', label:'Реалист.',   color:'var(--accent)', bg:'var(--accent-bg)', border:'rgba(59,130,246,0.3)' },
+  { s:'p', label:'Пессимист.', color:'#f97316', bg:'rgba(249,115,22,0.08)', border:'rgba(249,115,22,0.3)' },
+];
+const FOCUS_CLR = { o:'#22c55e', m:'var(--accent)', p:'#f97316' };
+
+// ─── UTILS ────────────────────────────────────────────────────────────────────
+
+function gid() { return 'tpl' + Date.now() + Math.random().toString(36).slice(2, 6); }
+
+function calcScenario(form, s) {
+  const raw = key => parseFloat(form[key]?.[s]) || 0;
+  const v   = key => PCT_KEYS.has(key) ? raw(key) / 100 : raw(key);
+
+  const stage1      = (v('tasksCount') * v('analysisTimeMin')) / 60;
+  const tcActualize = (v('tcUpdateCount') * v('tcUpdateTimeMin')) / 60;
+  const tcNew       = (v('tcNewCount')    * v('tcNewTimeMin'))    / 60;
+  const stage2      = tcActualize + tcNew;
+  const stage3      = (v('tcTotalCount') * v('tcRunTimeMin')) / 60;
+  const envPrep     = v('envPrepPct')   * stage3;
+  const reporting   = v('reportingPct') * stage3;
+  const comms       = v('commsPct')     * stage3;
+  const stage4      = envPrep + reporting + comms;
+  const defects     = (v('tcTotalCount') * v('bugPct')    * v('defectTimeMin'))                    / 60;
+  const retests     = (v('tcTotalCount') * v('retestPct') * v('tcRunTimeMin') * v('retestCoeff'))  / 60;
+  const stage5      = defects + retests;
+  const subtotal    = stage1 + stage2 + stage3 + stage4 + stage5;
+  const riskCoeff   = 1 + v('noveltyPct') + v('envInstPct') + v('inexperiencePct') + v('parallelPct');
+  const withRisks   = subtotal * riskCoeff;
+  const reserve     = withRisks * v('reservePct');
+  const total       = withRisks + reserve;
+  return { stage1, tcActualize, tcNew, stage2, stage3, envPrep, reporting, comms, stage4, defects, retests, stage5, subtotal, riskCoeff, withRisks, reserve, total };
+}
+
+function fmtH(h) {
+  if (!h || h <= 0) return '0 ч';
+  if (h < 0.5) return `${Math.round(h * 60)} мин`;
+  return `${h.toFixed(1)} ч`;
+}
+function fmtHInt(h) { return `${Math.round(h)} ч`; }
+
+// ─── SHARED PARAMETER FORM ────────────────────────────────────────────────────
+
+function ParameterForm({ form, onChange }) {
+  const [open, setOpen] = useState(() => Object.fromEntries(SECTIONS.map(s => [s.id, true])));
+
+  function setVal(key, s, val) {
+    onChange({ ...form, [key]: { ...form[key], [s]: val } });
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 80px 80px 28px', gap:6, padding:'4px 14px 8px', borderBottom:'0.5px solid var(--border-light)' }}>
+        <div style={{ fontSize:12, color:'var(--text-tertiary)' }}>Параметр</div>
+        {SCENARIO_META.map(sc => (
+          <div key={sc.s} style={{ textAlign:'center', fontSize:12, fontWeight:700, color:sc.color }}>{sc.label}</div>
+        ))}
+        <div/>
+      </div>
+
+      {SECTIONS.map(section => (
+        <div key={section.id} style={{ background:'var(--bg-primary)', border:'0.5px solid var(--border-light)', borderRadius:10, overflow:'hidden' }}>
+          <div
+            onClick={() => setOpen(o => ({ ...o, [section.id]: !o[section.id] }))}
+            style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 14px', cursor:'pointer', background:'var(--bg-secondary)', userSelect:'none' }}
+          >
+            <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
+              <span style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)' }}>{section.label}</span>
+              {section.subtitle && <span style={{ fontSize:11, color:'var(--text-tertiary)' }}>{section.subtitle}</span>}
+            </div>
+            <span style={{ fontSize:11, color:'var(--text-tertiary)', display:'inline-block', transition:'transform 0.15s', transform: open[section.id] ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▼</span>
+          </div>
+
+          {open[section.id] && section.params.map((param, i) => (
+            <div key={param.key} style={{
+              display:'grid', gridTemplateColumns:'1fr 80px 80px 80px 28px',
+              gap:6, alignItems:'center', padding:'8px 14px',
+              borderTop: i === 0 ? 'none' : '0.5px solid var(--border-light)',
+            }}>
+              <div>
+                <div style={{ fontSize:13, color:'var(--text-primary)' }}>{param.label}</div>
+                <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:1 }}>{param.hint}</div>
+              </div>
+              {['o','m','p'].map(s => (
+                <input
+                  key={s} type="number" min="0" step={param.step || '1'}
+                  value={form[param.key]?.[s] ?? ''}
+                  onChange={e => setVal(param.key, s, e.target.value)}
+                  style={{
+                    width:'100%', padding:'5px 4px', textAlign:'center',
+                    border:'1.5px solid var(--border-mid)', borderRadius:6,
+                    fontSize:13, fontWeight:500, boxSizing:'border-box',
+                    background:'var(--bg-secondary)', color:'var(--text-primary)', outline:'none',
+                  }}
+                  onFocus={e => { e.target.style.borderColor = FOCUS_CLR[s]; }}
+                  onBlur={e  => { e.target.style.borderColor = 'var(--border-mid)'; }}
+                />
+              ))}
+              <div style={{ fontSize:11, color:'var(--text-tertiary)', textAlign:'center' }}>{param.unit}</div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── TEMPLATE CARD (list item) ────────────────────────────────────────────────
+
+function TemplateCard({ tpl, onEdit, onArchive, onRestore, onDelete }) {
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', background:'var(--bg-secondary)', border:'0.5px solid var(--border-light)', borderRadius:8 }}>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)' }}>{tpl.name}</div>
+        {tpl.description && (
+          <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{tpl.description}</div>
+        )}
+        <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:3 }}>
+          {tpl.archived ? `В архиве с ${tpl.archivedAt || '—'}` : `Создан ${tpl.createdAt || '—'}`}
+        </div>
+      </div>
+      <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+        {tpl.archived ? (
+          <>
+            <BtnSecondary onClick={onRestore} style={{ padding:'5px 12px', fontSize:12 }}>Восстановить</BtnSecondary>
+            <BtnDanger onClick={onDelete} style={{ padding:'5px 12px', fontSize:12 }}>Удалить навсегда</BtnDanger>
+          </>
+        ) : (
+          <>
+            <BtnSecondary onClick={onEdit}    style={{ padding:'5px 12px', fontSize:12 }}>Изменить</BtnSecondary>
+            <BtnSecondary onClick={onArchive} style={{ padding:'5px 12px', fontSize:12, color:'var(--text-tertiary)' }}>В архив</BtnSecondary>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── TEMPLATE MANAGER MODAL ───────────────────────────────────────────────────
+
+function TemplateManager({ templates, updateTemplates, onClose }) {
+  const [tab,            setTab]            = useState('active');
+  const [mode,           setMode]           = useState('list');   // 'list' | 'edit'
+  const [editId,         setEditId]         = useState(null);
+  const [editName,       setEditName]       = useState('');
+  const [editDesc,       setEditDesc]       = useState('');
+  const [editForm,       setEditForm]       = useState(DEFAULT_FORM);
+  const [confirmDeleteId, setConfirmDelete] = useState(null);
+
+  const active   = templates.filter(t => !t.archived);
+  const archived = templates.filter(t =>  t.archived);
+
+  function startNew() {
+    setEditId(null); setEditName(''); setEditDesc(''); setEditForm(DEFAULT_FORM); setMode('edit');
+  }
+  function startEdit(tpl) {
+    setEditId(tpl.id); setEditName(tpl.name); setEditDesc(tpl.description || '');
+    setEditForm({ ...DEFAULT_FORM, ...tpl.form });
+    setMode('edit');
+  }
+  function goBack() { setMode('list'); }
+
+  function saveTemplate() {
+    if (!editName.trim()) return;
+    const now = new Date().toISOString().slice(0, 10);
+    if (editId) {
+      updateTemplates(templates.map(t =>
+        t.id === editId ? { ...t, name: editName.trim(), description: editDesc.trim(), form: editForm } : t
+      ));
+    } else {
+      updateTemplates([...templates, {
+        id: gid(), name: editName.trim(), description: editDesc.trim(),
+        form: editForm, archived: false, createdAt: now,
+      }]);
+    }
+    setMode('list');
+  }
+
+  function archiveTemplate(id) {
+    const now = new Date().toISOString().slice(0, 10);
+    updateTemplates(templates.map(t => t.id === id ? { ...t, archived: true, archivedAt: now } : t));
+  }
+  function restoreTemplate(id) {
+    updateTemplates(templates.map(t => t.id === id ? { ...t, archived: false, archivedAt: null } : t));
+  }
+  function deleteTemplate(id) {
+    updateTemplates(templates.filter(t => t.id !== id));
+    setConfirmDelete(null);
+  }
+
+  const canSave = editName.trim().length > 0;
+
+  return (
+    <div
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background:'var(--bg-primary)', borderRadius:14, width:'min(920px,96vw)', maxHeight:'92vh', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.28)', overflow:'hidden' }}>
+
+        {/* Header */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 20px', borderBottom:'0.5px solid var(--border-light)', flexShrink:0 }}>
+          {mode === 'edit' ? (
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <button onClick={goBack} style={{ display:'flex', alignItems:'center', gap:4, background:'none', border:'none', cursor:'pointer', color:'var(--text-tertiary)', fontSize:13, padding:'4px 8px', borderRadius:6 }}>
+                ← Назад
+              </button>
+              <span style={{ fontSize:16, fontWeight:600, color:'var(--text-primary)' }}>
+                {editId ? 'Редактировать шаблон' : 'Новый шаблон'}
+              </span>
+            </div>
+          ) : (
+            <span style={{ fontSize:16, fontWeight:600, color:'var(--text-primary)' }}>Шаблоны</span>
+          )}
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:'var(--text-tertiary)', lineHeight:1, padding:'2px 8px', borderRadius:6 }}>✕</button>
+        </div>
+
+        {/* Content */}
+        {mode === 'list' ? (
+          <div style={{ flex:1, overflowY:'auto', padding:'16px 20px', display:'flex', flexDirection:'column', gap:12 }}>
+            {/* Tabs + new button */}
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ display:'flex', gap:4, flex:1 }}>
+                {[
+                  { key:'active',  label:`Активные (${active.length})`  },
+                  { key:'archive', label:`Архив (${archived.length})`   },
+                ].map(t => (
+                  <button key={t.key} onClick={() => setTab(t.key)} style={{
+                    padding:'6px 16px', border:'none', borderRadius:6, cursor:'pointer',
+                    fontSize:13, fontWeight:600, transition:'all 0.15s',
+                    background: tab === t.key ? 'var(--accent)' : 'var(--bg-secondary)',
+                    color:      tab === t.key ? '#fff'          : 'var(--text-secondary)',
+                  }}>{t.label}</button>
+                ))}
+              </div>
+              {tab === 'active' && (
+                <BtnPrimary onClick={startNew}>+ Новый шаблон</BtnPrimary>
+              )}
+            </div>
+
+            {tab === 'active' ? (
+              active.length === 0 ? (
+                <div style={{ textAlign:'center', padding:'48px 20px', color:'var(--text-tertiary)', fontSize:14 }}>
+                  Шаблонов пока нет. Нажмите «+ Новый шаблон» чтобы создать первый.
+                </div>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {active.map(tpl => (
+                    <TemplateCard key={tpl.id} tpl={tpl}
+                      onEdit={()    => startEdit(tpl)}
+                      onArchive={()  => archiveTemplate(tpl.id)}
+                    />
+                  ))}
+                </div>
+              )
+            ) : (
+              archived.length === 0 ? (
+                <div style={{ textAlign:'center', padding:'48px 20px', color:'var(--text-tertiary)', fontSize:14 }}>
+                  Архив пуст.
+                </div>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {archived.map(tpl => (
+                    <div key={tpl.id}>
+                      <TemplateCard tpl={tpl}
+                        onRestore={() => restoreTemplate(tpl.id)}
+                        onDelete={()  => setConfirmDelete(tpl.id)}
+                      />
+                      {confirmDeleteId === tpl.id && (
+                        <div style={{ background:'var(--red-bg)', border:'1px solid var(--red)', borderRadius:8, padding:'12px 14px', marginTop:6, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                          <span style={{ fontSize:13, color:'var(--red)' }}>Удалить «{tpl.name}» безвозвратно?</span>
+                          <div style={{ display:'flex', gap:8 }}>
+                            <BtnSecondary onClick={() => setConfirmDelete(null)} style={{ padding:'4px 12px', fontSize:12 }}>Отмена</BtnSecondary>
+                            <BtnDanger    onClick={() => deleteTemplate(tpl.id)} style={{ padding:'4px 12px', fontSize:12 }}>Удалить</BtnDanger>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        ) : (
+          /* Editor */
+          <div style={{ flex:1, overflowY:'auto', padding:'16px 20px', display:'flex', flexDirection:'column', gap:14 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:12 }}>
+              <div>
+                <div style={{ fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:5 }}>Название *</div>
+                <input
+                  autoFocus
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  placeholder="Название шаблона"
+                  style={{
+                    width:'100%', padding:'8px 10px', borderRadius:7, boxSizing:'border-box',
+                    border: editName.trim() ? '1.5px solid var(--border-mid)' : '1.5px solid var(--red)',
+                    background:'var(--bg-secondary)', color:'var(--text-primary)', fontSize:14, outline:'none',
+                  }}
+                  onFocus={e => { e.target.style.borderColor = 'var(--accent)'; }}
+                  onBlur={e  => { e.target.style.borderColor = editName.trim() ? 'var(--border-mid)' : 'var(--red)'; }}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:5 }}>Описание</div>
+                <input
+                  value={editDesc}
+                  onChange={e => setEditDesc(e.target.value)}
+                  placeholder="Краткое описание (необязательно)"
+                  style={{
+                    width:'100%', padding:'8px 10px', borderRadius:7, boxSizing:'border-box',
+                    border:'1.5px solid var(--border-mid)',
+                    background:'var(--bg-secondary)', color:'var(--text-primary)', fontSize:14, outline:'none',
+                  }}
+                  onFocus={e => { e.target.style.borderColor = 'var(--accent)'; }}
+                  onBlur={e  => { e.target.style.borderColor = 'var(--border-mid)'; }}
+                />
+              </div>
+            </div>
+
+            <ParameterForm form={editForm} onChange={setEditForm} />
+          </div>
+        )}
+
+        {/* Footer (editor only) */}
+        {mode === 'edit' && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:10, padding:'12px 20px', borderTop:'0.5px solid var(--border-light)', flexShrink:0, background:'var(--bg-secondary)' }}>
+            <BtnSecondary onClick={goBack}>Отмена</BtnSecondary>
+            <BtnPrimary
+              onClick={saveTemplate}
+              style={{ opacity: canSave ? 1 : 0.45, pointerEvents: canSave ? 'auto' : 'none' }}
+            >
+              💾 {editId ? 'Сохранить изменения' : 'Создать шаблон'}
+            </BtnPrimary>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
+
 export default function Estimate({ data, updateData }) {
-  const { tasks } = data;
-  const [selectedId, setSelectedId] = useState(null);
-  const [form, setForm] = useState({});
-  const [saved, setSaved] = useState(false);
+  const allTasks  = data.tasks || [];
+  const templates = data.estimateTemplates || [];
 
-  const activeTasks = tasks.filter(t => t.status === 'active');
+  // Tasks visible in the selector: active ones + any task that has a saved estimate
+  const displayTasks = allTasks.filter(t => t.status === 'active' || t.estimateForm);
+  const withEstimate  = displayTasks.filter(t =>  t.estimateForm);
+  const withoutEst    = displayTasks.filter(t => !t.estimateForm);
 
-  const task = activeTasks.find(t => t.id === selectedId);
+  const [form,           setForm]        = useState(DEFAULT_FORM);
+  const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [activeTplId,    setActiveTplId] = useState('');
+  const [showManager,    setShowManager] = useState(false);
+  const [saved,          setSaved]       = useState(false);
+  const [confirmSave,    setConfirmSave] = useState(false);
 
+  const O = useMemo(() => calcScenario(form, 'o'), [form]);
+  const M = useMemo(() => calcScenario(form, 'm'), [form]);
+  const P = useMemo(() => calcScenario(form, 'p'), [form]);
+
+  const pert  = (O.total + 4 * M.total + P.total) / 6;
+  const sigma = (P.total - O.total) / 6;
+
+  const activeTemplates = templates.filter(t => !t.archived);
+  const selectedTask    = allTasks.find(t => t.id === selectedTaskId) || null;
+
+  // Load task estimate into the form
   function selectTask(id) {
-    setSelectedId(id);
+    setSelectedTaskId(id);
     setSaved(false);
-    const t = activeTasks.find(t => t.id === id);
-    if (t) {
-      setForm({
-        hoursAnalysis:    t.hoursAnalysis    || '',
-        hoursActualize:   t.hoursActualize   || '',
-        hoursDevelopment: t.hoursDevelopment || '',
-        hoursTesting:     t.hoursTesting     || '',
-      });
+    setConfirmSave(false);
+    setActiveTplId('');
+    if (!id) { setForm(DEFAULT_FORM); return; }
+    const task = allTasks.find(t => t.id === id);
+    if (task?.estimateForm) {
+      setForm({ ...DEFAULT_FORM, ...task.estimateForm });
+    } else {
+      setForm(DEFAULT_FORM);
     }
   }
 
-  function saveEstimate() {
-    if (!selectedId) return;
-    const breakdown = {
-      hoursAnalysis:    parseInt(form.hoursAnalysis)    || 0,
-      hoursActualize:   parseInt(form.hoursActualize)   || 0,
-      hoursDevelopment: parseInt(form.hoursDevelopment) || 0,
-      hoursTesting:     parseInt(form.hoursTesting)     || 0,
-    };
-    const total = Object.values(breakdown).reduce((s,v) => s+v, 0);
-    updateData(prev => ({
-      ...prev,
-      tasks: prev.tasks.map(t => t.id === selectedId
-        ? { ...t, ...breakdown, estimateHours: total > 0 ? total : t.estimateHours }
-        : t
-      ),
-    }));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  function applyTemplate(id) {
+    setActiveTplId(id);
+    if (!id) { setForm(DEFAULT_FORM); return; }
+    const tpl = templates.find(t => t.id === id);
+    if (tpl) setForm({ ...DEFAULT_FORM, ...tpl.form });
   }
 
-  const total = STAGES.reduce((s,st) => s + (parseInt(form[st.key])||0), 0);
+  function updateTemplates(newTemplates) {
+    updateData(prev => ({ ...prev, estimateTemplates: newTemplates }));
+  }
+
+  // Save both the full form and the computed PERT hours to the task
+  function saveToTask() {
+    if (!selectedTaskId) return;
+    updateData(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t =>
+        t.id === selectedTaskId
+          ? { ...t, estimateHours: Math.round(pert), estimateForm: form }
+          : t
+      ),
+    }));
+    setConfirmSave(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
+
+  function handleSaveClick() {
+    if (selectedTask?.estimateForm) {
+      setConfirmSave(true);
+    } else {
+      saveToTask();
+    }
+  }
+
+  const breakdown = [
+    { label:'Анализ задач',          val: M.stage1 },
+    { label:'Работа с тест-кейсами', val: M.stage2 },
+    { label:'Прогон',                val: M.stage3 },
+    { label:'Накладные расходы',     val: M.stage4 },
+    { label:'Дефекты и ретесты',     val: M.stage5 },
+  ];
+
+  // Shared select style
+  const selStyle = {
+    padding:'6px 10px', borderRadius:7, border:'1.5px solid var(--border-mid)',
+    background:'var(--bg-secondary)', color:'var(--text-primary)',
+    fontSize:13, outline:'none', cursor:'pointer',
+  };
 
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
-      <PageTopbar title="Оценка задач"/>
+      <PageTopbar title="Оценка трудозатрат">
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+
+          {/* Task selector */}
+          <select
+            value={selectedTaskId}
+            onChange={e => selectTask(e.target.value)}
+            style={{ ...selStyle, maxWidth:220, borderColor: selectedTaskId ? 'var(--accent)' : 'var(--border-mid)' }}
+          >
+            <option value="">— Задача не выбрана —</option>
+            {withEstimate.length > 0 && (
+              <optgroup label="С сохранённой оценкой">
+                {withEstimate.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </optgroup>
+            )}
+            {withoutEst.length > 0 && (
+              <optgroup label="Активные (без оценки)">
+                {withoutEst.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </optgroup>
+            )}
+          </select>
+
+          {/* Template selector */}
+          {activeTemplates.length > 0 && (
+            <select value={activeTplId} onChange={e => applyTemplate(e.target.value)} style={{ ...selStyle, maxWidth:200 }}>
+              <option value="">— Шаблон —</option>
+              {activeTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+
+          <BtnSecondary onClick={() => setShowManager(true)}>Шаблоны</BtnSecondary>
+        </div>
+      </PageTopbar>
 
       <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'300px 1fr', gap:20, alignItems:'start' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 360px', gap:20, alignItems:'start' }}>
 
-          {/* Список задач */}
-          <div>
-            <div style={{ fontSize:13, fontWeight:600, color:'var(--text-tertiary)', marginBottom:10, textTransform:'uppercase', letterSpacing:'0.05em' }}>Выберите задачу</div>
-            <div style={{ background:'var(--bg-primary)', border:'0.5px solid var(--border-light)', borderRadius:10, overflow:'hidden' }}>
-              {activeTasks.length === 0 && (
-                <div style={{ padding:'20px 16px', fontSize:13, color:'var(--text-tertiary)', textAlign:'center' }}>Нет активных задач</div>
-              )}
-              {activeTasks.map(t => {
-                const hasEstimate = STAGES.some(s => t[s.key] > 0);
-                const isSelected = t.id === selectedId;
+          {/* LEFT: parameter form */}
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            <ParameterForm form={form} onChange={f => { setForm(f); setSaved(false); setConfirmSave(false); }} />
+            <div style={{ display:'flex', justifyContent:'flex-end', paddingTop:4 }}>
+              <button
+                onClick={() => { setForm(DEFAULT_FORM); setActiveTplId(''); setSaved(false); }}
+                style={{ fontSize:12, color:'var(--text-tertiary)', background:'none', border:'none', cursor:'pointer', padding:'4px 0' }}
+              >
+                ↺ Сбросить к значениям по умолчанию
+              </button>
+            </div>
+          </div>
+
+          {/* RIGHT: results (sticky) */}
+          <div style={{ position:'sticky', top:0, display:'flex', flexDirection:'column', gap:12 }}>
+
+            {/* Task context banner */}
+            {selectedTask && (
+              <div style={{ background:'var(--accent-bg)', border:'1px solid rgba(59,130,246,0.25)', borderRadius:10, padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--accent)', marginBottom:2 }}>ЗАДАЧА</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{selectedTask.name}</div>
+                  {selectedTask.estimateHours > 0 && (
+                    <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:2 }}>
+                      Сохранено: {selectedTask.estimateHours} ч
+                      {selectedTask.estimateForm && ' · полная форма'}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => selectTask('')}
+                  style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-tertiary)', fontSize:16, lineHeight:1, flexShrink:0, padding:'2px 4px' }}
+                  title="Снять задачу"
+                >✕</button>
+              </div>
+            )}
+
+            {/* 3 scenario cards */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
+              {SCENARIO_META.map(sc => {
+                const res = sc.s==='o' ? O : sc.s==='m' ? M : P;
                 return (
-                  <div key={t.id} onClick={() => selectTask(t.id)}
-                    style={{
-                      padding:'12px 16px', cursor:'pointer',
-                      background: isSelected ? 'var(--accent-bg)' : 'transparent',
-                      borderLeft: `3px solid ${isSelected ? 'var(--accent)' : 'transparent'}`,
-                      borderBottom:'0.5px solid var(--border-light)',
-                      transition:'all 0.12s',
-                    }}
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background='var(--bg-secondary)'; }}
-                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background='transparent'; }}
-                  >
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <div style={{ fontSize:14, fontWeight:isSelected?600:500, color:isSelected?'var(--accent)':'var(--text-primary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                        {t.name}
-                      </div>
-                      {hasEstimate
-                        ? <span style={{ fontSize:11, color:'var(--accent)', flexShrink:0 }}>✓</span>
-                        : <span style={{ fontSize:11, color:'var(--text-tertiary)', flexShrink:0 }}>—</span>
-                      }
-                    </div>
-                    <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:3 }}>
-                      {t.direction||'—'}
-                      {t.estimateHours > 0 && <span style={{ marginLeft:8 }}>{fmt(t.estimateHours)}</span>}
-                    </div>
+                  <div key={sc.s} style={{ background:sc.bg, border:`1px solid ${sc.border}`, borderRadius:10, padding:'12px 8px', textAlign:'center' }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:sc.color, marginBottom:5 }}>{sc.label}</div>
+                    <div style={{ fontSize:19, fontWeight:700, color:sc.color }}>{fmtHInt(res.total)}</div>
                   </div>
                 );
               })}
             </div>
-          </div>
 
-          {/* Форма оценки */}
-          <div>
-            {!task ? (
-              <Card style={{ textAlign:'center', padding:'40px 20px' }}>
-                <div style={{ fontSize:32, marginBottom:12 }}>📋</div>
-                <div style={{ fontSize:15, fontWeight:500, color:'var(--text-primary)', marginBottom:8 }}>Выберите задачу слева</div>
-                <div style={{ fontSize:13, color:'var(--text-tertiary)', lineHeight:1.6 }}>
-                  Здесь можно внести или обновить оценку трудозатрат по этапам.<br/>
-                  Итоговая оценка рассчитывается как сумма всех этапов.
-                </div>
-              </Card>
-            ) : (
-              <Card>
-                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:20 }}>
-                  <div>
-                    <div style={{ fontSize:18, fontWeight:700, color:'var(--text-primary)' }}>{task.name}</div>
-                    <div style={{ fontSize:13, color:'var(--text-tertiary)', marginTop:4 }}>
-                      {task.direction||'—'} · {task.status === 'done' ? '✓ Завершена' : 'В работе'}
-                    </div>
-                  </div>
-                  {saved && (
-                    <div style={{ fontSize:13, color:'var(--accent)', fontWeight:600, background:'var(--accent-bg)', padding:'6px 14px', borderRadius:8 }}>
-                      ✅ Сохранено
-                    </div>
-                  )}
-                </div>
+            {/* PERT */}
+            <div style={{ background:'var(--bg-primary)', border:'2px solid var(--accent)', borderRadius:12, padding:'18px 16px', textAlign:'center' }}>
+              <div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:2 }}>
+                PERT-оценка &nbsp;·&nbsp; <span style={{ fontFamily:'monospace' }}>(O + 4M + P) / 6</span>
+              </div>
+              <div style={{ fontSize:40, fontWeight:800, color:'var(--text-primary)', letterSpacing:'-1px', lineHeight:1.1 }}>
+                {fmtHInt(pert)}
+              </div>
+              <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:4 }}>σ = {fmtH(sigma)}</div>
+            </div>
 
-                <div style={{ marginBottom:20 }}>
-                  {STAGES.map(stage => (
-                    <div key={stage.key} style={{ display:'flex', alignItems:'center', gap:16, padding:'14px 0', borderBottom:'0.5px solid var(--border-light)' }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:15, fontWeight:600, color:'var(--text-primary)' }}>{stage.label}</div>
-                        <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:3 }}>{stage.hint}</div>
-                      </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                        <input
-                          type="number" min="0"
-                          value={form[stage.key] || ''}
-                          onChange={e => setForm(f => ({ ...f, [stage.key]: e.target.value }))}
-                          placeholder="0"
-                          style={{
-                            width:90, padding:'8px 10px', textAlign:'center',
-                            border:'1.5px solid var(--border-mid)', borderRadius:8,
-                            fontSize:15, fontWeight:500,
-                            background:'var(--bg-secondary)', color:'var(--text-primary)',
-                            outline:'none',
-                          }}
-                          onFocus={e => e.target.style.borderColor='var(--accent)'}
-                          onBlur={e => e.target.style.borderColor='var(--border-mid)'}
-                        />
-                        <span style={{ fontSize:13, color:'var(--text-tertiary)', width:24 }}>чч</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Итог */}
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', background:'var(--bg-secondary)', borderRadius:8, marginBottom:20 }}>
-                  <span style={{ fontSize:14, color:'var(--text-secondary)', fontWeight:500 }}>Итоговая оценка</span>
-                  <span style={{ fontSize:20, fontWeight:700, color: total>0?'var(--text-primary)':'var(--text-tertiary)' }}>
-                    {total > 0 ? fmt(total) : '— не задана'}
+            {/* Confidence intervals */}
+            <Card>
+              <div style={{ fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:10 }}>Доверительные интервалы</div>
+              {[
+                { label:'68%  (E ± σ)',  lo: pert - sigma,    hi: pert + sigma    },
+                { label:'95%  (E ± 2σ)', lo: pert - 2*sigma, hi: pert + 2*sigma  },
+              ].map(ci => (
+                <div key={ci.label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:13, marginBottom:6 }}>
+                  <span style={{ color:'var(--text-tertiary)', fontFamily:'monospace', fontSize:12 }}>{ci.label}</span>
+                  <span style={{ color:'var(--text-primary)', fontWeight:600 }}>
+                    {fmtHInt(Math.max(0, ci.lo))} – {fmtHInt(ci.hi)}
                   </span>
                 </div>
+              ))}
+            </Card>
 
-                {/* Сравнение с текущей */}
-                {task.estimateHours > 0 && total > 0 && total !== task.estimateHours && (
-                  <div style={{ fontSize:13, color:'var(--text-tertiary)', marginBottom:16, padding:'8px 12px', background:'var(--amber-bg)', borderRadius:6 }}>
-                    ⚠️ Новая оценка отличается от текущей ({fmt(task.estimateHours)}). При сохранении будет обновлена.
+            {/* Stage breakdown */}
+            <Card>
+              <div style={{ fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:10 }}>Структура (реалистичный сценарий)</div>
+              {breakdown.map(row => {
+                const share = M.subtotal > 0 ? row.val / M.subtotal : 0;
+                return (
+                  <div key={row.label} style={{ marginBottom:8 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
+                      <span style={{ color:'var(--text-secondary)' }}>{row.label}</span>
+                      <span style={{ color:'var(--text-primary)', fontWeight:500 }}>
+                        {fmtH(row.val)}&nbsp;<span style={{ color:'var(--text-tertiary)' }}>({Math.round(share*100)}%)</span>
+                      </span>
+                    </div>
+                    <div style={{ height:3, background:'var(--bg-secondary)', borderRadius:2, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${share*100}%`, background:'var(--accent)', borderRadius:2 }}/>
+                    </div>
                   </div>
-                )}
-
-                <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
-                  <BtnSecondary onClick={() => selectTask(selectedId)}>Сбросить</BtnSecondary>
-                  <BtnPrimary onClick={saveEstimate}>💾 Сохранить оценку</BtnPrimary>
+                );
+              })}
+              <div style={{ borderTop:'0.5px solid var(--border-light)', marginTop:8, paddingTop:8, fontSize:12 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', color:'var(--text-tertiary)', marginBottom:4 }}>
+                  <span>+ Риски (×{M.riskCoeff.toFixed(2)})</span>
+                  <span>+{fmtH(M.withRisks - M.subtotal)}</span>
                 </div>
-              </Card>
-            )}
+                <div style={{ display:'flex', justifyContent:'space-between', color:'var(--text-tertiary)', marginBottom:8 }}>
+                  <span>+ Резерв</span>
+                  <span>+{fmtH(M.reserve)}</span>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:700, color:'var(--text-primary)' }}>
+                  <span>Итого (реалист.)</span>
+                  <span>{fmtH(M.total)}</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Save / task picker */}
+            <Card>
+              {selectedTask ? (
+                /* Task already selected */
+                saved ? (
+                  <div style={{ textAlign:'center', fontSize:13, color:'var(--accent)', fontWeight:600, padding:'8px', background:'var(--accent-bg)', borderRadius:7 }}>
+                    ✅ Сохранено — {fmtHInt(pert)}
+                  </div>
+                ) : confirmSave ? (
+                  /* Confirmation dialog (only shown when task already has an estimate) */
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)' }}>Заменить сохранённую оценку?</div>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'var(--text-tertiary)' }}>
+                      <span>Текущая</span>
+                      <span style={{ fontWeight:600, color:'var(--text-secondary)' }}>{selectedTask.estimateHours} ч</span>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'var(--text-tertiary)' }}>
+                      <span>Новая</span>
+                      <span style={{ fontWeight:700, color:'var(--accent)' }}>{fmtHInt(pert)}</span>
+                    </div>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <BtnSecondary onClick={() => setConfirmSave(false)} style={{ flex:1, justifyContent:'center' }}>Отмена</BtnSecondary>
+                      <BtnPrimary   onClick={saveToTask}                  style={{ flex:1, justifyContent:'center' }}>Заменить</BtnPrimary>
+                    </div>
+                  </div>
+                ) : (
+                  <BtnPrimary onClick={handleSaveClick} style={{ width:'100%', justifyContent:'center' }}>
+                    💾 Сохранить {fmtHInt(pert)} → «{selectedTask.name}»
+                  </BtnPrimary>
+                )
+              ) : (
+                /* No task selected — show inline picker */
+                <>
+                  <div style={{ fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:8 }}>Сохранить PERT в задачу</div>
+                  <select
+                    defaultValue=""
+                    onChange={e => { if (e.target.value) selectTask(e.target.value); }}
+                    style={{ width:'100%', padding:'7px 10px', borderRadius:7, boxSizing:'border-box', border:'1.5px solid var(--border-mid)', background:'var(--bg-secondary)', color:'var(--text-primary)', fontSize:13, marginBottom:10, outline:'none' }}
+                  >
+                    <option value="">— выберите задачу —</option>
+                    {withEstimate.length > 0 && (
+                      <optgroup label="С сохранённой оценкой">
+                        {withEstimate.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </optgroup>
+                    )}
+                    {withoutEst.length > 0 && (
+                      <optgroup label="Активные (без оценки)">
+                        {withoutEst.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
+                  <div style={{ fontSize:12, color:'var(--text-tertiary)', textAlign:'center' }}>
+                    Выберите задачу выше — оценка загрузится автоматически
+                  </div>
+                </>
+              )}
+            </Card>
           </div>
         </div>
       </div>
+
+      {showManager && (
+        <TemplateManager
+          templates={templates}
+          updateTemplates={updateTemplates}
+          onClose={() => setShowManager(false)}
+        />
+      )}
     </div>
   );
 }

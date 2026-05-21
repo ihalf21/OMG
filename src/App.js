@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { loadData, saveData, resetToSeed, saveSeed, checkServer } from './utils/storage';
 import { todayStr } from './utils/dates';
+import { useConfirm } from './components/UI';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import Dashboard from './pages/Dashboard';
@@ -15,23 +16,35 @@ import Estimate from './pages/Estimate';
 function normalizeStatuses(d) {
   const today = todayStr();
   const extraHistory = [];
+  const removeFromTasks = new Set(); // id инженеров, которых снимаем с задач
+
   const engineers = (d.engineers || []).map(eng => {
     // Отпуск в будущем, но статус уже vacation → вернуть в active
     if (eng.status === 'vacation' && eng.vacationFrom && eng.vacationFrom > today) {
       return { ...eng, status: 'active' };
     }
-    // Отпуск начался, а инженер ещё active → перевести в vacation
+    // Отпуск начался, а инженер ещё active → перевести в vacation и снять с задачи
     if (eng.status === 'active' && eng.vacationFrom && eng.vacationFrom <= today) {
+      removeFromTasks.add(eng.id);
       return { ...eng, status: 'vacation' };
     }
-    // Отпуск начался, а инженер на больничном → закрыть больничный, уйти в отпуск
+    // Отпуск начался, а инженер на больничном → закрыть больничный, уйти в отпуск, снять с задачи
     if (eng.status === 'sick' && eng.vacationFrom && eng.vacationFrom <= today) {
       extraHistory.push({ id: 'h' + Date.now() + eng.id, date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Больничный закрыт: начался отпуск' });
+      removeFromTasks.add(eng.id);
       return { ...eng, status: 'vacation' };
     }
     return eng;
   });
-  return { ...d, engineers, history: [...(d.history || []), ...extraHistory] };
+
+  const tasks = removeFromTasks.size > 0
+    ? (d.tasks || []).map(t => ({
+        ...t,
+        assignedEngineers: (t.assignedEngineers || []).filter(id => !removeFromTasks.has(id)),
+      }))
+    : (d.tasks || []);
+
+  return { ...d, engineers, tasks, history: [...(d.history || []), ...extraHistory] };
 }
 
 export default function App() {
@@ -43,6 +56,7 @@ export default function App() {
   const [selectedEngineerId, setSelectedEngineerId] = useState(null);
   const [theme, setTheme]       = useState(() => localStorage.getItem('omg_theme') || 'light');
   const saveTimer = useRef(null);
+  const { confirm, ConfirmEl } = useConfirm();
 
   // Тема
   useEffect(() => {
@@ -72,50 +86,7 @@ export default function App() {
   }, [data, serverOk]);
 
   function updateData(fn) {
-    setData(prev => {
-      const next = { ...fn(prev) };
-      // Автоматически обновляем даты старта дочерних задач
-      // если изменилась расчётная дата завершения родителя
-      let changed = true;
-      let iterations = 0;
-      while (changed && iterations < 5) {
-        changed = false;
-        iterations++;
-        next.tasks = next.tasks.map(task => {
-          if (!task.dependsOn) return task;
-          const parent = next.tasks.find(t => t.id === task.dependsOn);
-          if (!parent || parent.status === 'archived') return task;
-          // Импортируем calcForecast логику напрямую
-          const parentEngs = parent.assignedEngineers || [];
-          const cap = parentEngs.reduce((s, id) => {
-            const e = next.engineers.find(e => e.id === id);
-            if (!e || e.status === 'sick' || e.status === 'vacation') return s;
-            const coeff = e.role === 'intern' ? 0.5 : e.role === 'responsible' ? 0.5 : e.role === 'lead' ? 0 : 1;
-            return s + coeff;
-          }, 0);
-          // Простой расчёт даты завершения родителя
-          if (!parent.startDate) return task;
-          const totalHours = parent.estimateHours || 8;
-          const hoursPerDay = cap * 8;
-          const daysNeeded = hoursPerDay > 0 ? Math.ceil(totalHours / hoursPerDay) : 1;
-          // addWorkdays simplified
-          const d = new Date(parent.startDate);
-          let added = 0;
-          while (added < daysNeeded) {
-            d.setDate(d.getDate() + 1);
-            const dow = d.getDay();
-            if (dow !== 0 && dow !== 6) added++;
-          }
-          const newStart = d.toISOString().slice(0, 10);
-          if (task.startDate !== newStart && !task._manualStart) {
-            changed = true;
-            return { ...task, startDate: newStart };
-          }
-          return task;
-        });
-      }
-      return next;
-    });
+    setData(prev => fn(prev));
   }
 
   function navigate(target, id) {
@@ -125,17 +96,26 @@ export default function App() {
   }
 
   async function handleSaveSeed() {
-    if (!window.confirm('Сохранить текущие данные как тестовые? Они будут использоваться при следующем сбросе.')) return;
+    const ok = await confirm(
+      'Сохранить тестовые данные?',
+      'Текущие данные будут сохранены как тестовые и будут использоваться при следующем сбросе.',
+      { confirmLabel: 'Сохранить', danger: false }
+    );
+    if (!ok) return;
     try {
       await saveSeed();
-      alert('✅ Тестовые данные сохранены!');
     } catch (err) {
       alert('Ошибка сохранения: ' + err.message);
     }
   }
 
   async function handleReset() {
-    if (!window.confirm('Сбросить все данные к тестовым? Это действие нельзя отменить.')) return;
+    const ok = await confirm(
+      'Сбросить все данные?',
+      'Все данные будут заменены тестовыми. Это действие нельзя отменить.',
+      { confirmLabel: 'Сбросить' }
+    );
+    if (!ok) return;
     setLoading(true);
     try {
       const fresh = await resetToSeed();
@@ -177,9 +157,13 @@ export default function App() {
 
   return (
     <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:'var(--bg-tertiary)' }}>
+      {ConfirmEl}
       <Sidebar activePage={page} onNavigate={p => navigate(p)} onReset={handleReset} onSaveSeed={handleSaveSeed}/>
       <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         <Topbar theme={theme} onToggleTheme={() => setTheme(t => t==='light'?'dark':'light')}/>
+        {/* Центрируем контент: оптимально для FHD, отступы на более широких экранах */}
+        <div style={{ flex:1, overflow:'hidden', display:'flex', justifyContent:'center', alignItems:'stretch' }}>
+        <div style={{ width:'100%', maxWidth:1680, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         {page==='dashboard' && <Dashboard {...ctx}/>}
         {page==='tasks'     && <Tasks     {...ctx}/>}
         {page==='task'      && <TaskCard  {...ctx} taskId={selectedTaskId}     onBack={()=>navigate('tasks')}/>}
@@ -187,6 +171,8 @@ export default function App() {
         {page==='engineer'  && <EngineerCard {...ctx} engineerId={selectedEngineerId} onBack={()=>navigate('team')}/>}
         {page==='gantt'     && <Gantt     {...ctx}/>}
         {page==='estimate'  && <Estimate  {...ctx}/>}
+        </div>
+        </div>
       </div>
     </div>
   );
