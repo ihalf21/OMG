@@ -1,23 +1,17 @@
 // utils/forecast.js — расчёт прогноза завершения задачи
 // Оценка в человеко-часах (чч). Рабочий день = 8 часов.
-// Коэффициенты: engineer=1.0, intern=0.5, responsible=0.5, lead=0
+// Лиды не участвуют в задачах; все остальные роли считаются с коэффициентом 1.
 
 import { addWorkdays, subtractWorkdays, workdaysElapsed, todayStr, workdaysBetween } from './dates';
 
 export const HOURS_PER_DAY = 8;
 
-// Коэффициент производительности по роли
+// Участвует ли роль в выполнении задачи (лид — нет)
 export function roleCoeff(role) {
-  switch (role) {
-    case 'intern':       return 0.5;
-    case 'responsible':  return 0.5;
-    case 'lead':         return 0;
-    default:             return 1.0; // engineer
-  }
+  return role === 'lead' ? 0 : 1.0;
 }
 
-// Суммарная эффективная мощность команды на задаче (в единицах инженеро-дней/день)
-// с учётом коэффициентов и исключением недоступных
+// Суммарная мощность команды на задаче (количество активных участников, лиды не считаются)
 export function effectiveCapacity(task, engineers) {
   return (task.assignedEngineers || []).reduce((sum, id) => {
     const eng = engineers.find(e => e.id === id);

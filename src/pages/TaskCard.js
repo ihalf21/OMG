@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { calcForecast, statusColor, statusLabel, statusBadgeStyle, fmtHours, roleCoeff, getDerivedDeadline } from '../utils/forecast';
+import { calcForecast, statusColor, statusLabel, statusBadgeStyle, fmtHours, getDerivedDeadline } from '../utils/forecast';
 import { REGULAR_TASKS } from './EngineerCard';
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
 import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm } from '../components/UI';
@@ -135,7 +135,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
   }
 
   // Эффективная мощность команды
-  const totalCoeff = assignedEngs.reduce((s,e) => s + roleCoeff(e.role), 0);
+  const totalCount = assignedEngs.length;
 
   // Рекурсивный расчёт полной команды задачи (своя + унаследованная от родителей)
   function getEffectiveTeam(t, allTasks, depth = 0) {
@@ -151,7 +151,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
   const parentTask      = task.dependsOn ? tasks.find(t => t.id === task.dependsOn) : null;
   const inheritedEngIds = parentTask ? getEffectiveTeam(parentTask, tasks) : [];
   const inheritedEngs   = inheritedEngIds.map(id => engineers.find(e => e.id === id)).filter(Boolean);
-  const inheritedCoeff  = inheritedEngs.reduce((s,e) => s + roleCoeff(e.role), 0);
+  const inheritedCount  = inheritedEngs.length;
 
   // Перенос команды на дочернюю задачу при завершении/удалении текущей
   function transferTeamToChild(prev) {
@@ -434,7 +434,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                       ['Осталось работы', fmtHours(fc?.hoursLeft), false],
                       ['Рабочих дней до конца', fc?.daysLeft??'—', false],
                       ['Расчётная дата завершения', fc?.forecastDate?formatDateShort(fc.forecastDate):'—', fc?.deadlineStatus==='overdue'],
-                      ['Мощность команды', `${fc?.capacity?.toFixed(1)??0} ед.`, false],
+                      ['Инженеров на задаче', Math.round(fc?.capacity??0), false],
                     ].map(([label,val,warn]) => (
                       <div key={label} style={{ display:'flex', justifyContent:'space-between', fontSize:14, padding:'4px 0' }}>
                         <span style={{ color:'var(--text-secondary)' }}>{label}</span>
@@ -478,14 +478,13 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
               <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', marginBottom:14, textTransform:'uppercase', letterSpacing:'0.05em' }}>Команда на задаче</div>
               {assignedEngs.map(eng => {
                 const isHome = eng.homeTask===taskId;
-                const coeff  = roleCoeff(eng.role);
                 return (
                   <div key={eng.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:'0.5px solid var(--border-light)' }}>
                     <Avatar name={eng.name} size={32}/>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:14, fontWeight:600, cursor:'pointer', color:'var(--blue)' }} onClick={()=>navigate('engineer',eng.id)}>{eng.name}</div>
                       <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:1 }}>
-                        {isHome?'домашняя':'переключён'} · коэфф. {coeff}
+                        {isHome?'домашняя':'переключён'}
                       </div>
                     </div>
                     {!isHome && (
@@ -496,7 +495,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
               })}
               {assignedEngs.length > 0 && (
                 <div style={{ fontSize:12, color:'var(--text-tertiary)', paddingTop:8, borderTop:'0.5px solid var(--border-light)', marginTop:4 }}>
-                  Суммарная мощность: <strong style={{ color:'var(--text-primary)' }}>{totalCoeff.toFixed(1)} ед.</strong>
+                  Инженеров: <strong style={{ color:'var(--text-primary)' }}>{totalCount}</strong>
                 </div>
               )}
               <div style={{ paddingTop:10, marginTop:4, borderTop:assignedEngs.length>0?'0.5px solid var(--border-light)':'none' }}>
@@ -523,13 +522,13 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                     <Avatar name={eng.name} size={30}/>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:14, fontWeight:600, cursor:'pointer', color:'var(--blue)' }} onClick={() => navigate('engineer', eng.id)}>{eng.name}</div>
-                      <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:1 }}>{eng.regularTask||'—'} · ×{roleCoeff(eng.role)}</div>
+                      <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:1 }}>{eng.regularTask||'—'}</div>
                     </div>
                   </div>
                 ))}
                 <div style={{ fontSize:12, color:'var(--text-tertiary)', paddingTop:8, borderTop:'0.5px solid var(--border-light)', marginTop:4 }}>
-                  Суммарная мощность: <strong style={{ color:'var(--text-primary)' }}>{inheritedCoeff.toFixed(1)} ед.</strong>
-                  {totalCoeff > 0 && <span style={{ marginLeft:8, color:'var(--accent)', fontWeight:600 }}>+ {totalCoeff.toFixed(1)} доп.</span>}
+                  Инженеров: <strong style={{ color:'var(--text-primary)' }}>{inheritedCount}</strong>
+                  {totalCount > 0 && <span style={{ marginLeft:8, color:'var(--accent)', fontWeight:600 }}>+ {totalCount} доп.</span>}
                 </div>
               </Card>
             )}
@@ -571,7 +570,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
           <FormRow label="Выберите инженера">
             <Select value={selectedEng} onChange={e=>setSelectedEng(e.target.value)}>
               <option value="">—</option>
-              {available.map(e=><option key={e.id} value={e.id}>{e.name} (коэфф. {roleCoeff(e.role)})</option>)}
+              {available.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
             </Select>
           </FormRow>
           <ModalFooter onCancel={()=>setShowAddEng(false)} onSave={()=>selectedEng&&addEngineer(selectedEng)} saveLabel="Добавить"/>

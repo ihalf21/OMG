@@ -711,7 +711,7 @@ export default function Gantt({ data, updateData, navigate }) {
                             onClick={e => { e.stopPropagation(); navigate('engineer', eng.id); }}
                             onMouseEnter={e => show(e, eng.name, [
                               isVac ? '✈️ В отпуске' : isSick ? '🤒 На больничном' : '✅ На задаче',
-                              eng.role === 'responsible' ? 'Ответственный' : eng.role === 'intern' ? 'Стажёр (×0.5)' : '',
+                              eng.role === 'responsible' ? 'Ответственный' : eng.role === 'intern' ? 'Стажёр' : '',
                               eng.regularTask ? `Регулярная: ${eng.regularTask}` : '',
                               '⠿ Перетащите на другую задачу',
                             ].filter(Boolean))}
@@ -922,7 +922,7 @@ export default function Gantt({ data, updateData, navigate }) {
         {[
           ['#F5A830','Ответственный'],
           ['#9FE1CB','Инженер'],
-          ['#C0BEFC','Стажёр (×0.5)'],
+          ['#C0BEFC','Стажёр'],
           ['repeating-linear-gradient(45deg,#FAEEDA,#FAEEDA 3px,#FAC775 3px,#FAC775 6px)','Отпуск'],
           ['repeating-linear-gradient(45deg,#FCEBEB,#FCEBEB 3px,#F09595 3px,#F09595 6px)','Больничный'],
         ].map(([bg,l])=>(
