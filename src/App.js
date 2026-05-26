@@ -19,6 +19,11 @@ function normalizeStatuses(d) {
   const removeFromTasks = new Set(); // id инженеров, которых снимаем с задач
 
   const engineers = (d.engineers || []).map(eng => {
+    // Отпуск закончился → вернуть в active, очистить даты
+    if (eng.status === 'vacation' && eng.vacationTo && eng.vacationTo < today) {
+      extraHistory.push({ id: 'h' + Date.now() + eng.id, date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Возврат из отпуска' });
+      return { ...eng, status: 'active', vacationFrom: null, vacationTo: null };
+    }
     // Отпуск в будущем, но статус уже vacation → вернуть в active
     if (eng.status === 'vacation' && eng.vacationFrom && eng.vacationFrom > today) {
       return { ...eng, status: 'active' };

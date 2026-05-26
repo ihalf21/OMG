@@ -251,3 +251,57 @@ export function getDerivedDeadline(task, allTasks, engineers, _depth = 0) {
   if (!task.deadline) return derived;
   return task.deadline < derived ? task.deadline : derived;
 }
+
+/**
+ * Вычисляет эффективный дедлайн для каждой активной задачи с учётом всей цепочки.
+ * Воспроизводит логику Ганта: сначала максимальный дедлайн цепи опускается к листу,
+ * затем мягкие дедлайны рассчитываются назад для каждого родителя.
+ * Используется в Dashboard и Tasks для единообразия с Гантом.
+ */
+export function computeEffectiveDls(allActiveTasks, engineers) {
+  const result = {};
+
+  const leafIds = new Set(
+    allActiveTasks.filter(t => !allActiveTasks.some(c => c.dependsOn === t.id)).map(t => t.id)
+  );
+
+  // Максимальный дедлайн от данного узла до листа
+  function chainMaxDl(taskId, depth) {
+    if (depth > 9) return null;
+    const task = allActiveTasks.find(t => t.id === taskId);
+    if (!task) return null;
+    const child = allActiveTasks.find(t => t.dependsOn === taskId);
+    const childMax = child ? chainMaxDl(child.id, depth + 1) : null;
+    if (!task.deadline && !childMax) return null;
+    if (!task.deadline) return childMax;
+    if (!childMax) return task.deadline;
+    return task.deadline > childMax ? task.deadline : childMax;
+  }
+
+  // Шаг 1: листовые задачи получают максимальный дедлайн цепочки
+  allActiveTasks.forEach(t => {
+    if (!leafIds.has(t.id)) return;
+    let cur = t;
+    for (let i = 0; i < 9; i++) {
+      if (!cur.dependsOn) break;
+      const p = allActiveTasks.find(x => x.id === cur.dependsOn);
+      if (!p) break;
+      cur = p;
+    }
+    const dl = chainMaxDl(cur.id, 0);
+    if (dl) result[t.id] = dl;
+  });
+
+  // Шаг 2: для родительских задач вычитаем длины потомков назад
+  const tasksForDl = allActiveTasks.map(t => ({
+    ...t,
+    deadline: leafIds.has(t.id) ? (result[t.id] || null) : null,
+  }));
+  allActiveTasks.forEach(t => {
+    if (leafIds.has(t.id)) return;
+    const derived = getDerivedDeadline({ ...t, deadline: null }, tasksForDl, engineers);
+    if (derived) result[t.id] = derived;
+  });
+
+  return result;
+}

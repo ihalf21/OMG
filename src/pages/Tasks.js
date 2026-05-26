@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { calcForecast, statusColor, statusLabel, statusBadgeStyle, getDerivedDeadline } from '../utils/forecast';
+import { calcForecast, statusColor, statusLabel, statusBadgeStyle, computeEffectiveDls } from '../utils/forecast';
 import { REGULAR_TASKS } from './EngineerCard';
-import { formatDateShort } from '../utils/dates';
+import { formatDateShort, todayStr } from '../utils/dates';
 import { Avatar, Card, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, ProgressBar, DatePicker, useTooltip, useResizableColumns, ResizeHandle, useConfirm } from '../components/UI';
 
-const EMPTY_FORM = { name:'', direction:'', startDate:'', deadline:'', totalCases:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'' };
+const emptyForm = () => ({ name:'', direction:'', startDate: todayStr(), deadline:'', totalCases:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'' });
 
 function FilterBtn({ val, cur, set, children }) {
   const active = cur === val;
@@ -31,22 +31,14 @@ export default function Tasks({ data, updateData, navigate }) {
   const [filterStatus, setFilterStatus] = useState('active');
   const [filterDl,     setFilterDl]     = useState('all');
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name:'', direction:'', startDate:'', deadline:'', totalCases:'', hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'' });
+  const [form, setForm] = useState(emptyForm);
   const [showArchive, setShowArchive] = useState(false);
   const { show, move, hide, TooltipEl } = useTooltip();
   const { confirm, ConfirmEl } = useConfirm();
   const { widths: colWidths, startResize } = useResizableColumns('omg_tasks_cols', [280, 130, 110, 140, 110, 170]);
 
   const activeTasks = tasks.filter(t => t.status === 'active');
-  const effectiveDls = {};
-  activeTasks.forEach(t => {
-    if (t.deadline) {
-      effectiveDls[t.id] = t.deadline;
-    } else {
-      const derived = getDerivedDeadline(t, activeTasks, engineers);
-      if (derived) effectiveDls[t.id] = derived;
-    }
-  });
+  const effectiveDls = computeEffectiveDls(activeTasks, engineers);
 
   const forecasts = {};
   tasks.forEach(t => { forecasts[t.id] = calcForecast(t, engineers, effectiveDls[t.id] || null); });
@@ -121,7 +113,7 @@ export default function Tasks({ data, updateData, navigate }) {
       createdDate: new Date().toISOString().slice(0,10), // дата добавления для soft-start
     }]}));
     setShowModal(false);
-    setForm(EMPTY_FORM);
+    setForm(emptyForm());
   }
 
   return (
@@ -241,8 +233,8 @@ export default function Tasks({ data, updateData, navigate }) {
                 {REGULAR_TASKS.map(t=><option key={t} value={t}>{t}</option>)}
               </Select>
             </FormRow>
-            <FormRow label="Дата старта" hint="Оставьте пустым — задача будет плановой">
-              <DatePicker value={form.startDate} onChange={v => setForm(f=>({...f,startDate:v}))} placeholder="Плановая задача (без даты)"/>
+            <FormRow label="Дата старта">
+              <DatePicker value={form.startDate} onChange={v => setForm(f=>({...f,startDate:v}))} placeholder="Выбрать дату"/>
             </FormRow>
           </div>
           <FormRow label="Зависит от задачи" hint="Стартует после завершения выбранной, инженеры переносятся автоматически">

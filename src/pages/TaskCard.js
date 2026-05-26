@@ -11,6 +11,9 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
   const [editForm, setEditForm]     = useState(null);
   const [showAddEng, setShowAddEng] = useState(false);
   const [selectedEng, setSelectedEng] = useState('');
+  const [completeModal, setCompleteModal] = useState(false);
+  const [completeDateMode, setCompleteDateMode] = useState('today');
+  const [completeCustomDate, setCompleteCustomDate] = useState('');
   const { confirm, ConfirmEl } = useConfirm();
   const progressInputRef = useRef(null);
 
@@ -156,11 +159,11 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
   // Перенос команды на дочернюю задачу при завершении/удалении текущей
   function transferTeamToChild(prev) {
     const child = prev.tasks.find(t => t.dependsOn === taskId && t.status === 'active');
-    if (!child) return { tasks: prev.tasks, history: prev.history };
+    if (!child) return { tasks: prev.tasks, history: prev.history, childId: null };
 
     const completedTask = prev.tasks.find(t => t.id === taskId);
     const team = getEffectiveTeam(completedTask, prev.tasks);
-    if (team.length === 0) return { tasks: prev.tasks, history: prev.history };
+    if (team.length === 0) return { tasks: prev.tasks, history: prev.history, childId: null };
 
     const today = todayStr();
     const merged = [...new Set([...team, ...(child.assignedEngineers || [])])];
@@ -179,19 +182,53 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
         t.id === child.id ? { ...t, assignedEngineers: merged, startDate: today, dependsOn: null } : t
       ),
       history: [...prev.history, ...newHistory],
+      childId: child.id,
     };
   }
 
-  function completeTask() {
+  function completeTask(date) {
     updateData(prev => {
-      const { tasks: newTasks, history: newHistory } = transferTeamToChild(prev);
+      const { tasks: newTasks, history: newHistory, childId } = transferTeamToChild(prev);
       return {
         ...prev,
-        tasks: newTasks.map(t => t.id===taskId ? { ...t, status:'done', completedDate:todayStr() } : t),
+        tasks: newTasks.map(t => t.id===taskId
+          ? { ...t, status:'done', completedDate: date, completedWithChildId: childId || null }
+          : t
+        ),
         history: newHistory,
       };
     });
     onBack();
+  }
+
+  function handleCompleteClick() {
+    setCompleteDateMode('today');
+    setCompleteCustomDate('');
+    setCompleteModal(true);
+  }
+
+  function confirmComplete() {
+    const date = completeDateMode === 'today' ? todayStr() : completeCustomDate;
+    if (!date) return;
+    setCompleteModal(false);
+    completeTask(date);
+  }
+
+  function reopenTask() {
+    updateData(prev => {
+      const parent = prev.tasks.find(t => t.id === taskId);
+      const childId = parent?.completedWithChildId;
+      return {
+        ...prev,
+        tasks: prev.tasks.map(t => {
+          if (t.id === taskId)
+            return { ...t, status:'active', completedDate:null, completedWithChildId:null };
+          if (childId && t.id === childId)
+            return { ...t, dependsOn: taskId, startDate: null };
+          return t;
+        }),
+      };
+    });
   }
 
   async function archiveTask() {
@@ -215,11 +252,38 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
       {ConfirmEl}
+      {completeModal && (
+        <Modal title="Завершить задачу" onClose={() => setCompleteModal(false)} width={400}>
+          <FormRow label="Дата завершения">
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', padding:'10px 12px', borderRadius:8, border:`1.5px solid ${completeDateMode==='today' ? 'var(--accent)' : 'var(--border-mid)'}`, background: completeDateMode==='today' ? 'var(--accent-muted,rgba(99,102,241,0.08))' : 'var(--bg-secondary)' }}>
+                <input type="radio" name="completeMode" value="today" checked={completeDateMode==='today'} onChange={() => setCompleteDateMode('today')} style={{ accentColor:'var(--accent)', width:16, height:16 }}/>
+                <span style={{ fontSize:14 }}>Завершена сегодня</span>
+              </label>
+              <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', padding:'10px 12px', borderRadius:8, border:`1.5px solid ${completeDateMode==='custom' ? 'var(--accent)' : 'var(--border-mid)'}`, background: completeDateMode==='custom' ? 'var(--accent-muted,rgba(99,102,241,0.08))' : 'var(--bg-secondary)' }}>
+                <input type="radio" name="completeMode" value="custom" checked={completeDateMode==='custom'} onChange={() => setCompleteDateMode('custom')} style={{ accentColor:'var(--accent)', width:16, height:16 }}/>
+                <span style={{ fontSize:14 }}>Указать дату завершения</span>
+              </label>
+              {completeDateMode === 'custom' && (
+                <div style={{ paddingLeft:2 }}>
+                  <DatePicker value={completeCustomDate} onChange={setCompleteCustomDate} placeholder="Выбрать дату" clearable={false}/>
+                </div>
+              )}
+            </div>
+          </FormRow>
+          <ModalFooter
+            onCancel={() => setCompleteModal(false)}
+            onSave={confirmComplete}
+            saveLabel="✓ Завершить"
+          />
+        </Modal>
+      )}
       <PageTopbar title={editMode ? '✏️ '+task.name : task.name}>
         <BackBtn onClick={onBack} label="Задачи"/>
         {!editMode
           ? <><BtnSecondary onClick={startEdit}>✏️ Редактировать</BtnSecondary>
-              {task.status==='active'&&<BtnDanger onClick={completeTask}>✓ Завершить</BtnDanger>}
+              {task.status==='active'&&<BtnDanger onClick={handleCompleteClick}>✓ Завершить</BtnDanger>}
+              {task.status==='done'&&<BtnSecondary onClick={reopenTask}>↩ Вернуть в работу</BtnSecondary>}
               {task.status!=='archived'&&<BtnDanger onClick={archiveTask} style={{ borderColor:'var(--red)', color:'var(--red)', opacity:0.7 }}>🗑 Удалить</BtnDanger>}</>
           : <><BtnSecondary onClick={()=>setEditMode(false)}>Отмена</BtnSecondary>
               <BtnPrimary onClick={saveEdit}>💾 Сохранить</BtnPrimary></>
@@ -394,16 +458,6 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                 <Card style={{ marginBottom:14 }}>
                   <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', marginBottom:14, textTransform:'uppercase', letterSpacing:'0.05em' }}>Прогресс</div>
 
-                  {/* Плановая задача без даты старта */}
-                  {!task.startDate && (
-                    <div style={{ padding:'10px 12px', background:'var(--bg-secondary)', borderRadius:8, marginBottom:12, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-                      <div style={{ fontSize:13, color:'var(--text-secondary)' }}>📋 Плановая задача — дата старта не задана</div>
-                      <button onClick={() => updateData(prev => ({ ...prev, tasks: prev.tasks.map(t => t.id===taskId ? { ...t, startDate: todayStr() } : t) }))}
-                        style={{ padding:'6px 14px', background:'var(--accent)', color:'#fff', border:'none', borderRadius:6, fontSize:13, fontWeight:500, cursor:'pointer', whiteSpace:'nowrap' }}>
-                        Начать сегодня
-                      </button>
-                    </div>
-                  )}
 
                   <ProgressBar pct={fc?.progressPct||0} color={barColor} height={7}/>
                   <div style={{ fontSize:12, color:'var(--text-tertiary)', display:'flex', justifyContent:'space-between', marginTop:5 }}>

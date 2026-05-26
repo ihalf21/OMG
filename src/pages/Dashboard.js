@@ -1,37 +1,46 @@
 import React, { useState } from 'react';
-import { calcForecast, statusColor, statusLabel, statusBadgeStyle, engineersNeeded, getDerivedDeadline } from '../utils/forecast';
+import { calcForecast, statusColor, statusLabel, statusBadgeStyle, engineersNeeded, computeEffectiveDls } from '../utils/forecast';
 import { formatDateShort } from '../utils/dates';
 import { Avatar, ProgressBar, Card, SectionTitle, PageTopbar } from '../components/UI';
+
+// Топологическая сортировка: родители перед детьми, цепочки идут подряд
+function sortByChain(tasks) {
+  const ids = new Set(tasks.map(t => t.id));
+  const result = [];
+  const visited = new Set();
+  function visit(t) {
+    if (visited.has(t.id)) return;
+    visited.add(t.id);
+    result.push(t);
+    const child = tasks.find(c => c.dependsOn === t.id);
+    if (child) visit(child);
+  }
+  tasks.filter(t => !t.dependsOn || !ids.has(t.dependsOn)).forEach(visit);
+  tasks.forEach(t => { if (!visited.has(t.id)) visit(t); });
+  return result;
+}
+
 
 export default function Dashboard({ data, updateData, navigate }) {
   const { engineers, tasks } = data;
   const activeTasks  = tasks.filter(t => t.status === 'active');
-  const allActive    = activeTasks;
 
-  // Для каждой активной задачи считаем эффективный дедлайн (свой или расчётный по цепочке)
-  const effectiveDls = {};
-  activeTasks.forEach(t => {
-    if (t.deadline) {
-      effectiveDls[t.id] = t.deadline;
-    } else {
-      const derived = getDerivedDeadline(t, activeTasks, engineers);
-      if (derived) effectiveDls[t.id] = derived;
-    }
-  });
+  const effectiveDls = computeEffectiveDls(activeTasks, engineers);
 
   const forecasts = {};
   activeTasks.forEach(t => {
     forecasts[t.id] = calcForecast(t, engineers, effectiveDls[t.id] || null);
   });
 
-  const tasksWithDl  = activeTasks.filter(t => effectiveDls[t.id]);
-  const tasksNoDl    = activeTasks.filter(t => !effectiveDls[t.id]);
+  const tasksWithDl  = sortByChain(activeTasks.filter(t =>  effectiveDls[t.id]));
+  const tasksNoDl    = sortByChain(activeTasks.filter(t => !effectiveDls[t.id]));
   const unavailable  = engineers.filter(e=>e.status!=='active'&&e.role!=='lead');
 
   const atRisk  = tasksWithDl.filter(t=>forecasts[t.id]?.deadlineStatus==='overdue').length;
   const onTrack = tasksWithDl.filter(t=>forecasts[t.id]?.deadlineStatus==='ok').length;
 
   const [progressInputs, setProgressInputs] = useState({});
+  const [hoveredId, setHoveredId] = useState(null);
 
   function saveProgress(taskId) {
     const val = parseInt(progressInputs[taskId]);
@@ -74,47 +83,65 @@ export default function Dashboard({ data, updateData, navigate }) {
         <div style={{ marginBottom:20 }}>
           <SectionTitle action="Все задачи →" onAction={()=>navigate('tasks')}>Задачи с дедлайном</SectionTitle>
           {tasksWithDl.length===0&&<div style={{ fontSize:14, color:'var(--text-tertiary)', padding:'12px 0' }}>Нет задач с дедлайном</div>}
-          {tasksWithDl.map(task=>{
+          {tasksWithDl.map((task, idx, arr)=>{
             const fc=forecasts[task.id];
             const dl=effectiveDls[task.id];
-            const isDerived=!task.deadline;
+            const isDerived=!task.deadline||(!!effectiveDls[task.id]&&effectiveDls[task.id]<task.deadline);
             const isQueued=!!(task.dependsOn&&activeTasks.find(t=>t.id===task.dependsOn));
             const barColor=isQueued?'#A8A6A0':statusColor(fc?.deadlineStatus);
             const bs=isQueued?{ bg:'var(--bg-secondary)', color:'var(--text-secondary)' }:statusBadgeStyle(fc?.deadlineStatus);
             const assignedEngs=engineers.filter(e=>task.assignedEngineers?.includes(e.id));
+            const isChainParent = idx < arr.length - 1 && arr[idx + 1].dependsOn === task.id;
             return (
-              <Card key={task.id} onClick={()=>navigate('task',task.id)} style={{ marginBottom:8, display:'flex', alignItems:'center', gap:16 }}>
-                <div style={{ width:9, height:9, borderRadius:'50%', background:barColor, flexShrink:0 }}/>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:15, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{task.name}</div>
-                  <div style={{ fontSize:13, color:'var(--text-tertiary)', marginTop:3 }}>{task.direction||''} · старт {formatDateShort(task.startDate)}</div>
-                </div>
-                <div style={{ display:'flex', flexShrink:0 }}>
-                  {assignedEngs.slice(0,3).map((e,i)=><Avatar key={e.id} name={e.name} size={28} style={{ marginLeft:i>0?-7:0, border:'2px solid var(--bg-primary)' }}/>)}
-                  {assignedEngs.length>3&&<span style={{ fontSize:13, color:'var(--text-tertiary)', marginLeft:7 }}>+{assignedEngs.length-3}</span>}
-                </div>
-                {task.totalCases&&(
-                  <div style={{ width:150, flexShrink:0 }}>
-                    <ProgressBar pct={fc?.progressPct||0} color={barColor} height={5}/>
-                    <div style={{ fontSize:12, color:'var(--text-tertiary)', display:'flex', justifyContent:'space-between', marginTop:3 }}>
-                      <span>{task.doneCases}/{task.totalCases}</span><span>{fc?.progressPct||0}%</span>
+              <div key={task.id} style={{ position:'relative', marginBottom:8 }}
+                onMouseEnter={()=>setHoveredId(task.id)}
+                onMouseLeave={()=>setHoveredId(null)}
+              >
+                <Card onClick={()=>navigate('task',task.id)} style={{ display:'flex', alignItems:'center', gap:16 }}>
+                  <div style={{ width:9, height:9, borderRadius:'50%', background:barColor, flexShrink:0 }}/>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:15, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{task.name}</div>
+                    <div style={{ fontSize:13, color:'var(--text-tertiary)', marginTop:3 }}>{task.direction||''} · старт {formatDateShort(task.startDate)}</div>
+                  </div>
+                  <div style={{ display:'flex', flexShrink:0 }}>
+                    {assignedEngs.slice(0,3).map((e,i)=><Avatar key={e.id} name={e.name} size={28} style={{ marginLeft:i>0?-7:0, border:'2px solid var(--bg-primary)' }}/>)}
+                    {assignedEngs.length>3&&<span style={{ fontSize:13, color:'var(--text-tertiary)', marginLeft:7 }}>+{assignedEngs.length-3}</span>}
+                  </div>
+                  {task.totalCases&&(
+                    <div style={{ width:150, flexShrink:0 }}>
+                      <ProgressBar pct={fc?.progressPct||0} color={barColor} height={5}/>
+                      <div style={{ fontSize:12, color:'var(--text-tertiary)', display:'flex', justifyContent:'space-between', marginTop:3 }}>
+                        <span>{task.doneCases}/{task.totalCases}</span><span>{fc?.progressPct||0}%</span>
+                      </div>
                     </div>
+                  )}
+                  <div style={{ flexShrink:0, textAlign:'right', minWidth:110 }}>
+                    {isDerived&&<div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:2 }}>расчётный дедлайн</div>}
+                    <div style={{ fontSize:13, color:'var(--text-secondary)', fontWeight:500 }}>до {formatDateShort(dl)}</div>
+                    <div style={{ marginTop:4, ...bs, fontSize:12, padding:'2px 8px', borderRadius:4, display:'inline-block', fontWeight:500 }}>{isQueued?'В очереди':statusLabel(fc?.deadlineStatus)}</div>
+                    {!isQueued&&fc?.deadlineStatus === 'overdue' && (() => {
+                      const needed = engineersNeeded(task, engineers, isDerived ? dl : null);
+                      return needed > 0 ? (
+                        <div style={{ marginTop:4, fontSize:11, color:'var(--red)', fontWeight:500 }}>
+                          +{needed} инж. чтобы уложиться
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                </Card>
+                {isChainParent && (
+                  <div style={{
+                    position:'absolute', bottom:-12, left:'50%', transform:'translateX(-50%)',
+                    display:'flex', flexDirection:'column', alignItems:'center', gap:1,
+                    pointerEvents:'none', zIndex:2,
+                    opacity: hoveredId === task.id ? 1 : 0,
+                    transition:'opacity 0.15s',
+                  }}>
+                    <div style={{ width:2, height:8, background:'var(--amber)', borderRadius:1 }}/>
+                    <div style={{ width:0, height:0, borderLeft:'4px solid transparent', borderRight:'4px solid transparent', borderTop:'5px solid var(--amber)' }}/>
                   </div>
                 )}
-                <div style={{ flexShrink:0, textAlign:'right', minWidth:110 }}>
-                  {isDerived&&<div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:2 }}>расчётный дедлайн</div>}
-                  <div style={{ fontSize:13, color:'var(--text-secondary)', fontWeight:500 }}>до {formatDateShort(dl)}</div>
-                  <div style={{ marginTop:4, ...bs, fontSize:12, padding:'2px 8px', borderRadius:4, display:'inline-block', fontWeight:500 }}>{isQueued?'В очереди':statusLabel(fc?.deadlineStatus)}</div>
-                  {!isQueued&&fc?.deadlineStatus === 'overdue' && (() => {
-                    const needed = engineersNeeded(task, engineers, isDerived ? dl : null);
-                    return needed > 0 ? (
-                      <div style={{ marginTop:4, fontSize:11, color:'var(--red)', fontWeight:500 }}>
-                        +{needed} инж. чтобы уложиться
-                      </div>
-                    ) : null;
-                  })()}
-                </div>
-              </Card>
+              </div>
             );
           })}
         </div>
@@ -123,18 +150,36 @@ export default function Dashboard({ data, updateData, navigate }) {
         {tasksNoDl.length>0&&(
           <div style={{ marginBottom:20 }}>
             <SectionTitle>Задачи без дедлайна</SectionTitle>
-            {tasksNoDl.map(task=>{
+            {tasksNoDl.map((task, idx, arr)=>{
               const fc=forecasts[task.id];
               const isQueued=!!(task.dependsOn&&activeTasks.find(t=>t.id===task.dependsOn));
+              const isChainParent = idx < arr.length - 1 && arr[idx + 1].dependsOn === task.id;
               return (
-                <Card key={task.id} onClick={()=>navigate('task',task.id)} style={{ marginBottom:8, display:'flex', alignItems:'center', gap:16 }}>
-                  <div style={{ width:9, height:9, borderRadius:'50%', background:'#A8A6A0', flexShrink:0 }}/>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:15, fontWeight:600 }}>{task.name}</div>
-                    <div style={{ fontSize:13, color:'var(--text-tertiary)', marginTop:3 }}>Расчёт: {fc?.forecastDate?formatDateShort(fc.forecastDate):'—'} · {task.assignedEngineers?.length||0} инж.</div>
-                  </div>
-                  <div style={{ fontSize:12, padding:'3px 9px', borderRadius:4, background:'var(--bg-secondary)', color:'var(--text-secondary)', fontWeight:500 }}>{isQueued?'В очереди':'В работе'}</div>
-                </Card>
+                <div key={task.id} style={{ position:'relative', marginBottom:8 }}
+                  onMouseEnter={()=>setHoveredId(task.id)}
+                  onMouseLeave={()=>setHoveredId(null)}
+                >
+                  <Card onClick={()=>navigate('task',task.id)} style={{ display:'flex', alignItems:'center', gap:16 }}>
+                    <div style={{ width:9, height:9, borderRadius:'50%', background:'#A8A6A0', flexShrink:0 }}/>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:15, fontWeight:600 }}>{task.name}</div>
+                      <div style={{ fontSize:13, color:'var(--text-tertiary)', marginTop:3 }}>Расчёт: {fc?.forecastDate?formatDateShort(fc.forecastDate):'—'} · {task.assignedEngineers?.length||0} инж.</div>
+                    </div>
+                    <div style={{ fontSize:12, padding:'3px 9px', borderRadius:4, background:'var(--bg-secondary)', color:'var(--text-secondary)', fontWeight:500 }}>{isQueued?'В очереди':'В работе'}</div>
+                  </Card>
+                  {isChainParent && (
+                    <div style={{
+                      position:'absolute', bottom:-12, left:'50%', transform:'translateX(-50%)',
+                      display:'flex', flexDirection:'column', alignItems:'center', gap:1,
+                      pointerEvents:'none', zIndex:2,
+                      opacity: hoveredId === task.id ? 1 : 0,
+                      transition:'opacity 0.15s',
+                    }}>
+                      <div style={{ width:2, height:8, background:'var(--amber)', borderRadius:1 }}/>
+                      <div style={{ width:0, height:0, borderLeft:'4px solid transparent', borderRight:'4px solid transparent', borderTop:'5px solid var(--amber)' }}/>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

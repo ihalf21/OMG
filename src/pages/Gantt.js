@@ -594,7 +594,6 @@ export default function Gantt({ data, updateData, navigate }) {
                     <div style={{ minWidth:0 }}>
                       <div style={{ fontSize:14, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                         {task.name}
-                        {!hasStart && <span style={{ fontSize:11, color:'var(--text-tertiary)', marginLeft:6, fontWeight:400 }}>плановая</span>}
                       </div>
                       <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>
                         {assignedEngs.length} инж. · {task.direction||''}
@@ -906,10 +905,6 @@ export default function Gantt({ data, updateData, navigate }) {
             <div style={{ width:10, height:10, borderRadius:2, background:c }}/>{l}
           </div>
         ))}
-        <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, color:'var(--text-secondary)' }}>
-          <div style={{ width:10, height:10, borderRadius:2, background:'repeating-linear-gradient(45deg,#A8A6A0,#A8A6A0 3px,#C8C7C3 3px,#C8C7C3 6px)' }}/>
-          Плановая
-        </div>
         <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, color:'var(--text-secondary)' }}>
           <div style={{ width:2, height:12, background:'#E24B4A', borderRadius:1 }}/>
           Дедлайн (при наведении)
