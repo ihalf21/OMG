@@ -1,36 +1,23 @@
 // utils/forecast.js — расчёт прогноза завершения задачи
 // Оценка в человеко-часах (чч). Рабочий день = 8 часов.
-// Лиды не участвуют в задачах; все остальные роли считаются с коэффициентом 1.
 
 import { addWorkdays, subtractWorkdays, workdaysElapsed, todayStr, workdaysBetween } from './dates';
+import { roleCoeff, capacityToday } from '../domain/availability';
 
 export const HOURS_PER_DAY = 8;
+export { roleCoeff };
 
-// Участвует ли роль в выполнении задачи (лид — нет)
-export function roleCoeff(role) {
-  return role === 'lead' ? 0 : 1.0;
-}
-
-// Суммарная мощность команды на задаче (количество активных участников, лиды не считаются)
+// Суммарная мощность команды на задаче сегодня (учитывает отпуска/больничные/дейофы)
 export function effectiveCapacity(task, engineers) {
   return (task.assignedEngineers || []).reduce((sum, id) => {
     const eng = engineers.find(e => e.id === id);
     if (!eng) return sum;
-    if (eng.status === 'sick') return sum;
-    if (eng.status === 'vacation') {
-      const today = todayStr();
-      if (eng.vacationFrom && eng.vacationTo) {
-        if (today >= eng.vacationFrom && today <= eng.vacationTo) return sum;
-      } else {
-        return sum;
-      }
-    }
-    return sum + roleCoeff(eng.role);
+    return sum + capacityToday(eng);
   }, 0);
 }
 
-// Суммарная эффективная мощность с начала задачи (для авто-прогресса)
-// Упрощённо: считаем текущий состав как постоянный
+// Номинальная мощность команды без учёта временных отсутствий (для elapsed-based прогресса)
+// Используется когда задача стартовала в прошлом и нужно прикинуть сколько часов уже отработано
 export function effectiveCapacityFull(task, engineers) {
   return (task.assignedEngineers || []).reduce((sum, id) => {
     const eng = engineers.find(e => e.id === id);

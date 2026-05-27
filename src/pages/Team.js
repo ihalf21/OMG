@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Avatar, RoleBadge, StatusBadge, StarRating, Card, PageTopbar, BtnPrimary, BtnDanger, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
 import { REGULAR_TASKS } from './EngineerCard';
+import { isAvailableToday, isWorkingRole } from '../domain/availability';
 
 export default function Team({ data, updateData, navigate }) {
   const { engineers, tasks } = data;
@@ -12,12 +13,13 @@ export default function Team({ data, updateData, navigate }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const isOnTask = e => tasks.some(t => t.status === 'active' && t.assignedEngineers?.includes(e.id));
+  const isAvail  = e => isWorkingRole(e) && isAvailableToday(e);
   const metrics = {
-    total:       engineers.filter(e=>e.role!=='lead').length,
-    active:      engineers.filter(e=>e.role!=='lead'&&e.status==='active').length,
-    unavailable: engineers.filter(e=>e.role!=='lead'&&e.status!=='active').length,
-    switched:    engineers.filter(e=>e.role!=='lead'&&e.status==='active'&&isOnTask(e)).length,
-    free:        engineers.filter(e=>e.role!=='lead'&&e.status==='active'&&!isOnTask(e)).length,
+    total:       engineers.filter(isWorkingRole).length,
+    active:      engineers.filter(isAvail).length,
+    unavailable: engineers.filter(e => isWorkingRole(e) && !isAvailableToday(e)).length,
+    switched:    engineers.filter(e => isAvail(e) && isOnTask(e)).length,
+    free:        engineers.filter(e => isAvail(e) && !isOnTask(e)).length,
   };
 
   const filtered = engineers.filter(e => {
@@ -42,16 +44,16 @@ export default function Team({ data, updateData, navigate }) {
   }
 
   const ROLE_ORDER = { lead:0, responsible:1, engineer:2, intern:3 };
-  const STATUS_ORDER = { active:0, sick:1, vacation:2 };
+  const STATUS_ORDER = { active:0, dayoff:1, sick:2, vacation:3 };
 
   const filteredAndSorted = engineers.filter(e => {
     if (filterRole !== 'all' && e.role !== filterRole) return false;
     if (filterStatus === 'switched') {
-      if (e.status !== 'active' || !isOnTask(e)) return false;
+      if (!isAvail(e) || !isOnTask(e)) return false;
     } else if (filterStatus === 'free') {
-      if (e.status !== 'active' || isOnTask(e)) return false;
+      if (!isAvail(e) || isOnTask(e)) return false;
     } else if (filterStatus === 'unavail') {
-      if (e.status === 'active') return false;
+      if (isAvailableToday(e)) return false;
     } else if (filterStatus !== 'all' && e.status !== filterStatus) return false;
     if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { calcForecast, statusColor, statusLabel, statusBadgeStyle, engineersNeeded, computeEffectiveDls } from '../utils/forecast';
+import { isAvailableToday, isWorkingRole, leaveTypeToday } from '../domain/availability';
 import { formatDateShort } from '../utils/dates';
 import { Avatar, ProgressBar, Card, SectionTitle, PageTopbar } from '../components/UI';
 
@@ -34,7 +35,7 @@ export default function Dashboard({ data, updateData, navigate }) {
 
   const tasksWithDl  = sortByChain(activeTasks.filter(t =>  effectiveDls[t.id]));
   const tasksNoDl    = sortByChain(activeTasks.filter(t => !effectiveDls[t.id]));
-  const unavailable  = engineers.filter(e=>e.status!=='active'&&e.role!=='lead');
+  const unavailable  = engineers.filter(e => isWorkingRole(e) && !isAvailableToday(e));
 
   const atRisk  = tasksWithDl.filter(t=>forecasts[t.id]?.deadlineStatus==='overdue').length;
   const onTrack = tasksWithDl.filter(t=>forecasts[t.id]?.deadlineStatus==='ok').length;
@@ -57,8 +58,8 @@ export default function Dashboard({ data, updateData, navigate }) {
         {/* Metrics */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>
           {(() => {
-            const total     = engineers.filter(e=>e.role!=='lead').length;
-            const available = engineers.filter(e=>e.role!=='lead'&&e.status==='active').length;
+            const total     = engineers.filter(isWorkingRole).length;
+            const available = engineers.filter(e => isWorkingRole(e) && isAvailableToday(e)).length;
             const unav      = total - available;
             return [
               { label:'Инженеров в команде',
@@ -211,18 +212,20 @@ export default function Dashboard({ data, updateData, navigate }) {
           <SectionTitle action="Вся команда →" onAction={()=>navigate('team')}>Статус команды сегодня</SectionTitle>
           <Card>
             {unavailable.length===0&&<div style={{ fontSize:14, color:'var(--text-tertiary)', padding:'4px 0' }}>Все инженеры доступны</div>}
-            {engineers.filter(e=>e.status==='vacation').map(e=>(
-              <div key={e.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'0.5px solid var(--border-light)', fontSize:14 }}>
-                <span style={{ fontSize:16 }}>✈️</span>
-                <span><strong>{e.name}</strong> — в отпуске{e.vacationTo?` до ${formatDateShort(e.vacationTo)}`:''}</span>
-              </div>
-            ))}
-            {engineers.filter(e=>e.status==='sick').map(e=>(
-              <div key={e.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'0.5px solid var(--border-light)', fontSize:14 }}>
-                <span style={{ fontSize:16 }}>🤒</span>
-                <span><strong>{e.name}</strong> — на больничном</span>
-              </div>
-            ))}
+            {unavailable.map(e => {
+              const leave = leaveTypeToday(e);
+              const icon = leave === 'vacation' ? '✈️' : leave === 'sick' ? '🤒' : leave === 'dayoff' ? '🏖️' : '·';
+              const text = leave === 'vacation' ? `в отпуске${e.vacationTo ? ` до ${formatDateShort(e.vacationTo)}` : ''}`
+                : leave === 'sick' ? 'на больничном'
+                : leave === 'dayoff' ? `на дейофе${e.dayoffDate ? ` (${formatDateShort(e.dayoffDate)})` : ''}`
+                : 'недоступен';
+              return (
+                <div key={e.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'0.5px solid var(--border-light)', fontSize:14 }}>
+                  <span style={{ fontSize:16 }}>{icon}</span>
+                  <span><strong>{e.name}</strong> — {text}</span>
+                </div>
+              );
+            })}
           </Card>
         </div>
       </div>

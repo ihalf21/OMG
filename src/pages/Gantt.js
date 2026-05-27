@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { getMonthDays, todayStr, addWorkdays } from '../utils/dates';
 import { calcForecast, calcDependentStart, calcScheduledChildStart, statusColor, getDerivedDeadline, HOURS_PER_DAY } from '../utils/forecast';
+import { isAvailableOn, isWorkingRole, leaveTypeOn } from '../domain/availability';
 import { Avatar, PageTopbar, useTooltip } from '../components/UI';
 
 export default function Gantt({ data, updateData, navigate }) {
@@ -245,15 +246,9 @@ export default function Gantt({ data, updateData, navigate }) {
   const todayIdx = days.findIndex(d => d.today);
 
   const avail = days.map(day =>
-    engineers.filter(e => {
-      if (e.role === 'lead') return false;
-      if (e.status === 'sick') return false;
-      if (e.status === 'vacation' && e.vacationFrom && e.vacationTo)
-        return day.str < e.vacationFrom || day.str > e.vacationTo;
-      return true;
-    }).length
+    engineers.filter(e => isAvailableOn(e, day.str)).length
   );
-  const totalEng = engineers.filter(e => e.role !== 'lead').length;
+  const totalEng = engineers.filter(isWorkingRole).length;
   const LABEL_W  = 200;
 
   function BgCols() {
@@ -674,15 +669,16 @@ export default function Gantt({ data, updateData, navigate }) {
                   ...assignedEngs.filter(e=>e.role!=='responsible'&&e.role!=='intern'&&e.role!=='lead'),
                   ...assignedEngs.filter(e=>e.role==='intern'),
                 ].map(eng => {
-                  const isVac      = eng.status==='vacation';
-                  const isSick     = eng.status==='sick';
+                  const leave      = leaveTypeOn(eng, todayStr());
                   const baseColor  = eng.role==='responsible' ? '#F5A830'
                     : eng.role==='intern'       ? '#C0BEFC'
                     : '#9FE1CB';
-                  const engColor   = isVac
+                  const engColor   = leave === 'vacation'
                     ? 'repeating-linear-gradient(45deg,#FAEEDA,#FAEEDA 5px,#FAC775 5px,#FAC775 10px)'
-                    : isSick
+                    : leave === 'sick'
                     ? 'repeating-linear-gradient(45deg,#FCEBEB,#FCEBEB 5px,#F09595 5px,#F09595 10px)'
+                    : leave === 'dayoff'
+                    ? 'repeating-linear-gradient(45deg,#E2ECFB,#E2ECFB 5px,#A3C6F2 5px,#A3C6F2 10px)'
                     : baseColor;
                   const isDraggingThis = dragEng?.engId === eng.id;
                   return (
@@ -709,7 +705,10 @@ export default function Gantt({ data, updateData, navigate }) {
                           <div
                             onClick={e => { e.stopPropagation(); navigate('engineer', eng.id); }}
                             onMouseEnter={e => show(e, eng.name, [
-                              isVac ? '✈️ В отпуске' : isSick ? '🤒 На больничном' : '✅ На задаче',
+                              leave === 'vacation' ? '✈️ В отпуске'
+                                : leave === 'sick' ? '🤒 На больничном'
+                                : leave === 'dayoff' ? '🏖️ Дейоф'
+                                : '✅ На задаче',
                               eng.role === 'responsible' ? 'Ответственный' : eng.role === 'intern' ? 'Стажёр' : '',
                               eng.regularTask ? `Регулярная: ${eng.regularTask}` : '',
                               '⠿ Перетащите на другую задачу',
@@ -728,12 +727,14 @@ export default function Gantt({ data, updateData, navigate }) {
 
           {/* Занятые и свободные инженеры */}
           {(() => {
-            // Для каждого дня считаем: задействованы (на активных задачах) и свободны
-            const nonLeadEngs = engineers.filter(e => e.role !== 'lead');
-            const activeNonLead = nonLeadEngs.filter(e => e.status === 'active');
+            // Для каждого дня считаем: задействованы (на активных задачах) и свободны.
+            // Доступность считается per-day — учитывает дейофы и диапазоны отпусков.
+            const nonLeadEngs = engineers.filter(isWorkingRole);
             const engagedPerDay = [];
             const freePerDay = [];
+            const totalPerDay = [];
             days.forEach(day => {
+              const availableForDay = nonLeadEngs.filter(e => isAvailableOn(e, day.str));
               const ids = new Set();
               activeTasks.forEach(task => {
                 const fc = forecasts[task.id];
@@ -743,8 +744,9 @@ export default function Gantt({ data, updateData, navigate }) {
                   (inheritedEngIds[task.id] || task.assignedEngineers || []).forEach(id => ids.add(id));
                 }
               });
-              engagedPerDay.push(activeNonLead.filter(e => ids.has(e.id)).length);
-              freePerDay.push(activeNonLead.filter(e => !ids.has(e.id)));
+              engagedPerDay.push(availableForDay.filter(e => ids.has(e.id)).length);
+              freePerDay.push(availableForDay.filter(e => !ids.has(e.id)));
+              totalPerDay.push(availableForDay.length);
             });
 
             return (
@@ -754,7 +756,7 @@ export default function Gantt({ data, updateData, navigate }) {
                   <div style={{ flex:1, display:'flex' }}>
                     {days.map((d,i) => {
                       const cnt = engagedPerDay[i];
-                      const total = activeNonLead.length;
+                      const total = totalPerDay[i];
                       const p = total > 0 ? cnt / total : 0;
                       const bg = p > 0.8 ? 'var(--success-bg)' : p > 0.4 ? 'var(--amber-bg)' : 'var(--bg-secondary)';
                       const col = p > 0.8 ? 'var(--success)' : p > 0.4 ? 'var(--amber)' : 'var(--text-tertiary)';
@@ -920,6 +922,7 @@ export default function Gantt({ data, updateData, navigate }) {
           ['#C0BEFC','Стажёр'],
           ['repeating-linear-gradient(45deg,#FAEEDA,#FAEEDA 3px,#FAC775 3px,#FAC775 6px)','Отпуск'],
           ['repeating-linear-gradient(45deg,#FCEBEB,#FCEBEB 3px,#F09595 3px,#F09595 6px)','Больничный'],
+          ['repeating-linear-gradient(45deg,#E2ECFB,#E2ECFB 3px,#A3C6F2 3px,#A3C6F2 6px)','Дейоф'],
         ].map(([bg,l])=>(
           <div key={l} style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, color:'var(--text-secondary)' }}>
             <div style={{ width:10, height:10, borderRadius:2, background:bg }}/>{l}

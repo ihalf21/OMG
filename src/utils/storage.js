@@ -1,5 +1,5 @@
-// utils/storage.js — работа с бэкендом (SQLite через Express API)
-// Все данные хранятся на сервере в файле omg.db
+// utils/storage.js — работа с бэкендом (Express API)
+// Все данные хранятся на сервере в файле server/data.json
 
 const API = '/api';
 
@@ -11,7 +11,7 @@ export async function loadData() {
     return await res.json();
   } catch (err) {
     console.error('Ошибка загрузки данных:', err);
-    return { engineers: [], tasks: [], history: [] };
+    return { currentProjectId: null, projects: [] };
   }
 }
 
@@ -28,19 +28,6 @@ export async function saveData(data) {
   }
 }
 
-// Сбросить к тестовым данным
-export async function resetToSeed() {
-  const res = await fetch(`${API}/seed`, { method: 'POST' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return await res.json();
-}
-
-// Сохранить текущие данные как тестовые
-export async function saveSeed() {
-  const res = await fetch(`${API}/save-seed`, { method: 'POST' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return await res.json();
-}
 export async function checkServer() {
   try {
     const res = await fetch(`${API}/health`, { signal: AbortSignal.timeout(2000) });

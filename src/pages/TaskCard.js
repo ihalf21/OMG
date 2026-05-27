@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { calcForecast, statusColor, statusLabel, statusBadgeStyle, fmtHours, getDerivedDeadline } from '../utils/forecast';
+import { isAvailableToday, isWorkingRole } from '../domain/availability';
 import { REGULAR_TASKS } from './EngineerCard';
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
 import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm } from '../components/UI';
@@ -28,7 +29,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
   const bs        = statusBadgeStyle(fc?.deadlineStatus);
   const assignedEngs = engineers.filter(e => task.assignedEngineers?.includes(e.id));
   const taskHistory  = history.filter(h => h.fromTask===taskId||h.toTask===taskId).sort((a,b)=>b.date.localeCompare(a.date));
-  const available    = engineers.filter(e => e.role!=='lead' && !task.assignedEngineers?.includes(e.id) && e.status==='active');
+  const available    = engineers.filter(e => isWorkingRole(e) && !task.assignedEngineers?.includes(e.id) && isAvailableToday(e));
   // Рекомендованные: сначала те у кого regularTask совпадает с направлением задачи, потом остальные свободные
   const recommended = available
     .map(e => {

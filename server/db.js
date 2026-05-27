@@ -105,4 +105,4 @@ function seedDatabase() {
   return fresh;
 }
 
-module.exports = { getAllData, saveAllData, seedDatabase };
+module.exports = { getAllData, saveAllData };
