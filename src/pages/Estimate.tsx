@@ -464,8 +464,9 @@ export default function Estimate({ data, updateData }: PageProps) {
   const allTasks  = data.tasks || [];
   const templates: EstimateTemplate[] = data.estimateTemplates || [];
 
-  // Tasks visible in the selector: active ones + any task that has a saved estimate
-  const displayTasks = allTasks.filter(t => t.status === 'active' || t.estimateForm);
+  // Tasks visible in the selector: только активные задачи.
+  // Архивные/завершённые не показываем, даже если у них сохранена оценка.
+  const displayTasks = allTasks.filter(t => t.status === 'active');
   const withEstimate  = displayTasks.filter(t =>  t.estimateForm);
   const withoutEst    = displayTasks.filter(t => !t.estimateForm);
 
