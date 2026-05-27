@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Avatar, RoleBadge, StatusBadge, StarRating, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, Modal, ModalFooter, FormRow, Input, DateRangePicker, useConfirm } from '../components/UI';
-import { formatDate, formatDateShort, todayStr } from '../utils/dates';
+import { Avatar, RoleBadge, StatusBadge, StarRating, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, Modal, ModalFooter, FormRow, Input, DateRangePicker, DatePicker, useConfirm } from '../components/UI';
+import { formatDate, formatDateShort, todayStr, nextWorkday } from '../utils/dates';
 
 const selectStyle = { fontSize:13, border:'1.5px solid var(--border-mid)', borderRadius:4, padding:'4px 8px', background:'var(--bg-secondary)', color:'var(--text-primary)', width:'100%' };
 
@@ -17,6 +17,8 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
   const [showVacation, setShowVacation] = useState(false);
   const [vacFrom, setVacFrom] = useState('');
   const [vacTo, setVacTo]     = useState('');
+  const [showDayoff, setShowDayoff]   = useState(false);
+  const [dayoffDate, setDayoffDate]   = useState('');
   const [showSwitchTask, setShowSwitchTask] = useState(false);
   const { confirm, ConfirmEl } = useConfirm();
 
@@ -153,6 +155,69 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
     }));
   }
 
+  async function addDayoff() {
+    if (!dayoffDate) return;
+    const today = todayStr();
+    const isPast  = dayoffDate < today;
+    const isToday = dayoffDate === today;
+
+    if (isPast) {
+      const ok = await confirm(
+        'Дейоф уже прошёл',
+        'Выбранный день уже в прошлом. Добавить как исторический факт?',
+        { confirmLabel: 'Добавить', danger: false }
+      );
+      if (!ok) return;
+    }
+
+    updateData(prev => {
+      const preTask = prev.tasks.find(t => t.assignedEngineers?.includes(engineerId) && t.status === 'active');
+      const histEntry = {
+        id: 'h' + Date.now(), date: dayoffDate, engineerId,
+        type: 'dayoff', fromTask: preTask?.id || null, toTask: null,
+        note: `Дейоф ${formatDateShort(dayoffDate)}`,
+      };
+
+      if (isToday) {
+        return {
+          ...prev,
+          engineers: prev.engineers.map(e => e.id === engineerId ? { ...e, status: 'dayoff', dayoffDate } : e),
+          tasks: prev.tasks.map(t => ({ ...t, assignedEngineers: (t.assignedEngineers || []).filter(id => id !== engineerId) })),
+          history: [...prev.history, histEntry],
+        };
+      }
+      if (isPast) {
+        return {
+          ...prev,
+          engineers: prev.engineers.map(e => e.id === engineerId ? { ...e, dayoffDate: null } : e),
+          history: [...prev.history, histEntry],
+        };
+      }
+      // Будущий дейоф
+      return {
+        ...prev,
+        engineers: prev.engineers.map(e => e.id === engineerId ? { ...e, dayoffDate } : e),
+        history: [...prev.history, histEntry],
+      };
+    });
+    setShowDayoff(false);
+  }
+
+  function cancelDayoff() {
+    updateData(prev => ({
+      ...prev,
+      engineers: prev.engineers.map(e => e.id === engineerId ? { ...e, dayoffDate: null } : e),
+    }));
+  }
+
+  function returnFromDayoff() {
+    updateData(prev => ({
+      ...prev,
+      engineers: prev.engineers.map(e => e.id === engineerId ? { ...e, status: 'active', dayoffDate: null } : e),
+      history: [...prev.history, { id: 'h' + Date.now(), date: todayStr(), engineerId, type: 'return', fromTask: null, toTask: null, note: 'Вернулся с дейофа' }],
+    }));
+  }
+
   function returnHome() {
     updateData(prev => ({
       ...prev,
@@ -248,6 +313,11 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                   {formatDateShort(eng.vacationFrom)} — {formatDateShort(eng.vacationTo)}
                 </FieldRow>
               )}
+              {eng.dayoffDate && (
+                <FieldRow label={eng.dayoffDate > todayStr() ? "Запланированный дейоф" : "Дейоф"}>
+                  {formatDateShort(eng.dayoffDate)}
+                </FieldRow>
+              )}
 
               {!editMode && (
                 <div style={{ borderTop:'0.5px solid var(--border-light)', paddingTop:14, marginTop:6 }}>
@@ -260,6 +330,9 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                     {eng.status==='active' && !eng.vacationFrom && <BtnSecondary onClick={()=>{ setVacFrom(''); setVacTo(''); setShowVacation(true); }} style={{ fontSize:13, padding:'6px 12px', color:'var(--amber)', borderColor:'var(--amber)' }}>✈️ Отпуск</BtnSecondary>}
                     {(eng.status==='active'||eng.status==='sick') && eng.vacationFrom && <BtnSecondary onClick={cancelVacation} style={{ fontSize:13, padding:'6px 12px', color:'var(--amber)', borderColor:'var(--amber)' }}>✖ Отменить отпуск</BtnSecondary>}
                     {eng.status==='vacation' && <BtnSecondary onClick={returnFromVacation} style={{ fontSize:13, padding:'6px 12px', color:'var(--success)', borderColor:'var(--success)' }}>✓ Вернуть из отпуска</BtnSecondary>}
+                    {eng.status==='active' && !eng.vacationFrom && !eng.dayoffDate && <BtnSecondary onClick={()=>{ setDayoffDate(''); setShowDayoff(true); }} style={{ fontSize:13, padding:'6px 12px', color:'var(--blue)', borderColor:'var(--blue)' }}>🏖️ Дейоф</BtnSecondary>}
+                    {eng.status==='active' && eng.dayoffDate && <BtnSecondary onClick={cancelDayoff} style={{ fontSize:13, padding:'6px 12px', color:'var(--blue)', borderColor:'var(--blue)' }}>✖ Отменить дейоф</BtnSecondary>}
+                    {eng.status==='dayoff' && <BtnSecondary onClick={returnFromDayoff} style={{ fontSize:13, padding:'6px 12px', color:'var(--success)', borderColor:'var(--success)' }}>✓ Вернуть с дейофа</BtnSecondary>}
                   </div>
                 </div>
               )}
@@ -273,7 +346,7 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                 {engHistory.map((h,i) => {
                   const fromTask = tasks.find(t=>t.id===h.fromTask);
                   const toTask   = tasks.find(t=>t.id===h.toTask);
-                  const dotColors = { switch:'var(--blue)', return:'var(--success)', sick:'var(--red)', vacation:'var(--amber)' };
+                  const dotColors = { switch:'var(--blue)', return:'var(--success)', sick:'var(--red)', vacation:'var(--amber)', dayoff:'var(--blue)' };
                   return (
                     <div key={h.id} style={{ position:'relative', paddingBottom:i<engHistory.length-1?16:0 }}>
                       {i<engHistory.length-1&&<div style={{ position:'absolute', left:-16, top:8, bottom:-8, width:1, background:'var(--border-light)' }}/>}
@@ -283,6 +356,7 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                         {h.type==='return'   &&<>Снят с задачи {fromTask?`«${fromTask.name}»`:''}</>}
                         {h.type==='sick'     &&<>Открыт больничный</>}
                         {h.type==='vacation' &&<>Отпуск</>}
+                        {h.type==='dayoff'   &&<>Дейоф</>}
                       </div>
                       {h.note&&<div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{h.note}</div>}
                       <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{formatDate(h.date)}</div>
@@ -357,6 +431,28 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
           </Modal>
         );
       })()}
+
+      {showDayoff && (
+        <Modal title="Дейоф" onClose={()=>setShowDayoff(false)} width={400}>
+          <div style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:14, lineHeight:1.6 }}>
+            Оплачиваемый выходной на один день. Инженер будет недоступен в выбранный день и автоматически вернётся на следующий рабочий день.
+          </div>
+          <FormRow label="День дейофа">
+            <DatePicker value={dayoffDate} onChange={setDayoffDate} placeholder="Выбрать день" clearable={false}/>
+          </FormRow>
+          {dayoffDate && (
+            <div style={{ fontSize:12, color:'var(--text-tertiary)', marginBottom:4 }}>
+              Возврат: {formatDateShort(nextWorkday(dayoffDate))}
+            </div>
+          )}
+          {dayoffDate && dayoffDate < todayStr() && (
+            <div style={{ fontSize:13, color:'var(--amber)', marginTop:8 }}>
+              Дейоф уже прошёл — будет зафиксирован как исторический факт
+            </div>
+          )}
+          <ModalFooter onCancel={()=>setShowDayoff(false)} onSave={addDayoff} saveLabel="Сохранить"/>
+        </Modal>
+      )}
 
       {showVacation && (
         <Modal title="Отпуск" onClose={()=>setShowVacation(false)} width={520}>

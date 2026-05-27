@@ -24,6 +24,7 @@ export function StatusBadge({ status }) {
     active:   { bg:'var(--success-bg)', color:'var(--success)', label:'Доступен' },
     vacation: { bg:'var(--amber-bg)', color:'var(--amber)', label:'Отпуск' },
     sick:     { bg:'var(--red-bg)', color:'var(--red)', label:'Больничный' },
+    dayoff:   { bg:'var(--blue-bg)', color:'var(--blue)', label:'Дейоф' },
   };
   const s = map[status] || map.active;
   return <Badge bg={s.bg} color={s.color}>{s.label}</Badge>;

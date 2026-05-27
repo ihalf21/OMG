@@ -12,13 +12,30 @@ import EngineerCard from './pages/EngineerCard';
 import Gantt from './pages/Gantt';
 import Estimate from './pages/Estimate';
 
-// Исправляет статусы инженеров на основе дат отпуска (работает на одном проекте)
+// Исправляет статусы инженеров на основе дат отпуска/дейофа (работает на одном проекте)
 function normalizeStatuses(d) {
   const today = todayStr();
   const extraHistory = [];
   const removeFromTasks = new Set();
 
   const engineers = (d.engineers || []).map(eng => {
+    // ── Дейоф ────────────────────────────────────────────────────────────────
+    if (eng.dayoffDate) {
+      if (eng.dayoffDate < today) {
+        if (eng.status === 'dayoff') {
+          extraHistory.push({ id: 'h' + Date.now() + eng.id, date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Возврат с дейофа' });
+          return { ...eng, status: 'active', dayoffDate: null };
+        }
+        // Запланирован, но приложение не открывали в тот день — просто чистим
+        return { ...eng, dayoffDate: null };
+      }
+      if (eng.dayoffDate === today && eng.status === 'active') {
+        removeFromTasks.add(eng.id);
+        return { ...eng, status: 'dayoff' };
+      }
+    }
+
+    // ── Отпуск ────────────────────────────────────────────────────────────────
     if (eng.status === 'vacation' && eng.vacationTo && eng.vacationTo < today) {
       extraHistory.push({ id: 'h' + Date.now() + eng.id, date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Возврат из отпуска' });
       return { ...eng, status: 'active', vacationFrom: null, vacationTo: null };

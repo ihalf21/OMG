@@ -132,6 +132,16 @@ export function formatDateShort(dateStr) {
   });
 }
 
+// Следующий рабочий день после указанной даты
+export function nextWorkday(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  do {
+    date.setDate(date.getDate() + 1);
+  } while (!isWorkday(toDateStr(date)));
+  return toDateStr(date);
+}
+
 // Получить массив дней месяца для Ганта
 export function getMonthDays(year, month) {
   const days = [];
