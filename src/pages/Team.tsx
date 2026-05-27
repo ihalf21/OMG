@@ -1,20 +1,33 @@
 import React, { useState } from 'react';
-import { Avatar, RoleBadge, StatusBadge, StarRating, Card, PageTopbar, BtnPrimary, BtnDanger, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
+import { Avatar, RoleBadge, StatusBadge, StarRating, PageTopbar, BtnPrimary, BtnDanger, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
 import { REGULAR_TASKS } from '../domain/tasks';
 import { isAvailableToday, isWorkingRole } from '../domain/availability';
 import { addEngineer as addEngineerOp, deleteEngineer as deleteEngineerOp } from '../domain/engineer';
+import type { Engineer, EngineerRole, EngineerStatus, Task } from '../domain/types';
+import type { PageProps } from '../ui-types';
 
-export default function Team({ data, updateData, navigate }) {
+type RoleFilter = 'all' | EngineerRole;
+type StatusFilter = 'all' | EngineerStatus | 'switched' | 'free' | 'unavail';
+type SortCol = 'name' | 'role' | 'status' | 'task';
+type SortDir = 'asc' | 'desc';
+
+interface NewEngineerForm {
+  name: string;
+  role: EngineerRole;
+  regularTask: string;
+}
+
+export default function Team({ data, updateData, navigate }: PageProps) {
   const { engineers, tasks } = data;
-  const [filterRole,   setFilterRole]   = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterRole,   setFilterRole]   = useState<RoleFilter>('all');
+  const [filterStatus, setFilterStatus] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name:'', role:'engineer', regularTask:'' });
-  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [form, setForm] = useState<NewEngineerForm>({ name:'', role:'engineer', regularTask:'' });
+  const [confirmDelete, setConfirmDelete] = useState<Engineer | null>(null);
 
-  const isOnTask = e => tasks.some(t => t.status === 'active' && t.assignedEngineers?.includes(e.id));
-  const isAvail  = e => isWorkingRole(e) && isAvailableToday(e);
+  const isOnTask = (e: Engineer) => tasks.some(t => t.status === 'active' && t.assignedEngineers?.includes(e.id));
+  const isAvail  = (e: Engineer) => isWorkingRole(e) && isAvailableToday(e);
   const metrics = {
     total:       engineers.filter(isWorkingRole).length,
     active:      engineers.filter(isAvail).length,
@@ -23,29 +36,22 @@ export default function Team({ data, updateData, navigate }) {
     free:        engineers.filter(e => isAvail(e) && !isOnTask(e)).length,
   };
 
-  const filtered = engineers.filter(e => {
-    if (filterRole !== 'all' && e.role !== filterRole) return false;
-    if (filterStatus !== 'all' && e.status !== filterStatus) return false;
-    if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
   const { widths: colWidths, startResize } = useResizableColumns('omg_team_cols', [200, 130, 110, 210, 110, 110]);
-  const [sortBy, setSortBy] = useState('name'); // name | role | status | task
-  const [sortDir, setSortDir] = useState('asc');
+  const [sortBy, setSortBy] = useState<SortCol>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
-  function toggleSort(col) {
+  function toggleSort(col: SortCol) {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortBy(col); setSortDir('asc'); }
   }
 
-  function SortIcon({ col }) {
+  function SortIcon({ col }: { col: SortCol }) {
     if (sortBy !== col) return <span style={{ opacity:0.3, marginLeft:4 }}>↕</span>;
     return <span style={{ marginLeft:4, color:'var(--accent)' }}>{sortDir==='asc'?'↑':'↓'}</span>;
   }
 
-  const ROLE_ORDER = { lead:0, responsible:1, engineer:2, intern:3 };
-  const STATUS_ORDER = { active:0, dayoff:1, sick:2, vacation:3 };
+  const ROLE_ORDER: Record<EngineerRole, number> = { lead:0, responsible:1, engineer:2, intern:3 };
+  const STATUS_ORDER: Record<EngineerStatus, number> = { active:0, dayoff:1, sick:2, vacation:3 };
 
   const filteredAndSorted = engineers.filter(e => {
     if (filterRole !== 'all' && e.role !== filterRole) return false;
@@ -59,18 +65,20 @@ export default function Team({ data, updateData, navigate }) {
     if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   }).sort((a, b) => {
-    let va, vb;
+    let va: string | number = '';
+    let vb: string | number = '';
     if (sortBy === 'name')   { va = a.name; vb = b.name; }
-    else if (sortBy === 'role')   { va = ROLE_ORDER[a.role]??9; vb = ROLE_ORDER[b.role]??9; return sortDir==='asc'?va-vb:vb-va; }
-    else if (sortBy === 'status') { va = STATUS_ORDER[a.status]??9; vb = STATUS_ORDER[b.status]??9; return sortDir==='asc'?va-vb:vb-va; }
+    else if (sortBy === 'role')   { va = ROLE_ORDER[a.role] ?? 9; vb = ROLE_ORDER[b.role] ?? 9; return sortDir==='asc' ? (va as number) - (vb as number) : (vb as number) - (va as number); }
+    else if (sortBy === 'status') { va = STATUS_ORDER[a.status] ?? 9; vb = STATUS_ORDER[b.status] ?? 9; return sortDir==='asc' ? (va as number) - (vb as number) : (vb as number) - (va as number); }
     else if (sortBy === 'task')   {
-      const ta = tasks.find(t=>t.assignedEngineers?.includes(a.id)&&t.status==='active');
-      const tb = tasks.find(t=>t.assignedEngineers?.includes(b.id)&&t.status==='active');
-      va = ta?.name||''; vb = tb?.name||'';
+      const ta = tasks.find(t => t.assignedEngineers?.includes(a.id) && t.status === 'active');
+      const tb = tasks.find(t => t.assignedEngineers?.includes(b.id) && t.status === 'active');
+      va = ta?.name || ''; vb = tb?.name || '';
     }
-    return sortDir==='asc' ? va.localeCompare(vb,'ru') : vb.localeCompare(va,'ru');
+    return sortDir === 'asc' ? (va as string).localeCompare(vb as string, 'ru') : (vb as string).localeCompare(va as string, 'ru');
   });
-  function FilterBtn({ val, cur, set, children }) {
+
+  function FilterBtn<T extends string>({ val, cur, set, children }: { val: T; cur: T; set: (v: T) => void; children: React.ReactNode }) {
     const active = cur === val;
     return (
       <button onClick={() => set(val)} style={{
@@ -83,7 +91,7 @@ export default function Team({ data, updateData, navigate }) {
     );
   }
 
-  function getCurrentTask(eng) {
+  function getCurrentTask(eng: Engineer): Task | undefined {
     return tasks.find(t => t.assignedEngineers?.includes(eng.id) && t.status === 'active');
   }
 
@@ -96,7 +104,7 @@ export default function Team({ data, updateData, navigate }) {
     setForm({ name:'', role:'engineer', regularTask:'' });
   }
 
-  function deleteEngineer(engId) {
+  function deleteEngineer(engId: string) {
     updateData(prev => deleteEngineerOp(prev, engId));
     setConfirmDelete(null);
   }
@@ -110,13 +118,13 @@ export default function Team({ data, updateData, navigate }) {
       <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
         {/* Metrics — кликабельные */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:16 }}>
-          {[
-            { label:'Всего в команде', value:metrics.total,       color:'var(--text-primary)', fs:'all'      },
-            { label:'Доступны',        value:metrics.active,      color:'var(--success)',       fs:'active'   },
-            { label:'Недоступны',      value:metrics.unavailable, color:'var(--red)',           fs:'unavail'  },
-            { label:'На задаче',       value:metrics.switched,    color:'var(--blue)',          fs:'switched' },
-            { label:'Не заняты',       value:metrics.free,        color:'var(--amber)',         fs:'free'     },
-          ].map((m,i) => {
+          {([
+            { label:'Всего в команде', value:metrics.total,       color:'var(--text-primary)', fs:'all' as StatusFilter },
+            { label:'Доступны',        value:metrics.active,      color:'var(--success)',       fs:'active' as StatusFilter },
+            { label:'Недоступны',      value:metrics.unavailable, color:'var(--red)',           fs:'unavail' as StatusFilter },
+            { label:'На задаче',       value:metrics.switched,    color:'var(--blue)',          fs:'switched' as StatusFilter },
+            { label:'Не заняты',       value:metrics.free,        color:'var(--amber)',         fs:'free' as StatusFilter },
+          ]).map((m, i) => {
             const isAct = filterStatus === m.fs;
             return (
               <div key={i} onClick={() => setFilterStatus(isAct ? 'all' : m.fs)}
@@ -136,10 +144,10 @@ export default function Team({ data, updateData, navigate }) {
           }}/>
           <div style={{ width:1, height:24, background:'var(--border-light)' }}/>
           <div style={{ display:'flex', gap:4 }}>
-            <FilterBtn val="all"         cur={filterRole} set={setFilterRole}>Все роли</FilterBtn>
-            <FilterBtn val="responsible" cur={filterRole} set={setFilterRole}>Ответственные</FilterBtn>
-            <FilterBtn val="engineer"    cur={filterRole} set={setFilterRole}>Инженеры</FilterBtn>
-            <FilterBtn val="intern"      cur={filterRole} set={setFilterRole}>Стажёры</FilterBtn>
+            <FilterBtn<RoleFilter> val="all"         cur={filterRole} set={setFilterRole}>Все роли</FilterBtn>
+            <FilterBtn<RoleFilter> val="responsible" cur={filterRole} set={setFilterRole}>Ответственные</FilterBtn>
+            <FilterBtn<RoleFilter> val="engineer"    cur={filterRole} set={setFilterRole}>Инженеры</FilterBtn>
+            <FilterBtn<RoleFilter> val="intern"      cur={filterRole} set={setFilterRole}>Стажёры</FilterBtn>
           </div>
         </div>
 
@@ -148,16 +156,16 @@ export default function Team({ data, updateData, navigate }) {
           <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed' }}>
             <thead>
               <tr style={{ background:'var(--bg-secondary)' }}>
-                {[
-                  { label:'Инженер',       col:'name'   },
-                  { label:'Роль',          col:'role'   },
-                  { label:'Статус',        col:'status' },
-                  { label:'Текущая задача',col:'task'   },
-                  { label:'Опыт (avg)',    col:null     },
-                  { label:'',              col:null     },
-                ].map((h,i) => (
+                {([
+                  { label:'Инженер',       col: 'name' as SortCol | null },
+                  { label:'Роль',          col: 'role' as SortCol | null },
+                  { label:'Статус',        col: 'status' as SortCol | null },
+                  { label:'Текущая задача',col: 'task' as SortCol | null },
+                  { label:'Опыт (avg)',    col: null },
+                  { label:'',              col: null },
+                ]).map((h, i) => (
                   <th key={i}
-                    onClick={h.col ? () => toggleSort(h.col) : undefined}
+                    onClick={h.col ? () => toggleSort(h.col!) : undefined}
                     style={{ fontSize:13, color:'var(--text-tertiary)', fontWeight:600, textAlign:'left', padding:'10px 14px', borderBottom:'1px solid var(--border-light)', cursor:h.col?'pointer':'default', userSelect:'none', whiteSpace:'nowrap', position:'relative', width:colWidths[i] }}>
                     {h.label}{h.col && <SortIcon col={h.col}/>}
                     {i < 5 && <ResizeHandle onMouseDown={e => startResize(i, e)}/>}
@@ -168,13 +176,12 @@ export default function Team({ data, updateData, navigate }) {
             <tbody>
               {filteredAndSorted.map(eng => {
                 const currentTask = getCurrentTask(eng);
-                const isSwitched  = !!currentTask;
-                const expVals = Object.values(eng.experience||{});
+                const expVals = Object.values(eng.experience || {});
                 const avgExp = expVals.length > 0 ? Math.round(expVals.reduce((a,b)=>a+b,0)/expVals.length) : 0;
                 return (
                   <tr key={eng.id} style={{ cursor:'pointer' }}
-                    onMouseEnter={e=>Array.from(e.currentTarget.cells).forEach(td=>td.style.background='var(--bg-secondary)')}
-                    onMouseLeave={e=>Array.from(e.currentTarget.cells).forEach(td=>td.style.background='')}
+                    onMouseEnter={e=>Array.from(e.currentTarget.cells).forEach(td=>(td as HTMLElement).style.background='var(--bg-secondary)')}
+                    onMouseLeave={e=>Array.from(e.currentTarget.cells).forEach(td=>(td as HTMLElement).style.background='')}
                   >
                     <td onClick={()=>navigate('engineer',eng.id)} style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>
                       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -211,10 +218,10 @@ export default function Team({ data, updateData, navigate }) {
 
       {showModal && (
         <Modal title="Добавить инженера" onClose={()=>setShowModal(false)}>
-          <FormRow label="Полное имя"><Input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Иванов Иван Иванович"/></FormRow>
+          <FormRow label="Полное имя"><Input value={form.name} onChange={e=>setForm(f=>({...f, name:e.target.value}))} placeholder="Иванов Иван Иванович"/></FormRow>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
             <FormRow label="Роль">
-              <Select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))}>
+              <Select value={form.role} onChange={e=>setForm(f=>({...f, role: e.target.value as EngineerRole}))}>
                 <option value="lead">Лид</option>
                 <option value="responsible">Ответственный</option>
                 <option value="engineer">Инженер</option>
@@ -222,7 +229,7 @@ export default function Team({ data, updateData, navigate }) {
               </Select>
             </FormRow>
             <FormRow label="Регулярная задача">
-              <Select value={form.regularTask} onChange={e=>setForm(f=>({...f,regularTask:e.target.value}))}>
+              <Select value={form.regularTask} onChange={e=>setForm(f=>({...f, regularTask: e.target.value}))}>
                 <option value="">— не задана —</option>
                 {REGULAR_TASKS.map(t=><option key={t} value={t}>{t}</option>)}
               </Select>

@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { calcForecast, statusColor, statusLabel, statusBadgeStyle, engineersNeeded, computeEffectiveDls } from '../utils/forecast';
+import { calcForecast, statusColor, statusLabel, statusBadgeStyle, engineersNeeded, computeEffectiveDls, type Forecast } from '../utils/forecast';
 import { isAvailableToday, isWorkingRole, leaveTypeToday } from '../domain/availability';
+import { updateTaskProgress } from '../domain/task';
 import { formatDateShort } from '../utils/dates';
 import { Avatar, ProgressBar, Card, SectionTitle, PageTopbar } from '../components/UI';
+import type { Task } from '../domain/types';
+import type { PageProps } from '../ui-types';
 
 // Топологическая сортировка: родители перед детьми, цепочки идут подряд
-function sortByChain(tasks) {
+function sortByChain(tasks: Task[]): Task[] {
   const ids = new Set(tasks.map(t => t.id));
-  const result = [];
-  const visited = new Set();
-  function visit(t) {
+  const result: Task[] = [];
+  const visited = new Set<string>();
+  function visit(t: Task) {
     if (visited.has(t.id)) return;
     visited.add(t.id);
     result.push(t);
@@ -21,14 +24,13 @@ function sortByChain(tasks) {
   return result;
 }
 
-
-export default function Dashboard({ data, updateData, navigate }) {
+export default function Dashboard({ data, updateData, navigate }: PageProps) {
   const { engineers, tasks } = data;
   const activeTasks  = tasks.filter(t => t.status === 'active');
 
   const effectiveDls = computeEffectiveDls(activeTasks, engineers);
 
-  const forecasts = {};
+  const forecasts: Record<string, Forecast> = {};
   activeTasks.forEach(t => {
     forecasts[t.id] = calcForecast(t, engineers, effectiveDls[t.id] || null);
   });
@@ -37,17 +39,17 @@ export default function Dashboard({ data, updateData, navigate }) {
   const tasksNoDl    = sortByChain(activeTasks.filter(t => !effectiveDls[t.id]));
   const unavailable  = engineers.filter(e => isWorkingRole(e) && !isAvailableToday(e));
 
-  const atRisk  = tasksWithDl.filter(t=>forecasts[t.id]?.deadlineStatus==='overdue').length;
-  const onTrack = tasksWithDl.filter(t=>forecasts[t.id]?.deadlineStatus==='ok').length;
+  const atRisk  = tasksWithDl.filter(t => forecasts[t.id]?.deadlineStatus === 'overdue').length;
+  const onTrack = tasksWithDl.filter(t => forecasts[t.id]?.deadlineStatus === 'ok').length;
 
-  const [progressInputs, setProgressInputs] = useState({});
-  const [hoveredId, setHoveredId] = useState(null);
+  const [progressInputs, setProgressInputs] = useState<Record<string, string>>({});
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  function saveProgress(taskId) {
+  function saveProgress(taskId: string) {
     const val = parseInt(progressInputs[taskId]);
-    if (!val||isNaN(val)) return;
-    updateData(prev => ({ ...prev, tasks:prev.tasks.map(t=>t.id===taskId?{...t,doneCases:val}:t) }));
-    setProgressInputs(p=>({...p,[taskId]:''}));
+    if (!val || isNaN(val)) return;
+    updateData(prev => updateTaskProgress(prev, taskId, val));
+    setProgressInputs(p => ({ ...p, [taskId]: '' }));
   }
 
   return (
@@ -87,8 +89,8 @@ export default function Dashboard({ data, updateData, navigate }) {
           {tasksWithDl.map((task, idx, arr)=>{
             const fc=forecasts[task.id];
             const dl=effectiveDls[task.id];
-            const isDerived=!task.deadline||(!!effectiveDls[task.id]&&effectiveDls[task.id]<task.deadline);
-            const isQueued=!!(task.dependsOn&&activeTasks.find(t=>t.id===task.dependsOn));
+            const isDerived=!task.deadline || (!!effectiveDls[task.id] && effectiveDls[task.id]<task.deadline);
+            const isQueued=!!(task.dependsOn && activeTasks.find(t=>t.id===task.dependsOn));
             const barColor=isQueued?'#A8A6A0':statusColor(fc?.deadlineStatus);
             const bs=isQueued?{ bg:'var(--bg-secondary)', color:'var(--text-secondary)' }:statusBadgeStyle(fc?.deadlineStatus);
             const assignedEngs=engineers.filter(e=>task.assignedEngineers?.includes(e.id));
@@ -120,9 +122,9 @@ export default function Dashboard({ data, updateData, navigate }) {
                     {isDerived&&<div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:2 }}>расчётный дедлайн</div>}
                     <div style={{ fontSize:13, color:'var(--text-secondary)', fontWeight:500 }}>до {formatDateShort(dl)}</div>
                     <div style={{ marginTop:4, ...bs, fontSize:12, padding:'2px 8px', borderRadius:4, display:'inline-block', fontWeight:500 }}>{isQueued?'В очереди':statusLabel(fc?.deadlineStatus)}</div>
-                    {!isQueued&&fc?.deadlineStatus === 'overdue' && (() => {
+                    {!isQueued && fc?.deadlineStatus === 'overdue' && (() => {
                       const needed = engineersNeeded(task, engineers, isDerived ? dl : null);
-                      return needed > 0 ? (
+                      return needed && needed > 0 ? (
                         <div style={{ marginTop:4, fontSize:11, color:'var(--red)', fontWeight:500 }}>
                           +{needed} инж. чтобы уложиться
                         </div>
@@ -153,7 +155,7 @@ export default function Dashboard({ data, updateData, navigate }) {
             <SectionTitle>Задачи без дедлайна</SectionTitle>
             {tasksNoDl.map((task, idx, arr)=>{
               const fc=forecasts[task.id];
-              const isQueued=!!(task.dependsOn&&activeTasks.find(t=>t.id===task.dependsOn));
+              const isQueued=!!(task.dependsOn && activeTasks.find(t=>t.id===task.dependsOn));
               const isChainParent = idx < arr.length - 1 && arr[idx + 1].dependsOn === task.id;
               return (
                 <div key={task.id} style={{ position:'relative', marginBottom:8 }}
@@ -196,11 +198,11 @@ export default function Dashboard({ data, updateData, navigate }) {
                   <div style={{ flex:1, fontSize:14, fontWeight:600 }}>{task.name}</div>
                   <div style={{ fontSize:13, color:'var(--text-tertiary)', whiteSpace:'nowrap' }}>план: {task.totalCases} · факт:</div>
                   <input type="number" placeholder="кейсов"
-                    value={progressInputs[task.id]||''}
-                    onChange={e=>setProgressInputs(p=>({...p,[task.id]:e.target.value}))}
+                    value={progressInputs[task.id] || ''}
+                    onChange={e => setProgressInputs(p => ({ ...p, [task.id]: e.target.value }))}
                     style={{ width:90, padding:'6px 9px', border:'1.5px solid var(--border-mid)', borderRadius:6, fontSize:14, background:'var(--bg-secondary)', color:'var(--text-primary)', textAlign:'center' }}
                   />
-                  <button onClick={()=>saveProgress(task.id)} style={{ padding:'6px 16px', border:'none', borderRadius:6, background:'var(--accent)', fontSize:14, color:'#fff', cursor:'pointer', fontWeight:500 }}>Обновить</button>
+                  <button onClick={() => saveProgress(task.id)} style={{ padding:'6px 16px', border:'none', borderRadius:6, background:'var(--accent)', fontSize:14, color:'#fff', cursor:'pointer', fontWeight:500 }}>Обновить</button>
                 </div>
               ))}
             </Card>

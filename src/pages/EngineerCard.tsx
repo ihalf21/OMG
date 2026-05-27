@@ -9,14 +9,28 @@ import {
   setDayoff as setDayoffOp, cancelDayoff as cancelDayoffOp, endDayoffEarly,
   removeFromTask, switchToTask,
 } from '../domain/engineer';
+import type { EngineerRole, ExperienceMap, HistoryType } from '../domain/types';
+import type { PageProps } from '../ui-types';
 
-const selectStyle = { fontSize:13, border:'1.5px solid var(--border-mid)', borderRadius:4, padding:'4px 8px', background:'var(--bg-secondary)', color:'var(--text-primary)', width:'100%' };
+interface Props extends PageProps {
+  engineerId: string;
+  onBack: () => void;
+}
 
-export default function EngineerCard({ data, updateData, navigate, engineerId, onBack }) {
+interface EditForm {
+  name: string;
+  role: EngineerRole;
+  regularTask: string;
+  experience: ExperienceMap;
+}
+
+const selectStyle: React.CSSProperties = { fontSize:13, border:'1.5px solid var(--border-mid)', borderRadius:4, padding:'4px 8px', background:'var(--bg-secondary)', color:'var(--text-primary)', width:'100%' };
+
+export default function EngineerCard({ data, updateData, navigate, engineerId, onBack }: Props) {
   const { engineers, tasks, history } = data;
   const eng = engineers.find(e => e.id === engineerId);
   const [editMode, setEditMode]   = useState(false);
-  const [editForm, setEditForm]   = useState(null);
+  const [editForm, setEditForm]   = useState<EditForm | null>(null);
   const [showVacation, setShowVacation] = useState(false);
   const [vacFrom, setVacFrom] = useState('');
   const [vacTo, setVacTo]     = useState('');
@@ -31,20 +45,20 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
   const engHistory  = history.filter(h => h.engineerId === eng.id).sort((a,b) => b.date.localeCompare(a.date));
   const switchCount = history.filter(h => h.engineerId === eng.id && h.type === 'switch').length;
 
-  // experience теперь хранится по именам регулярных задач
-  const experience = editMode ? (editForm?.experience || {}) : (eng.experience || {});
+  const experience: ExperienceMap = editMode ? (editForm?.experience || {}) : (eng.experience || {});
 
   function startEdit() {
     setEditForm({
-      name: eng.name,
-      role: eng.role,
-      regularTask: eng.regularTask || '',
-      experience: { ...(eng.experience || {}) },
+      name: eng!.name,
+      role: eng!.role,
+      regularTask: eng!.regularTask || '',
+      experience: { ...(eng!.experience || {}) },
     });
     setEditMode(true);
   }
 
   function saveEdit() {
+    if (!editForm) return;
     updateData(prev => updateEngineerProfile(prev, engineerId, {
       name: editForm.name,
       role: editForm.role,
@@ -54,9 +68,9 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
     setEditMode(false);
   }
 
-  function updateExp(taskName, stars) {
+  function updateExp(taskName: string, stars: number) {
     if (!editMode) return;
-    setEditForm(f => ({ ...f, experience: { ...f.experience, [taskName]: stars } }));
+    setEditForm(f => f ? ({ ...f, experience: { ...f.experience, [taskName]: stars } }) : f);
   }
 
   function openSick()  { updateData(prev => setSickLeave(prev, engineerId)); }
@@ -100,10 +114,14 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
     updateData(prev => removeFromTask(prev, engineerId));
   }
 
-  function switchTask(toTaskId) {
+  function switchTask(toTaskId: string) {
     updateData(prev => switchToTask(prev, engineerId, toTaskId));
     setShowSwitchTask(false);
   }
+
+  const dotColors: Record<HistoryType, string> = {
+    switch:'var(--blue)', return:'var(--success)', sick:'var(--red)', vacation:'var(--amber)', dayoff:'var(--blue)',
+  };
 
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
@@ -128,13 +146,13 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
               <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:20 }}>
                 <Avatar name={eng.name} size={56}/>
                 <div style={{ flex:1 }}>
-                  {editMode
-                    ? <Input value={editForm.name} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))} style={{ fontSize:17, fontWeight:600, marginBottom:8 }}/>
+                  {editMode && editForm
+                    ? <Input value={editForm.name} onChange={e=>setEditForm(f=>f?{...f, name:e.target.value}:f)} style={{ fontSize:17, fontWeight:600, marginBottom:8 }}/>
                     : <div style={{ fontSize:18, fontWeight:600 }}>{eng.name}</div>
                   }
                   <div style={{ display:'flex', gap:8, marginTop:6, flexWrap:'wrap' }}>
-                    {editMode
-                      ? <select value={editForm.role} onChange={e=>setEditForm(f=>({...f,role:e.target.value}))} style={{ ...selectStyle, width:'auto' }}>
+                    {editMode && editForm
+                      ? <select value={editForm.role} onChange={e=>setEditForm(f=>f?{...f, role: e.target.value as EngineerRole}:f)} style={{ ...selectStyle, width:'auto' }}>
                           <option value="lead">Лид</option>
                           <option value="responsible">Ответственный</option>
                           <option value="engineer">Инженер</option>
@@ -148,10 +166,10 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                 </div>
               </div>
 
-              {(editMode ? editForm.role : eng.role) !== 'lead' && (
+              {(editMode && editForm ? editForm.role : eng.role) !== 'lead' && (
               <FieldRow label="Регулярная задача">
-                {editMode
-                  ? <select value={editForm.regularTask||''} onChange={e=>setEditForm(f=>({...f,regularTask:e.target.value}))} style={{ ...selectStyle, width:'auto' }}>
+                {editMode && editForm
+                  ? <select value={editForm.regularTask || ''} onChange={e=>setEditForm(f=>f?{...f, regularTask: e.target.value}:f)} style={{ ...selectStyle, width:'auto' }}>
                       <option value="">— не задана —</option>
                       {REGULAR_TASKS.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
@@ -207,7 +225,6 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                 {engHistory.map((h,i) => {
                   const fromTask = tasks.find(t=>t.id===h.fromTask);
                   const toTask   = tasks.find(t=>t.id===h.toTask);
-                  const dotColors = { switch:'var(--blue)', return:'var(--success)', sick:'var(--red)', vacation:'var(--amber)', dayoff:'var(--blue)' };
                   return (
                     <div key={h.id} style={{ position:'relative', paddingBottom:i<engHistory.length-1?16:0 }}>
                       {i<engHistory.length-1&&<div style={{ position:'absolute', left:-16, top:8, bottom:-8, width:1, background:'var(--border-light)' }}/>}
@@ -230,7 +247,7 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
 
           {/* RIGHT */}
           <div>
-            {(editMode ? editForm?.role : eng.role) !== 'lead' && (
+            {(editMode && editForm ? editForm.role : eng.role) !== 'lead' && (
               <Card style={{ marginBottom:14 }}>
                 <div style={{ fontSize:13, fontWeight:600, color:'var(--text-tertiary)', marginBottom:4, textTransform:'uppercase', letterSpacing:'0.05em' }}>Матрица опыта</div>
                 {!editMode && <div style={{ fontSize:12, color:'var(--text-tertiary)', marginBottom:12 }}>Нажмите «Редактировать» для изменения</div>}
