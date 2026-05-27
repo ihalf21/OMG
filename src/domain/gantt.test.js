@@ -5,6 +5,7 @@ import {
   getTaskChain,
   getISOWeek,
   segmentByWeek,
+  arrowAnchorOffset,
 } from './gantt';
 import { getMonthDays } from '../utils/dates';
 
@@ -264,6 +265,45 @@ describe('getISOWeek', () => {
   test('конкретная середина года', () => {
     // Среда 27 мая 2026 — это неделя 22
     expect(getISOWeek('2026-05-27')).toBe(22);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// arrowAnchorOffset
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('arrowAnchorOffset', () => {
+  test('широкий бар — отступ 12px от правого края', () => {
+    expect(arrowAnchorOffset(200)).toBe(188);
+    expect(arrowAnchorOffset(50)).toBe(38);
+  });
+
+  test('ровно на границе (2× rightPadding) — всё ещё используется фиксированный отступ', () => {
+    expect(arrowAnchorOffset(24)).toBe(12); // = width - 12 = 12 = width/2 (та же точка)
+  });
+
+  test('узкий бар (1-дневная задача) — центр бара', () => {
+    // 1 день при стандартной ширине Ганта это ~20px и меньше
+    expect(arrowAnchorOffset(20)).toBe(10);
+    expect(arrowAnchorOffset(16)).toBe(8);
+  });
+
+  test('очень узкий бар — всё ещё центр (не вылазит за пределы)', () => {
+    expect(arrowAnchorOffset(8)).toBe(4);
+    expect(arrowAnchorOffset(4)).toBe(2);
+  });
+
+  test('кастомный rightPadding', () => {
+    expect(arrowAnchorOffset(100, 20)).toBe(80);
+    // 30 < 2*20=40 → центр
+    expect(arrowAnchorOffset(30, 20)).toBe(15);
+  });
+
+  test('фикс бага: отступ заметен на узких барах', () => {
+    // До фикса было pr.width * 0.9 — для 30px = 27px (3px от правого края → почти впритык)
+    // После — для 30px ≥ 24 → 30 - 12 = 18px (12px от правого края → видимый отступ)
+    expect(arrowAnchorOffset(30)).toBe(18);
+    expect(30 - arrowAnchorOffset(30)).toBe(12); // отступ от правого края = 12px
   });
 });
 

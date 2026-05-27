@@ -149,6 +149,22 @@ export function getISOWeek(dateStr: ISODate): number {
   return Math.ceil((((tmp.getTime() - yearStart.getTime()) / 86_400_000) + 1) / 7);
 }
 
+// ─── Dependency arrow anchor ──────────────────────────────────────────────────
+
+/**
+ * Точка крепления стрелки зависимости на правом крае родительского бара.
+ * - Для широких баров — фиксированный отступ от правого края (rightPadding px).
+ * - Для узких баров (ширина < 2*rightPadding) — центр бара, иначе стрелка вылезает
+ *   за бар или лепится впритык к правому краю (для 1-дневных задач это особенно
+ *   заметно — узкая полоска и стрелка почти на самом краю).
+ *
+ * Возвращает смещение в пикселях от ЛЕВОГО края бара.
+ */
+export function arrowAnchorOffset(barWidth: number, rightPadding: number = 12): number {
+  if (barWidth >= 2 * rightPadding) return barWidth - rightPadding;
+  return barWidth / 2;
+}
+
 // ─── Week segmentation ────────────────────────────────────────────────────────
 
 export interface WeekSegment {

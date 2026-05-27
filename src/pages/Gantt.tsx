@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { getMonthDays, todayStr, type MonthDay } from '../utils/dates';
 import { calcForecast, statusColor, getDerivedDeadline } from '../utils/forecast';
 import { isAvailableOn, isWorkingRole, leaveTypeOn } from '../domain/availability';
-import { computeInheritedTeam, computeDynamicStarts, getTaskChain, segmentByWeek } from '../domain/gantt';
+import { computeInheritedTeam, computeDynamicStarts, getTaskChain, segmentByWeek, arrowAnchorOffset } from '../domain/gantt';
 import { genId } from '../utils/ids';
 import { Avatar, PageTopbar, useTooltip } from '../components/UI';
 import type { Engineer, ISODate, Task } from '../domain/types';
@@ -287,7 +287,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       const childIsBelow = cr.top >= pr.top;
       arrows.push({
         key: `${pTask.id}-${cTask.id}`,
-        x1: pr.left - base.left + pr.width * 0.9,
+        x1: pr.left - base.left + arrowAnchorOffset(pr.width),
         y1: childIsBelow ? pr.bottom - base.top : pr.top - base.top,
         x2: cr.left - base.left,
         y2: cr.top - base.top + cr.height / 2,
