@@ -24,7 +24,6 @@ interface NewTaskForm {
 const emptyForm = (): NewTaskForm => ({ name:'', direction:'', startDate: todayStr(), deadline:'', totalCases:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'' });
 
 type StatusFilter = 'all' | 'active' | 'done';
-type DeadlineFilter = 'all' | 'with' | 'without';
 
 function FilterBtn<T extends string>({ val, cur, set, children }: { val: T; cur: T; set: (v: T) => void; children: React.ReactNode }) {
   const active = cur === val;
@@ -49,7 +48,6 @@ function DoneIcon({ task }: { task: Task }) {
 export default function Tasks({ data, updateData, navigate }: PageProps) {
   const { engineers, tasks } = data;
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('active');
-  const [filterDl,     setFilterDl]     = useState<DeadlineFilter>('all');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<NewTaskForm>(emptyForm);
   const [showArchive, setShowArchive] = useState(false);
@@ -70,8 +68,6 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
     if (t.status === 'archived') return false;
     if (filterStatus === 'active' && t.status !== 'active') return false;
     if (filterStatus === 'done'   && t.status !== 'done')   return false;
-    if (filterDl === 'with'    && !t.deadline)  return false;
-    if (filterDl === 'without' &&  t.deadline)  return false;
     return true;
   });
 
@@ -157,13 +153,6 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
             <FilterBtn<StatusFilter> val="all"    cur={filterStatus} set={setFilterStatus}>Все</FilterBtn>
             <FilterBtn<StatusFilter> val="active" cur={filterStatus} set={setFilterStatus}>В работе</FilterBtn>
             <FilterBtn<StatusFilter> val="done"   cur={filterStatus} set={setFilterStatus}>Завершены</FilterBtn>
-          </div>
-
-          <div style={{ width:1, height:24, background:'var(--border-light)' }}/>
-          <div style={{ display:'flex', gap:4 }}>
-            <FilterBtn<DeadlineFilter> val="all"     cur={filterDl} set={setFilterDl}>Все</FilterBtn>
-            <FilterBtn<DeadlineFilter> val="with"    cur={filterDl} set={setFilterDl}>С дедлайном</FilterBtn>
-            <FilterBtn<DeadlineFilter> val="without" cur={filterDl} set={setFilterDl}>Без дедлайна</FilterBtn>
           </div>
         </div>
 
