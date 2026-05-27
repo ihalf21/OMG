@@ -206,7 +206,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
         {days.map((d,i) => (
           <div key={i} style={{
             flex:1, height:'100%',
-            background: d.holiday ? 'var(--bg-tertiary)' : d.weekend ? 'var(--bg-secondary)' : 'transparent',
+            background: d.off ? 'var(--bg-secondary)' : 'transparent',
           }}/>
         ))}
       </div>
@@ -418,8 +418,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                       <div key={i} style={{
                         flex:1, height:13,
                         background: d.today ? 'rgba(29,158,117,0.18)'
-                          : d.holiday ? 'var(--bg-tertiary)'
-                          : d.weekend ? 'var(--bg-secondary)'
+                          : d.off ? 'var(--bg-secondary)'
                           : 'transparent',
                         borderRight: i<DAYS-1 ? `0.5px solid ${d.today?'rgba(29,158,117,0.25)':'var(--border-light)'}` : 'none',
                         display:'flex', alignItems:'center', justifyContent:'center',
