@@ -9,12 +9,9 @@
 // Раньше она была размазана между EngineerCard.js (форма) и normalizeStatuses (демон).
 
 import { todayStr, formatDateShort } from '../utils/dates';
+import { genId } from '../utils/ids';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-
-function genId(prefix) {
-  return prefix + Date.now() + Math.floor(Math.random() * 1000);
-}
 
 function findCurrentTask(state, engineerId) {
   return state.tasks.find(t => t.assignedEngineers?.includes(engineerId) && t.status === 'active');

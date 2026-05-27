@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { getMonthDays, todayStr, addWorkdays } from '../utils/dates';
 import { calcForecast, calcDependentStart, calcScheduledChildStart, statusColor, getDerivedDeadline, HOURS_PER_DAY } from '../utils/forecast';
 import { isAvailableOn, isWorkingRole, leaveTypeOn } from '../domain/availability';
+import { genId } from '../utils/ids';
 import { Avatar, PageTopbar, useTooltip } from '../components/UI';
 
 export default function Gantt({ data, updateData, navigate }) {
@@ -308,7 +309,7 @@ export default function Gantt({ data, updateData, navigate }) {
         if (t.id === toTaskId)   return { ...t, assignedEngineers: [...(t.assignedEngineers||[]), engId] };
         return t;
       }),
-      history: [...(prev.history||[]), { id:'h'+Date.now(), date:todayStr(), engineerId:engId, type:'switch', fromTask:fromTaskId, toTask:toTaskId, note:'' }],
+      history: [...(prev.history||[]), { id:genId('h'), date:todayStr(), engineerId:engId, type:'switch', fromTask:fromTaskId, toTask:toTaskId, note:'' }],
     }));
     setDragEng(null);
     setDragEngOver(null);

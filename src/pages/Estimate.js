@@ -1,6 +1,7 @@
 // src/pages/Estimate.js — Калькулятор трудозатрат (PERT) с шаблонами
 import React, { useState, useMemo } from 'react';
 import { PageTopbar, Card, BtnPrimary, BtnSecondary, BtnDanger } from '../components/UI';
+import { genId } from '../utils/ids';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
@@ -101,7 +102,7 @@ const FOCUS_CLR = { o:'#22c55e', m:'var(--accent)', p:'#f97316' };
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
 
-function gid() { return 'tpl' + Date.now() + Math.random().toString(36).slice(2, 6); }
+const gid = () => genId('tpl');
 
 function calcScenario(form, s) {
   const raw = key => parseFloat(form[key]?.[s]) || 0;

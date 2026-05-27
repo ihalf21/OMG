@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { calcForecast, statusColor, statusLabel, statusBadgeStyle, computeEffectiveDls } from '../utils/forecast';
 import { REGULAR_TASKS } from '../domain/tasks';
+import { genId } from '../utils/ids';
 import { formatDateShort, todayStr } from '../utils/dates';
 import { Avatar, Card, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, ProgressBar, DatePicker, useTooltip, useResizableColumns, ResizeHandle, useConfirm } from '../components/UI';
 
@@ -94,7 +95,7 @@ export default function Tasks({ data, updateData, navigate }) {
       if (parent?.assignedEngineers?.length) assignedEngineers = [...parent.assignedEngineers];
     }
 
-    const id = 't' + Date.now();
+    const id = genId('t');
     updateData(prev => ({ ...prev, tasks: [...prev.tasks, {
       id,
       name:        form.name,

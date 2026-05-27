@@ -3,10 +3,7 @@
 // Принимают project state {engineers, tasks, history} → возвращают новый state.
 
 import { todayStr } from '../utils/dates';
-
-function genId(prefix) {
-  return prefix + Date.now() + Math.floor(Math.random() * 1000);
-}
+import { genId } from '../utils/ids';
 
 function appendHistory(state, entry) {
   return [...state.history, { id: genId('h'), ...entry }];

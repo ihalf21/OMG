@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Avatar, RoleBadge, StatusBadge, StarRating, Card, PageTopbar, BtnPrimary, BtnDanger, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
 import { REGULAR_TASKS } from '../domain/tasks';
 import { isAvailableToday, isWorkingRole } from '../domain/availability';
+import { addEngineer as addEngineerOp, deleteEngineer as deleteEngineerOp } from '../domain/engineer';
 
 export default function Team({ data, updateData, navigate }) {
   const { engineers, tasks } = data;
@@ -88,27 +89,15 @@ export default function Team({ data, updateData, navigate }) {
 
   function addEngineer() {
     if (!form.name.trim()) return;
-    updateData(prev => ({
-      ...prev,
-      engineers: [...prev.engineers, {
-        id:'e'+Date.now(), name:form.name, role:form.role,
-        regularTask:form.regularTask||null, status:'active',
-        vacationFrom:null, vacationTo:null, experience:{},
-      }],
+    updateData(prev => addEngineerOp(prev, {
+      name: form.name, role: form.role, regularTask: form.regularTask || null,
     }));
     setShowModal(false);
     setForm({ name:'', role:'engineer', regularTask:'' });
   }
 
   function deleteEngineer(engId) {
-    updateData(prev => ({
-      ...prev,
-      engineers: prev.engineers.filter(e => e.id !== engId),
-      tasks: prev.tasks.map(t => ({
-        ...t,
-        assignedEngineers: (t.assignedEngineers||[]).filter(id => id !== engId),
-      })),
-    }));
+    updateData(prev => deleteEngineerOp(prev, engId));
     setConfirmDelete(null);
   }
 

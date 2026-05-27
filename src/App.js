@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { loadData, saveData, checkServer } from './utils/storage';
 import { todayStr } from './utils/dates';
+import { genId } from './utils/ids';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import Dashboard from './pages/Dashboard';
@@ -22,7 +23,7 @@ function normalizeStatuses(d) {
     if (eng.dayoffDate) {
       if (eng.dayoffDate < today) {
         if (eng.status === 'dayoff') {
-          extraHistory.push({ id: 'h' + Date.now() + eng.id, date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Возврат с дейофа' });
+          extraHistory.push({ id: genId('h'), date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Возврат с дейофа' });
           return { ...eng, status: 'active', dayoffDate: null };
         }
         // Запланирован, но приложение не открывали в тот день — просто чистим
@@ -36,7 +37,7 @@ function normalizeStatuses(d) {
 
     // ── Отпуск ────────────────────────────────────────────────────────────────
     if (eng.status === 'vacation' && eng.vacationTo && eng.vacationTo < today) {
-      extraHistory.push({ id: 'h' + Date.now() + eng.id, date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Возврат из отпуска' });
+      extraHistory.push({ id: genId('h'), date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Возврат из отпуска' });
       return { ...eng, status: 'active', vacationFrom: null, vacationTo: null };
     }
     if (eng.status === 'vacation' && eng.vacationFrom && eng.vacationFrom > today) {
@@ -47,7 +48,7 @@ function normalizeStatuses(d) {
       return { ...eng, status: 'vacation' };
     }
     if (eng.status === 'sick' && eng.vacationFrom && eng.vacationFrom <= today) {
-      extraHistory.push({ id: 'h' + Date.now() + eng.id, date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Больничный закрыт: начался отпуск' });
+      extraHistory.push({ id: genId('h'), date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Больничный закрыт: начался отпуск' });
       removeFromTasks.add(eng.id);
       return { ...eng, status: 'vacation' };
     }
@@ -140,7 +141,7 @@ export default function App() {
   }
 
   function addProject(name) {
-    const newId = 'p' + Date.now();
+    const newId = genId('p');
     setData(prev => ({
       ...prev,
       projects: [...prev.projects, { id: newId, name, engineers: [], tasks: [], history: [] }],
