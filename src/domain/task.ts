@@ -1,20 +1,20 @@
-// src/domain/task.js
+// src/domain/task.ts
 // Чистые функции переходов состояния задачи.
-// Принимают project state {engineers, tasks, history} → возвращают новый state.
 
 import { todayStr } from '../utils/dates';
 import { genId } from '../utils/ids';
+import type { HistoryEntry, ISODate, ProjectState, Task } from './types';
 
-function appendHistory(state, entry) {
+function appendHistory(state: ProjectState, entry: Omit<HistoryEntry, 'id'>): HistoryEntry[] {
   return [...state.history, { id: genId('h'), ...entry }];
 }
 
-function patchTask(state, taskId, patch) {
+function patchTask(state: ProjectState, taskId: string, patch: Partial<Task>): Task[] {
   return state.tasks.map(t => t.id === taskId ? { ...t, ...patch } : t);
 }
 
 // Рекурсивный расчёт полной команды задачи (своя + унаследованная от родителей)
-export function getEffectiveTeam(task, allTasks, depth = 0) {
+export function getEffectiveTeam(task: Task | undefined, allTasks: Task[], depth: number = 0): string[] {
   if (!task || depth > 9) return [];
   const own = task.assignedEngineers || [];
   if (!task.dependsOn) return own;
@@ -26,7 +26,7 @@ export function getEffectiveTeam(task, allTasks, depth = 0) {
 
 // ─── Назначение инженеров ─────────────────────────────────────────────────────
 
-export function addEngineerToTask(state, taskId, engineerId) {
+export function addEngineerToTask(state: ProjectState, taskId: string, engineerId: string): ProjectState {
   return {
     ...state,
     tasks: state.tasks.map(t => t.id === taskId
@@ -39,7 +39,7 @@ export function addEngineerToTask(state, taskId, engineerId) {
   };
 }
 
-export function removeEngineerFromTask(state, taskId, engineerId) {
+export function removeEngineerFromTask(state: ProjectState, taskId: string, engineerId: string): ProjectState {
   return {
     ...state,
     tasks: state.tasks.map(t => t.id === taskId
@@ -54,16 +54,14 @@ export function removeEngineerFromTask(state, taskId, engineerId) {
 
 // ─── Зависимости ──────────────────────────────────────────────────────────────
 
-// Отвязать текущую задачу от родителя
-export function unlinkParent(state, taskId) {
+export function unlinkParent(state: ProjectState, taskId: string): ProjectState {
   return {
     ...state,
     tasks: patchTask(state, taskId, { dependsOn: null, startDate: null }),
   };
 }
 
-// Отвязать дочернюю задачу
-export function unlinkChild(state, childId) {
+export function unlinkChild(state: ProjectState, childId: string): ProjectState {
   return {
     ...state,
     tasks: patchTask(state, childId, { dependsOn: null }),
@@ -72,9 +70,13 @@ export function unlinkChild(state, childId) {
 
 // ─── Статусы задачи ───────────────────────────────────────────────────────────
 
-// Передать команду дочерней задаче перед завершением/архивацией.
-// Возвращает { tasks, history, childId } — childId нужен для completedWithChildId.
-function transferTeamToChild(state, taskId) {
+interface TeamTransferResult {
+  tasks: Task[];
+  history: HistoryEntry[];
+  childId: string | null;
+}
+
+function transferTeamToChild(state: ProjectState, taskId: string): TeamTransferResult {
   const child = state.tasks.find(t => t.dependsOn === taskId && t.status === 'active');
   if (!child) return { tasks: state.tasks, history: state.history, childId: null };
 
@@ -84,7 +86,7 @@ function transferTeamToChild(state, taskId) {
 
   const today = todayStr();
   const merged = [...new Set([...team, ...(child.assignedEngineers || [])])];
-  const newHistory = team.map(engId => ({
+  const newHistory: HistoryEntry[] = team.map(engId => ({
     id: genId('h'), date: today, engineerId: engId, type: 'switch',
     fromTask: taskId, toTask: child.id, note: 'Автоперевод при завершении задачи',
   }));
@@ -98,7 +100,7 @@ function transferTeamToChild(state, taskId) {
   };
 }
 
-export function completeTask(state, taskId, completionDate) {
+export function completeTask(state: ProjectState, taskId: string, completionDate: ISODate): ProjectState {
   const transfer = transferTeamToChild(state, taskId);
   return {
     ...state,
@@ -110,7 +112,7 @@ export function completeTask(state, taskId, completionDate) {
   };
 }
 
-export function reopenTask(state, taskId) {
+export function reopenTask(state: ProjectState, taskId: string): ProjectState {
   const parent = state.tasks.find(t => t.id === taskId);
   const childId = parent?.completedWithChildId;
   return {
@@ -127,7 +129,7 @@ export function reopenTask(state, taskId) {
   };
 }
 
-export function archiveTask(state, taskId) {
+export function archiveTask(state: ProjectState, taskId: string): ProjectState {
   const transfer = transferTeamToChild(state, taskId);
   return {
     ...state,
@@ -139,7 +141,7 @@ export function archiveTask(state, taskId) {
   };
 }
 
-export function restoreFromArchive(state, taskId) {
+export function restoreFromArchive(state: ProjectState, taskId: string): ProjectState {
   return {
     ...state,
     tasks: patchTask(state, taskId, { status: 'active', archivedDate: null }),
@@ -148,7 +150,7 @@ export function restoreFromArchive(state, taskId) {
 
 // ─── Прогресс ─────────────────────────────────────────────────────────────────
 
-export function updateTaskProgress(state, taskId, doneCases) {
+export function updateTaskProgress(state: ProjectState, taskId: string, doneCases: number): ProjectState {
   return {
     ...state,
     tasks: state.tasks.map(t => {

@@ -1,22 +1,21 @@
-// utils/storage.js — работа с бэкендом (Express API)
-// Все данные хранятся на сервере в файле server/data.json
+// utils/storage.ts — работа с бэкендом (Express API).
+
+import type { Workspace } from '../domain/types';
 
 const API = '/api';
 
-// Загрузить все данные с сервера
-export async function loadData() {
+export async function loadData(): Promise<Workspace> {
   try {
     const res = await fetch(`${API}/data`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
     console.error('Ошибка загрузки данных:', err);
-    return { currentProjectId: null, projects: [] };
+    return { currentProjectId: '', projects: [] };
   }
 }
 
-// Сохранить все данные на сервер
-export async function saveData(data) {
+export async function saveData(data: Workspace): Promise<void> {
   try {
     await fetch(`${API}/data`, {
       method: 'POST',
@@ -28,7 +27,7 @@ export async function saveData(data) {
   }
 }
 
-export async function checkServer() {
+export async function checkServer(): Promise<boolean> {
   try {
     const res = await fetch(`${API}/health`, { signal: AbortSignal.timeout(2000) });
     return res.ok;

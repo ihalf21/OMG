@@ -1,8 +1,9 @@
-// utils/dates.js — рабочие дни с учётом праздников РФ
+// utils/dates.ts — рабочие дни с учётом праздников РФ.
+
+import type { ISODate } from '../domain/types';
 
 // Праздники РФ 2025 (YYYY-MM-DD)
-// Источник: производственный календарь РФ 2025
-const RU_HOLIDAYS_2025 = new Set([
+const RU_HOLIDAYS_2025 = new Set<string>([
   // Январь — Новогодние каникулы + Рождество
   '2025-01-01','2025-01-02','2025-01-03','2025-01-06','2025-01-07','2025-01-08',
   // Февраль — День защитника Отечества (24-е, перенос с 23-го вс)
@@ -10,8 +11,8 @@ const RU_HOLIDAYS_2025 = new Set([
   // Март — Международный женский день (10-е, перенос с 8-го сб)
   '2025-03-10',
   // Май — Праздник весны и труда + День Победы
-  '2025-05-01','2025-05-02', // Праздник труда + перенос
-  '2025-05-08','2025-05-09', // перенос + День Победы
+  '2025-05-01','2025-05-02',
+  '2025-05-08','2025-05-09',
   // Июнь — День России
   '2025-06-12','2025-06-13',
   // Ноябрь — День народного единства
@@ -20,8 +21,8 @@ const RU_HOLIDAYS_2025 = new Set([
   '2025-12-31',
 ]);
 
-// Праздники РФ 2026 (на перспективу)
-const RU_HOLIDAYS_2026 = new Set([
+// Праздники РФ 2026
+const RU_HOLIDAYS_2026 = new Set<string>([
   '2026-01-01','2026-01-02','2026-01-07','2026-01-08','2026-01-09',
   '2026-02-23',
   '2026-03-09',
@@ -30,46 +31,44 @@ const RU_HOLIDAYS_2026 = new Set([
   '2026-11-04',
 ]);
 
-const ALL_HOLIDAYS = new Set([...RU_HOLIDAYS_2025, ...RU_HOLIDAYS_2026]);
+const ALL_HOLIDAYS = new Set<string>([...RU_HOLIDAYS_2025, ...RU_HOLIDAYS_2026]);
 
 // ВАЖНО: используем локальное время пользователя, не UTC
-// toISOString() возвращает UTC и сдвигает дату при UTC+3 и выше
-export function toDateStr(d) {
+export function toDateStr(d: Date): ISODate {
   const year  = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day   = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
-export function todayStr() {
+export function todayStr(): ISODate {
   return toDateStr(new Date());
 }
 
-export function isWorkday(dateStr) {
+export function isWorkday(dateStr: ISODate): boolean {
   if (ALL_HOLIDAYS.has(dateStr)) return false;
-  // Парсим как локальную дату (без UTC-смещения)
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   const dow  = date.getDay();
   return dow !== 0 && dow !== 6;
 }
 
-export function isHoliday(dateStr) {
+export function isHoliday(dateStr: ISODate): boolean {
   return ALL_HOLIDAYS.has(dateStr);
 }
 
-export function isWeekend(dateStr) {
+export function isWeekend(dateStr: ISODate): boolean {
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   return date.getDay() === 0 || date.getDay() === 6;
 }
 
-export function isOff(dateStr) {
+export function isOff(dateStr: ISODate): boolean {
   return !isWorkday(dateStr);
 }
 
-// Вычесть N рабочих дней из даты
-export function subtractWorkdays(startDateStr, days) {
+// Вычесть N рабочих дней
+export function subtractWorkdays(startDateStr: ISODate, days: number): ISODate {
   if (!days || days <= 0) return startDateStr;
   const [y, m, d] = startDateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
@@ -81,8 +80,8 @@ export function subtractWorkdays(startDateStr, days) {
   return toDateStr(date);
 }
 
-// Добавить N рабочих дней к дате
-export function addWorkdays(startDateStr, days) {
+// Добавить N рабочих дней
+export function addWorkdays(startDateStr: ISODate, days: number): ISODate {
   if (!days || days <= 0) return startDateStr;
   const [y, m, d] = startDateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
@@ -95,7 +94,7 @@ export function addWorkdays(startDateStr, days) {
 }
 
 // Кол-во рабочих дней между двумя датами (включительно)
-export function workdaysBetween(fromStr, toStr) {
+export function workdaysBetween(fromStr: ISODate, toStr: ISODate): number {
   const [fy, fm, fd] = fromStr.split('-').map(Number);
   const [ty, tm, td] = toStr.split('-').map(Number);
   const from = new Date(fy, fm - 1, fd);
@@ -110,31 +109,15 @@ export function workdaysBetween(fromStr, toStr) {
 }
 
 // Рабочих дней прошло с даты старта до сегодня
-export function workdaysElapsed(startDateStr) {
+export function workdaysElapsed(startDateStr: ISODate | null | undefined): number {
   if (!startDateStr) return 0;
   const today = todayStr();
   if (startDateStr > today) return 0;
   return workdaysBetween(startDateStr, today);
 }
 
-export function formatDate(dateStr) {
-  if (!dateStr) return '—';
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('ru-RU', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  });
-}
-
-export function formatDateShort(dateStr) {
-  if (!dateStr) return '—';
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('ru-RU', {
-    day: 'numeric', month: 'short',
-  });
-}
-
 // Следующий рабочий день после указанной даты
-export function nextWorkday(dateStr) {
+export function nextWorkday(dateStr: ISODate): ISODate {
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   do {
@@ -143,13 +126,36 @@ export function nextWorkday(dateStr) {
   return toDateStr(date);
 }
 
-// Получить массив дней месяца для Ганта
-export function getMonthDays(year, month) {
-  const days = [];
+export function formatDate(dateStr: ISODate | null | undefined): string {
+  if (!dateStr) return '—';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('ru-RU', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  });
+}
+
+export function formatDateShort(dateStr: ISODate | null | undefined): string {
+  if (!dateStr) return '—';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('ru-RU', {
+    day: 'numeric', month: 'short',
+  });
+}
+
+export interface MonthDay {
+  str: ISODate;
+  day: number;
+  off: boolean;
+  holiday: boolean;
+  weekend: boolean;
+  today: boolean;
+}
+
+export function getMonthDays(year: number, month: number): MonthDay[] {
+  const days: MonthDay[] = [];
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = todayStr();
   for (let i = 1; i <= daysInMonth; i++) {
-    // Строим дату локально, без UTC-смещения
     const str = toDateStr(new Date(year, month, i));
     days.push({
       str,

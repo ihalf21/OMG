@@ -1,15 +1,16 @@
-// utils/forecast.js — расчёт прогноза завершения задачи
-// Оценка в человеко-часах (чч). Рабочий день = 8 часов.
+// utils/forecast.ts — расчёт прогноза завершения задачи.
+// Оценка в человеко-часах. Рабочий день = 8 часов.
 
 import { addWorkdays, subtractWorkdays, workdaysElapsed, todayStr, workdaysBetween } from './dates';
 import { roleCoeff, capacityToday } from '../domain/availability';
+import type { Engineer, ISODate, Task } from '../domain/types';
 
 export const HOURS_PER_DAY = 8;
 export { roleCoeff };
 
 // Текущая мощность команды задачи — учитывает кто сегодня в отпуске/больничном/дейофе.
-// Это «реальная» capacity, на которую можно положиться при расчёте сроков.
-export function currentCapacity(task, engineers) {
+// «Реальная» capacity, на которую можно положиться при расчёте сроков.
+export function currentCapacity(task: Task, engineers: Engineer[]): number {
   return (task.assignedEngineers || []).reduce((sum, id) => {
     const eng = engineers.find(e => e.id === id);
     if (!eng) return sum;
@@ -17,11 +18,9 @@ export function currentCapacity(task, engineers) {
   }, 0);
 }
 
-// Номинальная мощность команды — игнорирует временные отсутствия (отпуск/дейоф/больничный).
-// Используется при elapsed-based прогрессе: «предполагаем что команда была вся,
-// и за прошедшие N дней отработала X часов». Это апроксимация — реальная картина
-// может быть хуже из-за пропусков, но для отображения прогресса так проще.
-export function nominalCapacity(task, engineers) {
+// Номинальная мощность команды — игнорирует временные отсутствия.
+// Используется при elapsed-based прогрессе.
+export function nominalCapacity(task: Task, engineers: Engineer[]): number {
   return (task.assignedEngineers || []).reduce((sum, id) => {
     const eng = engineers.find(e => e.id === id);
     if (!eng) return sum;
@@ -29,33 +28,39 @@ export function nominalCapacity(task, engineers) {
   }, 0);
 }
 
+export type DeadlineStatus = 'ok' | 'risk' | 'overdue';
+
+export interface Forecast {
+  progressPct: number;
+  hoursLeft: number | null;
+  daysLeft: number | null;
+  forecastDate: ISODate | null;
+  deadlineStatus: DeadlineStatus | null;
+  capacity: number;
+  effectiveDeadline: ISODate | null;
+}
+
 /**
  * Основной расчёт прогноза.
  * estimateHours — оценка в человеко-часах.
- *
- * Возвращает:
- *   progressPct      — % выполнения (0–100)
- *   hoursLeft        — часов работы осталось
- *   daysLeft         — рабочих дней до завершения (с текущей командой)
- *   forecastDate     — расчётная дата завершения
- *   deadlineStatus   — 'ok' | 'risk' | 'overdue' | null
- *   capacity         — текущая эффективная мощность (ед/день)
  */
-export function calcForecast(task, engineers, deadlineOverride = null, startOverride = null) {
-  const cap = currentCapacity(task, engineers);         // эфф. мощность сегодня
-  const capFull = nominalCapacity(task, engineers); // полная (для авто-прогресса)
+export function calcForecast(
+  task: Task,
+  engineers: Engineer[],
+  deadlineOverride: ISODate | null = null,
+  startOverride: ISODate | null = null,
+): Forecast {
+  const cap = currentCapacity(task, engineers);
+  const capFull = nominalCapacity(task, engineers);
   const totalHours = task.estimateHours || 0;
 
   let progressPct = 0;
   let remainingHours = totalHours;
 
   if (task.totalCases && task.totalCases > 0 && (task.doneCases || 0) > 0) {
-    // Ручной прогресс по кейсам (только если хоть что-то введено)
     progressPct = Math.min(100, Math.round((task.doneCases / task.totalCases) * 100));
     remainingHours = totalHours * (1 - progressPct / 100);
   } else {
-    // Авто: прошло рабочих дней × эфф. мощность × часов в дне
-    // Используется и когда totalCases не задан, и когда doneCases ещё не вводили
     const elapsed = task.startDate ? workdaysElapsed(task.startDate) : 0;
     const usedHours = elapsed * capFull * HOURS_PER_DAY;
     remainingHours = Math.max(0, totalHours - usedHours);
@@ -64,51 +69,50 @@ export function calcForecast(task, engineers, deadlineOverride = null, startOver
       : 0;
   }
 
-  // Рабочих дней до завершения
-  // cap * HOURS_PER_DAY = часов в день от текущей команды
   const hoursPerDay = cap * HOURS_PER_DAY;
   const daysLeft = (hoursPerDay > 0 && totalHours > 0) ? Math.max(1, Math.round(remainingHours / hoursPerDay)) : null;
 
-  let forecastDate = null;
+  let forecastDate: ISODate | null = null;
   if (daysLeft !== null) {
     const today = todayStr();
-    let baseDate;
+    let baseDate: ISODate;
     if (startOverride) {
       baseDate = startOverride > today ? startOverride : today;
     } else {
       baseDate = task.startDate && task.startDate > today ? task.startDate : today;
     }
-    // daysLeft — количество занятых рабочих дней, последний день = start + (daysLeft-1)
     forecastDate = addWorkdays(baseDate, Math.max(0, daysLeft - 1));
   }
 
-  // Эффективный дедлайн: переданный override имеет приоритет над собственным
   const effectiveDl = deadlineOverride !== null ? deadlineOverride : (task.deadline || null);
 
-  // Статус дедлайна
-  let deadlineStatus = null;
+  let deadlineStatus: DeadlineStatus | null = null;
   if (!effectiveDl) {
-    // Нет дедлайна — всегда зелёный
     deadlineStatus = 'ok';
   } else if (forecastDate) {
     if (forecastDate > effectiveDl) {
-      // Выходим за дедлайн — срыв
       deadlineStatus = 'overdue';
     } else {
-      // Укладываемся — проверяем запас
       const daysToDeadline = workdaysBetween(todayStr(), effectiveDl);
       const buffer = daysToDeadline > 0
         ? (daysToDeadline - (daysLeft || 0)) / daysToDeadline
         : 0;
-      // Опережение если запас > 15%, иначе впритык
       deadlineStatus = buffer > 0.15 ? 'ok' : 'risk';
     }
   }
 
-  return { progressPct, hoursLeft: totalHours > 0 ? remainingHours : null, daysLeft, forecastDate, deadlineStatus, capacity: cap, effectiveDeadline: effectiveDl };
+  return {
+    progressPct,
+    hoursLeft: totalHours > 0 ? remainingHours : null,
+    daysLeft,
+    forecastDate,
+    deadlineStatus,
+    capacity: cap,
+    effectiveDeadline: effectiveDl,
+  };
 }
 
-export function statusColor(status) {
+export function statusColor(status: DeadlineStatus | null | undefined): string {
   switch (status) {
     case 'ok':      return 'var(--success)';
     case 'risk':    return '#EF9F27';
@@ -117,7 +121,7 @@ export function statusColor(status) {
   }
 }
 
-export function statusLabel(status) {
+export function statusLabel(status: DeadlineStatus | null | undefined): string {
   switch (status) {
     case 'ok':      return 'Опережение';
     case 'risk':    return 'Впритык';
@@ -126,7 +130,12 @@ export function statusLabel(status) {
   }
 }
 
-export function statusBadgeStyle(status) {
+export interface BadgeStyle {
+  bg: string;
+  color: string;
+}
+
+export function statusBadgeStyle(status: DeadlineStatus | null | undefined): BadgeStyle {
   switch (status) {
     case 'ok':      return { bg: 'var(--success-bg)',   color: 'var(--success)' };
     case 'risk':    return { bg: 'var(--amber-bg)',     color: 'var(--amber)' };
@@ -135,8 +144,7 @@ export function statusBadgeStyle(status) {
   }
 }
 
-// Форматирование часов для отображения
-export function fmtHours(h) {
+export function fmtHours(h: number | null | undefined): string {
   if (h === null || h === undefined) return '—';
   const rounded = Math.round(h);
   if (rounded < HOURS_PER_DAY) return `${rounded} чч`;
@@ -145,40 +153,39 @@ export function fmtHours(h) {
   return hrs > 0 ? `${days} дн. ${hrs} чч` : `${days} дн.`;
 }
 
+export interface DependentStart {
+  date: ISODate | null;
+  halfDay: boolean;
+}
+
 /**
- * Вычислить дату старта зависимой задачи с учётом полудня.
- * Использует фактический прогресс родителя (elapsed-based).
- * Применяется когда родитель уже НАЧАТ (task.startDate установлен).
+ * Дата старта зависимой задачи, родитель уже начат.
  */
-export function calcDependentStart(parentTask, parentEngineers) {
+export function calcDependentStart(parentTask: Task, parentEngineers: Engineer[]): DependentStart {
   const fc = calcForecast(parentTask, parentEngineers);
   if (!fc.forecastDate) return { date: null, halfDay: false };
-  // Дочерняя задача всегда стартует на следующий рабочий день после конца бара родителя.
-  // Math.round в calcForecast определяет длину бара; +1 даёт старт дочерней.
   return { date: addWorkdays(fc.forecastDate, 1), halfDay: false };
 }
 
 /**
- * Schedule-forward: вычислить когда закончится родитель, если он стартует в parentDynStart.
- * НЕ считает elapsed. Используется для цепочки ещё не начатых задач.
+ * Schedule-forward: вычислить когда закончится родитель если он стартует в parentDynStart.
  * Возвращает дату старта дочерней задачи.
  */
-export function calcScheduledChildStart(parentTask, parentEngineers, parentDynStart) {
+export function calcScheduledChildStart(parentTask: Task, parentEngineers: Engineer[], parentDynStart: ISODate | null): ISODate | null {
   const cap = currentCapacity(parentTask, parentEngineers);
   if (!cap || !parentDynStart) return null;
   const totalHours = parentTask.estimateHours || 0;
   const hoursPerDay = cap * HOURS_PER_DAY;
   const exactDays = totalHours > 0 ? totalHours / hoursPerDay : 0;
   const daysTotal = Math.max(1, Math.round(exactDays));
-  // addWorkdays(start, n) = первый свободный день после n рабочих дней задачи = старт дочерней
   return addWorkdays(parentDynStart, daysTotal);
 }
 
 /**
- * Сколько инженеров (с коэфф. 1.0) нужно добавить чтобы уложиться в дедлайн.
+ * Сколько инженеров нужно добавить чтобы уложиться в дедлайн.
  * Возвращает 0 если уже укладываемся, null если нет дедлайна.
  */
-export function engineersNeeded(task, engineers, deadlineOverride = null) {
+export function engineersNeeded(task: Task, engineers: Engineer[], deadlineOverride: ISODate | null = null): number | null {
   const effectiveDl = deadlineOverride !== null ? deadlineOverride : (task.deadline || null);
   if (!effectiveDl) return null;
   const fc = calcForecast(task, engineers, deadlineOverride);
@@ -187,11 +194,9 @@ export function engineersNeeded(task, engineers, deadlineOverride = null) {
   const totalHours = task.estimateHours || 0;
   const cap = currentCapacity(task, engineers);
 
-  // Рабочих дней до дедлайна
   const daysToDeadline = workdaysBetween(todayStr(), effectiveDl);
   if (daysToDeadline <= 0) return null;
 
-  // Сколько часов осталось
   let remainingHours = totalHours;
   if (task.totalCases && task.totalCases > 0 && (task.doneCases || 0) > 0) {
     const pct = Math.min(1, (task.doneCases || 0) / task.totalCases);
@@ -203,7 +208,6 @@ export function engineersNeeded(task, engineers, deadlineOverride = null) {
     remainingHours = Math.max(0, totalHours - usedHours);
   }
 
-  // Нужная мощность = remainingHours / (daysToDeadline * HOURS_PER_DAY)
   const neededCap = remainingHours / (daysToDeadline * HOURS_PER_DAY);
   const extraCap  = neededCap - cap;
   return extraCap > 0 ? Math.ceil(extraCap) : 0;
@@ -211,11 +215,8 @@ export function engineersNeeded(task, engineers, deadlineOverride = null) {
 
 /**
  * Обратный расчёт дедлайна по цепочке зависимостей.
- * Если у задачи нет своего дедлайна, но у дочерней задачи он есть —
- * вычитаем длительность дочерней задачи из её дедлайна, и так рекурсивно.
- * allTasks должен содержать только активные задачи.
  */
-export function getDerivedDeadline(task, allTasks, engineers, _depth = 0) {
+export function getDerivedDeadline(task: Task, allTasks: Task[], engineers: Engineer[], _depth: number = 0): ISODate | null {
   if (_depth > 20) return task.deadline || null;
 
   const child = allTasks.find(t => t.dependsOn === task.id);
@@ -224,8 +225,6 @@ export function getDerivedDeadline(task, allTasks, engineers, _depth = 0) {
   const childDl = getDerivedDeadline(child, allTasks, engineers, _depth + 1);
   if (!childDl) return task.deadline || null;
 
-  // Для обратного планирования используем полную оценку (estimateHours),
-  // а не hoursLeft — иначе устаревший startDate занижает длительность.
   const childCap = currentCapacity(child, engineers);
   const childTotalHours = child.estimateHours || 0;
   const childDays = childCap > 0
@@ -243,20 +242,16 @@ export function getDerivedDeadline(task, allTasks, engineers, _depth = 0) {
 }
 
 /**
- * Вычисляет эффективный дедлайн для каждой активной задачи с учётом всей цепочки.
- * Воспроизводит логику Ганта: сначала максимальный дедлайн цепи опускается к листу,
- * затем мягкие дедлайны рассчитываются назад для каждого родителя.
- * Используется в Dashboard и Tasks для единообразия с Гантом.
+ * Эффективные дедлайны для всех активных задач с учётом цепочки.
  */
-export function computeEffectiveDls(allActiveTasks, engineers) {
-  const result = {};
+export function computeEffectiveDls(allActiveTasks: Task[], engineers: Engineer[]): Record<string, ISODate> {
+  const result: Record<string, ISODate> = {};
 
   const leafIds = new Set(
     allActiveTasks.filter(t => !allActiveTasks.some(c => c.dependsOn === t.id)).map(t => t.id)
   );
 
-  // Максимальный дедлайн от данного узла до листа
-  function chainMaxDl(taskId, depth) {
+  function chainMaxDl(taskId: string, depth: number): ISODate | null {
     if (depth > 9) return null;
     const task = allActiveTasks.find(t => t.id === taskId);
     if (!task) return null;
@@ -271,7 +266,7 @@ export function computeEffectiveDls(allActiveTasks, engineers) {
   // Шаг 1: листовые задачи получают максимальный дедлайн цепочки
   allActiveTasks.forEach(t => {
     if (!leafIds.has(t.id)) return;
-    let cur = t;
+    let cur: Task = t;
     for (let i = 0; i < 9; i++) {
       if (!cur.dependsOn) break;
       const p = allActiveTasks.find(x => x.id === cur.dependsOn);
@@ -283,7 +278,7 @@ export function computeEffectiveDls(allActiveTasks, engineers) {
   });
 
   // Шаг 2: для родительских задач вычитаем длины потомков назад
-  const tasksForDl = allActiveTasks.map(t => ({
+  const tasksForDl: Task[] = allActiveTasks.map(t => ({
     ...t,
     deadline: leafIds.has(t.id) ? (result[t.id] || null) : null,
   }));

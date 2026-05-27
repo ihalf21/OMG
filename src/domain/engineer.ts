@@ -1,41 +1,45 @@
-// src/domain/engineer.js
-// Чистые функции переходов состояния инженера.
-//
-// Принцип: каждая функция принимает project state {engineers, tasks, history}
-// и возвращает новый state. Никаких side-effects, никакого подтверждения у пользователя.
-// Подтверждение (useConfirm) и UI-state остаются в страницах — там им место.
-//
-// Преимущество: бизнес-логика «уход в отпуск» живёт в ОДНОМ месте.
-// Раньше она была размазана между EngineerCard.js (форма) и normalizeStatuses (демон).
+// src/domain/engineer.ts
+// Чистые функции переходов состояния инженера. (state, ...args) -> newState.
 
 import { todayStr, formatDateShort } from '../utils/dates';
 import { genId } from '../utils/ids';
+import type {
+  Engineer, EngineerRole, ExperienceMap, HistoryEntry, ISODate,
+  ProjectState, Task,
+} from './types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function findCurrentTask(state, engineerId) {
+function findCurrentTask(state: ProjectState, engineerId: string): Task | undefined {
   return state.tasks.find(t => t.assignedEngineers?.includes(engineerId) && t.status === 'active');
 }
 
-function removeEngineerFromAllTasks(state, engineerId) {
+function removeEngineerFromAllTasks(state: ProjectState, engineerId: string): Task[] {
   return state.tasks.map(t => ({
     ...t,
     assignedEngineers: (t.assignedEngineers || []).filter(id => id !== engineerId),
   }));
 }
 
-function appendHistory(state, entry) {
+function appendHistory(state: ProjectState, entry: Omit<HistoryEntry, 'id'>): HistoryEntry[] {
   return [...state.history, { id: genId('h'), ...entry }];
 }
 
-function patchEngineer(state, engineerId, patch) {
+function patchEngineer(state: ProjectState, engineerId: string, patch: Partial<Engineer>): Engineer[] {
   return state.engineers.map(e => e.id === engineerId ? { ...e, ...patch } : e);
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-export function addEngineer(state, data) {
-  const engineer = {
+export interface NewEngineerData {
+  name: string;
+  role?: EngineerRole;
+  regularTask?: string | null;
+  experience?: ExperienceMap;
+}
+
+export function addEngineer(state: ProjectState, data: NewEngineerData): ProjectState {
+  const engineer: Engineer = {
     id: genId('e'),
     name: data.name,
     role: data.role || 'engineer',
@@ -49,7 +53,7 @@ export function addEngineer(state, data) {
   return { ...state, engineers: [...state.engineers, engineer] };
 }
 
-export function deleteEngineer(state, engineerId) {
+export function deleteEngineer(state: ProjectState, engineerId: string): ProjectState {
   return {
     ...state,
     engineers: state.engineers.filter(e => e.id !== engineerId),
@@ -57,16 +61,28 @@ export function deleteEngineer(state, engineerId) {
   };
 }
 
-export function updateEngineerProfile(state, engineerId, updates) {
+export interface EngineerProfileUpdate {
+  name?: string;
+  role?: EngineerRole;
+  regularTask?: string | null;
+  experience?: ExperienceMap;
+}
+
+export function updateEngineerProfile(state: ProjectState, engineerId: string, updates: EngineerProfileUpdate): ProjectState {
   // Профиль: имя, роль, регулярная задача, experience. НЕ статусы.
-  const allowed = ['name', 'role', 'regularTask', 'experience'];
-  const patch = Object.fromEntries(Object.entries(updates).filter(([k]) => allowed.includes(k)));
+  const allowed: (keyof EngineerProfileUpdate)[] = ['name', 'role', 'regularTask', 'experience'];
+  const patch: Partial<Engineer> = {};
+  for (const key of allowed) {
+    if (key in updates) {
+      (patch as Record<string, unknown>)[key] = updates[key];
+    }
+  }
   return { ...state, engineers: patchEngineer(state, engineerId, patch) };
 }
 
 // ─── Sick leave ───────────────────────────────────────────────────────────────
 
-export function setSickLeave(state, engineerId) {
+export function setSickLeave(state: ProjectState, engineerId: string): ProjectState {
   const currentTask = findCurrentTask(state, engineerId);
   return {
     ...state,
@@ -79,7 +95,7 @@ export function setSickLeave(state, engineerId) {
   };
 }
 
-export function clearSickLeave(state, engineerId) {
+export function clearSickLeave(state: ProjectState, engineerId: string): ProjectState {
   return {
     ...state,
     engineers: patchEngineer(state, engineerId, { status: 'active' }),
@@ -92,7 +108,7 @@ export function clearSickLeave(state, engineerId) {
 
 // ─── Vacation ─────────────────────────────────────────────────────────────────
 
-export function setVacation(state, engineerId, vacationFrom, vacationTo) {
+export function setVacation(state: ProjectState, engineerId: string, vacationFrom: ISODate, vacationTo: ISODate): ProjectState {
   const today = todayStr();
   const isPast    = vacationTo < today;
   const isOngoing = vacationFrom <= today && vacationTo >= today;
@@ -103,7 +119,7 @@ export function setVacation(state, engineerId, vacationFrom, vacationTo) {
   if (isPast) {
     // Исторический отпуск: снимаем со всех задач, возвращаем на ту же если она ещё активна
     let updatedTasks = removeEngineerFromAllTasks(state, engineerId);
-    const newHistory = [
+    const newHistory: HistoryEntry[] = [
       ...state.history,
       { id: genId('h'), date: vacationFrom, engineerId, type: 'vacation', fromTask: preTask?.id || null, toTask: null, note: noteRange },
     ];
@@ -125,11 +141,9 @@ export function setVacation(state, engineerId, vacationFrom, vacationTo) {
   return {
     ...state,
     engineers: patchEngineer(state, engineerId, {
-      // Меняем status только если отпуск уже начался
-      ...(isOngoing ? { status: 'vacation' } : {}),
+      ...(isOngoing ? { status: 'vacation' as const } : {}),
       vacationFrom, vacationTo,
     }),
-    // Если уже начался — сразу снять с задач
     tasks: isOngoing ? removeEngineerFromAllTasks(state, engineerId) : state.tasks,
     history: appendHistory(state, {
       date: vacationFrom, engineerId, type: 'vacation',
@@ -138,14 +152,14 @@ export function setVacation(state, engineerId, vacationFrom, vacationTo) {
   };
 }
 
-export function cancelVacation(state, engineerId) {
+export function cancelVacation(state: ProjectState, engineerId: string): ProjectState {
   return {
     ...state,
     engineers: patchEngineer(state, engineerId, { vacationFrom: null, vacationTo: null }),
   };
 }
 
-export function endVacationEarly(state, engineerId) {
+export function endVacationEarly(state: ProjectState, engineerId: string): ProjectState {
   return {
     ...state,
     engineers: patchEngineer(state, engineerId, { status: 'active', vacationFrom: null, vacationTo: null }),
@@ -154,12 +168,12 @@ export function endVacationEarly(state, engineerId) {
 
 // ─── Dayoff ───────────────────────────────────────────────────────────────────
 
-export function setDayoff(state, engineerId, dayoffDate) {
+export function setDayoff(state: ProjectState, engineerId: string, dayoffDate: ISODate): ProjectState {
   const today = todayStr();
   const isPast  = dayoffDate < today;
   const isToday = dayoffDate === today;
   const preTask = findCurrentTask(state, engineerId);
-  const hist = {
+  const hist: Omit<HistoryEntry, 'id'> = {
     date: dayoffDate, engineerId, type: 'dayoff',
     fromTask: preTask?.id || null, toTask: null,
     note: `Дейоф ${formatDateShort(dayoffDate)}`,
@@ -188,14 +202,14 @@ export function setDayoff(state, engineerId, dayoffDate) {
   };
 }
 
-export function cancelDayoff(state, engineerId) {
+export function cancelDayoff(state: ProjectState, engineerId: string): ProjectState {
   return {
     ...state,
     engineers: patchEngineer(state, engineerId, { dayoffDate: null }),
   };
 }
 
-export function endDayoffEarly(state, engineerId) {
+export function endDayoffEarly(state: ProjectState, engineerId: string): ProjectState {
   return {
     ...state,
     engineers: patchEngineer(state, engineerId, { status: 'active', dayoffDate: null }),
@@ -208,7 +222,7 @@ export function endDayoffEarly(state, engineerId) {
 
 // ─── Task assignment ──────────────────────────────────────────────────────────
 
-export function removeFromTask(state, engineerId) {
+export function removeFromTask(state: ProjectState, engineerId: string): ProjectState {
   const currentTask = findCurrentTask(state, engineerId);
   return {
     ...state,
@@ -220,7 +234,7 @@ export function removeFromTask(state, engineerId) {
   };
 }
 
-export function switchToTask(state, engineerId, toTaskId) {
+export function switchToTask(state: ProjectState, engineerId: string, toTaskId: string): ProjectState {
   const currentTask = findCurrentTask(state, engineerId);
   return {
     ...state,
