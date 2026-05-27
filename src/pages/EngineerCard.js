@@ -1,8 +1,14 @@
 import React, { useState } from 'react';
 import { Avatar, RoleBadge, StatusBadge, StarRating, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, Modal, ModalFooter, FormRow, Input, DateRangePicker, DatePicker, useConfirm } from '../components/UI';
 import { formatDate, formatDateShort, todayStr, nextWorkday } from '../utils/dates';
-
 import { REGULAR_TASKS } from '../domain/tasks';
+import {
+  updateEngineerProfile,
+  setSickLeave, clearSickLeave,
+  setVacation as setVacationOp, cancelVacation as cancelVacationOp, endVacationEarly,
+  setDayoff as setDayoffOp, cancelDayoff as cancelDayoffOp, endDayoffEarly,
+  removeFromTask, switchToTask,
+} from '../domain/engineer';
 
 const selectStyle = { fontSize:13, border:'1.5px solid var(--border-mid)', borderRadius:4, padding:'4px 8px', background:'var(--bg-secondary)', color:'var(--text-primary)', width:'100%' };
 
@@ -39,12 +45,11 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
   }
 
   function saveEdit() {
-    updateData(prev => ({
-      ...prev,
-      engineers: prev.engineers.map(e => e.id === engineerId
-        ? { ...e, name: editForm.name, role: editForm.role, regularTask: editForm.regularTask || null, experience: editForm.experience }
-        : e
-      ),
+    updateData(prev => updateEngineerProfile(prev, engineerId, {
+      name: editForm.name,
+      role: editForm.role,
+      regularTask: editForm.regularTask || null,
+      experience: editForm.experience,
     }));
     setEditMode(false);
   }
@@ -54,33 +59,12 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
     setEditForm(f => ({ ...f, experience: { ...f.experience, [taskName]: stars } }));
   }
 
-  function openSick() {
-    updateData(prev => ({
-      ...prev,
-      engineers: prev.engineers.map(e => e.id===engineerId ? { ...e, status:'sick' } : e),
-      tasks: prev.tasks.map(t => ({
-        ...t,
-        assignedEngineers: (t.assignedEngineers||[]).filter(id => id !== engineerId),
-      })),
-      history: [...prev.history, { id:'h'+Date.now(), date:todayStr(), engineerId, type:'sick', fromTask:currentTask?.id||null, toTask:null, note:'' }],
-    }));
-  }
-
-  function closeSick() {
-    updateData(prev => ({
-      ...prev,
-      engineers: prev.engineers.map(e => e.id===engineerId ? { ...e, status:'active' } : e),
-      history: [...prev.history, { id:'h'+Date.now(), date:todayStr(), engineerId, type:'return', fromTask:null, toTask:null, note:'Выход с больничного' }],
-    }));
-  }
+  function openSick()  { updateData(prev => setSickLeave(prev, engineerId)); }
+  function closeSick() { updateData(prev => clearSickLeave(prev, engineerId)); }
 
   async function addVacation() {
     if (!vacFrom || !vacTo || vacTo < vacFrom) return;
-    const today = todayStr();
-    const isPast    = vacTo < today;
-    const isOngoing = vacFrom <= today && vacTo >= today;
-
-    if (isPast) {
+    if (vacTo < todayStr()) {
       const ok = await confirm(
         'Отпуск уже завершился',
         'Период отпуска в прошлом. Вы уверены, что хотите добавить его?',
@@ -88,77 +72,16 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
       );
       if (!ok) return;
     }
-
-    updateData(prev => {
-      const preVacTask = prev.tasks.find(t => t.assignedEngineers?.includes(engineerId) && t.status === 'active');
-      const newHistory = [
-        ...prev.history,
-        { id:'h'+Date.now(), date:vacFrom, engineerId, type:'vacation', fromTask:preVacTask?.id||null, toTask:null, note:`Отпуск ${formatDateShort(vacFrom)} — ${formatDateShort(vacTo)}` },
-      ];
-
-      if (isPast) {
-        // Снять со всех задач, вернуть на задачу до отпуска если она ещё активна
-        let updatedTasks = prev.tasks.map(t => ({
-          ...t,
-          assignedEngineers: (t.assignedEngineers||[]).filter(id => id !== engineerId),
-        }));
-        if (preVacTask && updatedTasks.find(t => t.id === preVacTask.id)?.status === 'active') {
-          updatedTasks = updatedTasks.map(t => t.id === preVacTask.id
-            ? { ...t, assignedEngineers: [...(t.assignedEngineers||[]), engineerId] }
-            : t
-          );
-          newHistory.push({ id:'h'+(Date.now()+1), date:vacTo, engineerId, type:'switch', fromTask:null, toTask:preVacTask.id, note:'Вернулся из отпуска' });
-        }
-        return {
-          ...prev,
-          engineers: prev.engineers.map(e => e.id===engineerId
-            ? { ...e, status:'active', vacationFrom:null, vacationTo:null }
-            : e
-          ),
-          tasks: updatedTasks,
-          history: newHistory,
-        };
-      }
-
-      // Текущий или будущий отпуск
-      return {
-        ...prev,
-        engineers: prev.engineers.map(e => e.id===engineerId
-          ? { ...e, status: isOngoing ? 'vacation' : e.status, vacationFrom:vacFrom, vacationTo:vacTo }
-          : e
-        ),
-        // При текущем отпуске сразу снимаем с задачи
-        tasks: isOngoing ? prev.tasks.map(t => ({
-          ...t,
-          assignedEngineers: (t.assignedEngineers||[]).filter(id => id !== engineerId),
-        })) : prev.tasks,
-        history: newHistory,
-      };
-    });
+    updateData(prev => setVacationOp(prev, engineerId, vacFrom, vacTo));
     setShowVacation(false);
   }
 
-  function cancelVacation() {
-    updateData(prev => ({
-      ...prev,
-      engineers: prev.engineers.map(e => e.id===engineerId ? { ...e, vacationFrom:null, vacationTo:null } : e),
-    }));
-  }
-
-  function returnFromVacation() {
-    updateData(prev => ({
-      ...prev,
-      engineers: prev.engineers.map(e => e.id===engineerId ? { ...e, status:'active', vacationFrom:null, vacationTo:null } : e),
-    }));
-  }
+  function cancelVacation()     { updateData(prev => cancelVacationOp(prev, engineerId)); }
+  function returnFromVacation() { updateData(prev => endVacationEarly(prev, engineerId)); }
 
   async function addDayoff() {
     if (!dayoffDate) return;
-    const today = todayStr();
-    const isPast  = dayoffDate < today;
-    const isToday = dayoffDate === today;
-
-    if (isPast) {
+    if (dayoffDate < todayStr()) {
       const ok = await confirm(
         'Дейоф уже прошёл',
         'Выбранный день уже в прошлом. Добавить как исторический факт?',
@@ -166,78 +89,19 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
       );
       if (!ok) return;
     }
-
-    updateData(prev => {
-      const preTask = prev.tasks.find(t => t.assignedEngineers?.includes(engineerId) && t.status === 'active');
-      const histEntry = {
-        id: 'h' + Date.now(), date: dayoffDate, engineerId,
-        type: 'dayoff', fromTask: preTask?.id || null, toTask: null,
-        note: `Дейоф ${formatDateShort(dayoffDate)}`,
-      };
-
-      if (isToday) {
-        return {
-          ...prev,
-          engineers: prev.engineers.map(e => e.id === engineerId ? { ...e, status: 'dayoff', dayoffDate } : e),
-          tasks: prev.tasks.map(t => ({ ...t, assignedEngineers: (t.assignedEngineers || []).filter(id => id !== engineerId) })),
-          history: [...prev.history, histEntry],
-        };
-      }
-      if (isPast) {
-        return {
-          ...prev,
-          engineers: prev.engineers.map(e => e.id === engineerId ? { ...e, dayoffDate: null } : e),
-          history: [...prev.history, histEntry],
-        };
-      }
-      // Будущий дейоф
-      return {
-        ...prev,
-        engineers: prev.engineers.map(e => e.id === engineerId ? { ...e, dayoffDate } : e),
-        history: [...prev.history, histEntry],
-      };
-    });
+    updateData(prev => setDayoffOp(prev, engineerId, dayoffDate));
     setShowDayoff(false);
   }
 
-  function cancelDayoff() {
-    updateData(prev => ({
-      ...prev,
-      engineers: prev.engineers.map(e => e.id === engineerId ? { ...e, dayoffDate: null } : e),
-    }));
-  }
-
-  function returnFromDayoff() {
-    updateData(prev => ({
-      ...prev,
-      engineers: prev.engineers.map(e => e.id === engineerId ? { ...e, status: 'active', dayoffDate: null } : e),
-      history: [...prev.history, { id: 'h' + Date.now(), date: todayStr(), engineerId, type: 'return', fromTask: null, toTask: null, note: 'Вернулся с дейофа' }],
-    }));
-  }
+  function cancelDayoff()     { updateData(prev => cancelDayoffOp(prev, engineerId)); }
+  function returnFromDayoff() { updateData(prev => endDayoffEarly(prev, engineerId)); }
 
   function returnHome() {
-    updateData(prev => ({
-      ...prev,
-      tasks: prev.tasks.map(t => ({
-        ...t,
-        assignedEngineers: (t.assignedEngineers||[]).filter(id => id !== engineerId),
-      })),
-      history: [...prev.history, { id:'h'+Date.now(), date:todayStr(), engineerId, type:'return', fromTask:currentTask?.id||null, toTask:null, note:'Снят с задачи' }],
-    }));
+    updateData(prev => removeFromTask(prev, engineerId));
   }
 
   function switchTask(toTaskId) {
-    updateData(prev => ({
-      ...prev,
-      tasks: prev.tasks.map(t => {
-        if (currentTask && t.id === currentTask.id)
-          return { ...t, assignedEngineers: (t.assignedEngineers||[]).filter(id => id !== engineerId) };
-        if (t.id === toTaskId)
-          return { ...t, assignedEngineers: [...(t.assignedEngineers||[]), engineerId] };
-        return t;
-      }),
-      history: [...prev.history, { id:'h'+Date.now(), date:todayStr(), engineerId, type:'switch', fromTask:currentTask?.id||null, toTask:toTaskId, note:'' }],
-    }));
+    updateData(prev => switchToTask(prev, engineerId, toTaskId));
     setShowSwitchTask(false);
   }
 
