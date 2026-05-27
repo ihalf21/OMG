@@ -65,6 +65,17 @@ export interface HistoryEntry {
   note: string;
 }
 
+// Шаблон оценки трудозатрат (для калькулятора Estimate)
+export interface EstimateTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  form: Record<string, { o: string; m: string; p: string }>;
+  archived: boolean;
+  createdAt?: string;
+  archivedAt?: string | null;
+}
+
 // Один проект — изолированная единица планирования.
 export interface Project {
   id: string;
@@ -72,6 +83,7 @@ export interface Project {
   engineers: Engineer[];
   tasks: Task[];
   history: HistoryEntry[];
+  estimateTemplates?: EstimateTemplate[];
 }
 
 // Корневое состояние воркспейса — список проектов и текущий выбранный.

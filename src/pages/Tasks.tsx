@@ -1,13 +1,32 @@
 import React, { useState } from 'react';
-import { calcForecast, statusColor, statusLabel, statusBadgeStyle, computeEffectiveDls } from '../utils/forecast';
+import { calcForecast, statusColor, statusLabel, statusBadgeStyle, computeEffectiveDls, type Forecast } from '../utils/forecast';
 import { REGULAR_TASKS } from '../domain/tasks';
 import { genId } from '../utils/ids';
 import { formatDateShort, todayStr } from '../utils/dates';
+import { restoreFromArchive } from '../domain/task';
 import { Avatar, Card, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, ProgressBar, DatePicker, useTooltip, useResizableColumns, ResizeHandle, useConfirm } from '../components/UI';
+import type { Task } from '../domain/types';
+import type { PageProps } from '../ui-types';
 
-const emptyForm = () => ({ name:'', direction:'', startDate: todayStr(), deadline:'', totalCases:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'' });
+interface NewTaskForm {
+  name: string;
+  direction: string;
+  startDate: string;
+  deadline: string;
+  totalCases: string;
+  dependsOn: string | null;
+  hoursAnalysis: string;
+  hoursActualize: string;
+  hoursDevelopment: string;
+  hoursTesting: string;
+}
 
-function FilterBtn({ val, cur, set, children }) {
+const emptyForm = (): NewTaskForm => ({ name:'', direction:'', startDate: todayStr(), deadline:'', totalCases:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'' });
+
+type StatusFilter = 'all' | 'active' | 'done';
+type DeadlineFilter = 'all' | 'with' | 'without';
+
+function FilterBtn<T extends string>({ val, cur, set, children }: { val: T; cur: T; set: (v: T) => void; children: React.ReactNode }) {
   const active = cur === val;
   return (
     <button onClick={() => set(val)} style={{
@@ -21,35 +40,34 @@ function FilterBtn({ val, cur, set, children }) {
   );
 }
 
-function DoneIcon({ task }) {
+function DoneIcon({ task }: { task: Task }) {
   if (task.status !== 'done') return null;
   const onTime = !task.deadline || !task.completedDate || task.completedDate <= task.deadline;
   return <span title={onTime?'Завершено вовремя':'Завершено с опозданием'} style={{ fontSize:18 }}>{onTime?'👍':'👎'}</span>;
 }
 
-export default function Tasks({ data, updateData, navigate }) {
+export default function Tasks({ data, updateData, navigate }: PageProps) {
   const { engineers, tasks } = data;
-  const [filterStatus, setFilterStatus] = useState('active');
-  const [filterDl,     setFilterDl]     = useState('all');
+  const [filterStatus, setFilterStatus] = useState<StatusFilter>('active');
+  const [filterDl,     setFilterDl]     = useState<DeadlineFilter>('all');
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState<NewTaskForm>(emptyForm);
   const [showArchive, setShowArchive] = useState(false);
-  const { show, move, hide, TooltipEl } = useTooltip();
+  const { move, TooltipEl } = useTooltip();
   const { confirm, ConfirmEl } = useConfirm();
   const { widths: colWidths, startResize } = useResizableColumns('omg_tasks_cols', [280, 130, 110, 140, 110, 170]);
 
   const activeTasks = tasks.filter(t => t.status === 'active');
   const effectiveDls = computeEffectiveDls(activeTasks, engineers);
 
-  const forecasts = {};
+  const forecasts: Record<string, Forecast> = {};
   tasks.forEach(t => { forecasts[t.id] = calcForecast(t, engineers, effectiveDls[t.id] || null); });
 
-  // Archived tasks
   const archivedTasks = tasks.filter(t => t.status === 'archived')
     .sort((a,b) => (b.archivedDate||'').localeCompare(a.archivedDate||''));
 
   const filtered = tasks.filter(t => {
-    if (t.status === 'archived') return false; // archived never shows in main list
+    if (t.status === 'archived') return false;
     if (filterStatus === 'active' && t.status !== 'active') return false;
     if (filterStatus === 'done'   && t.status !== 'done')   return false;
     if (filterDl === 'with'    && !t.deadline)  return false;
@@ -57,14 +75,11 @@ export default function Tasks({ data, updateData, navigate }) {
     return true;
   });
 
-  function restoreTask(taskId) {
-    updateData(prev => ({
-      ...prev,
-      tasks: prev.tasks.map(t => t.id===taskId ? { ...t, status:'active', archivedDate:null } : t),
-    }));
+  function restoreTask(taskId: string) {
+    updateData(prev => restoreFromArchive(prev, taskId));
   }
 
-  async function deleteForever(taskId) {
+  async function deleteForever(taskId: string) {
     const ok = await confirm(
       'Удалить навсегда?',
       'Задача будет удалена безвозвратно. Это действие нельзя отменить.',
@@ -87,21 +102,20 @@ export default function Tasks({ data, updateData, navigate }) {
     };
     const totalFromBreakdown = Object.values(hoursBreakdown).reduce((s,v) => s+v, 0);
 
-    // Для зависимых задач дата старта считается динамически на Ганте — не сохраняем
     let startDate = form.dependsOn ? null : (form.startDate || null);
-    let assignedEngineers = [];
+    let assignedEngineers: string[] = [];
     if (form.dependsOn) {
       const parent = tasks.find(t => t.id === form.dependsOn);
       if (parent?.assignedEngineers?.length) assignedEngineers = [...parent.assignedEngineers];
     }
 
     const id = genId('t');
-    updateData(prev => ({ ...prev, tasks: [...prev.tasks, {
+    const newTask: Task = {
       id,
       name:        form.name,
       direction:   form.direction || null,
       status:      'active',
-      startDate:   startDate || null,
+      startDate,
       deadline:    form.deadline  || null,
       dependsOn:   form.dependsOn || null,
       estimateHours: totalFromBreakdown > 0 ? totalFromBreakdown : null,
@@ -110,9 +124,13 @@ export default function Tasks({ data, updateData, navigate }) {
       doneCases:   0,
       assignedEngineers,
       completedDate: null,
-      sortOrder: prev.tasks.length,
-      createdDate: new Date().toISOString().slice(0,10), // дата добавления для soft-start
-    }]}));
+      completedWithChildId: null,
+      archivedDate: null,
+    };
+    updateData(prev => ({
+      ...prev,
+      tasks: [...prev.tasks, { ...newTask, sortOrder: prev.tasks.length }],
+    }));
     setShowModal(false);
     setForm(emptyForm());
   }
@@ -136,16 +154,16 @@ export default function Tasks({ data, updateData, navigate }) {
       <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
         <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
           <div style={{ display:'flex', gap:4 }}>
-            <FilterBtn val="all"    cur={filterStatus} set={setFilterStatus}>Все</FilterBtn>
-            <FilterBtn val="active" cur={filterStatus} set={setFilterStatus}>В работе</FilterBtn>
-            <FilterBtn val="done"   cur={filterStatus} set={setFilterStatus}>Завершены</FilterBtn>
+            <FilterBtn<StatusFilter> val="all"    cur={filterStatus} set={setFilterStatus}>Все</FilterBtn>
+            <FilterBtn<StatusFilter> val="active" cur={filterStatus} set={setFilterStatus}>В работе</FilterBtn>
+            <FilterBtn<StatusFilter> val="done"   cur={filterStatus} set={setFilterStatus}>Завершены</FilterBtn>
           </div>
 
           <div style={{ width:1, height:24, background:'var(--border-light)' }}/>
           <div style={{ display:'flex', gap:4 }}>
-            <FilterBtn val="all"     cur={filterDl} set={setFilterDl}>Все</FilterBtn>
-            <FilterBtn val="with"    cur={filterDl} set={setFilterDl}>С дедлайном</FilterBtn>
-            <FilterBtn val="without" cur={filterDl} set={setFilterDl}>Без дедлайна</FilterBtn>
+            <FilterBtn<DeadlineFilter> val="all"     cur={filterDl} set={setFilterDl}>Все</FilterBtn>
+            <FilterBtn<DeadlineFilter> val="with"    cur={filterDl} set={setFilterDl}>С дедлайном</FilterBtn>
+            <FilterBtn<DeadlineFilter> val="without" cur={filterDl} set={setFilterDl}>Без дедлайна</FilterBtn>
           </div>
         </div>
 
@@ -173,8 +191,8 @@ export default function Tasks({ data, updateData, navigate }) {
                 return (
                   <tr key={task.id} onClick={() => navigate('task', task.id)}
                     style={{ cursor:'pointer' }}
-                    onMouseEnter={e => Array.from(e.currentTarget.cells).forEach(td => td.style.background='var(--bg-secondary)')}
-                    onMouseLeave={e => Array.from(e.currentTarget.cells).forEach(td => td.style.background='')}
+                    onMouseEnter={e => Array.from(e.currentTarget.cells).forEach(td => (td as HTMLElement).style.background='var(--bg-secondary)')}
+                    onMouseLeave={e => Array.from(e.currentTarget.cells).forEach(td => (td as HTMLElement).style.background='')}
                     onMouseMove={move}
                   >
                     <td style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>
@@ -226,20 +244,20 @@ export default function Tasks({ data, updateData, navigate }) {
 
       {showModal && (
         <Modal title="Новая задача" onClose={() => setShowModal(false)}>
-          <FormRow label="Название"><Input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Введите название задачи"/></FormRow>
+          <FormRow label="Название"><Input value={form.name} onChange={e=>setForm(f=>({...f, name:e.target.value}))} placeholder="Введите название задачи"/></FormRow>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
             <FormRow label="Направление">
-              <Select value={form.direction} onChange={e=>setForm(f=>({...f,direction:e.target.value}))}>
+              <Select value={form.direction} onChange={e=>setForm(f=>({...f, direction:e.target.value}))}>
                 <option value="">— не задано —</option>
                 {REGULAR_TASKS.map(t=><option key={t} value={t}>{t}</option>)}
               </Select>
             </FormRow>
             <FormRow label="Дата старта">
-              <DatePicker value={form.startDate} onChange={v => setForm(f=>({...f,startDate:v}))} placeholder="Выбрать дату"/>
+              <DatePicker value={form.startDate} onChange={v => setForm(f=>({...f, startDate:v}))} placeholder="Выбрать дату"/>
             </FormRow>
           </div>
           <FormRow label="Зависит от задачи" hint="Стартует после завершения выбранной, инженеры переносятся автоматически">
-            <Select value={form.dependsOn||''} onChange={e=>setForm(f=>({...f,dependsOn:e.target.value||null}))}>
+            <Select value={form.dependsOn||''} onChange={e=>setForm(f=>({...f, dependsOn: e.target.value || null}))}>
               <option value="">— независимая задача —</option>
               {tasks.filter(t=>t.status==='active').map(t=>(
                 <option key={t.id} value={t.id}>{t.name}</option>
@@ -247,7 +265,7 @@ export default function Tasks({ data, updateData, navigate }) {
             </Select>
           </FormRow>
           <FormRow label="Дедлайн (опционально)">
-            <DatePicker value={form.deadline} onChange={v => setForm(f=>({...f,deadline:v}))} placeholder="Без дедлайна"/>
+            <DatePicker value={form.deadline} onChange={v => setForm(f=>({...f, deadline:v}))} placeholder="Без дедлайна"/>
           </FormRow>
           <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:4, padding:'8px 12px', background:'var(--bg-secondary)', borderRadius:6 }}>
             💡 Оценку трудозатрат можно добавить в разделе <strong>Оценка</strong> после создания задачи

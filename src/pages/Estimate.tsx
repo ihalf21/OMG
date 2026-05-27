@@ -1,7 +1,18 @@
-// src/pages/Estimate.js — Калькулятор трудозатрат (PERT) с шаблонами
+// src/pages/Estimate.tsx — Калькулятор трудозатрат (PERT) с шаблонами
 import React, { useState, useMemo } from 'react';
 import { PageTopbar, Card, BtnPrimary, BtnSecondary, BtnDanger } from '../components/UI';
 import { genId } from '../utils/ids';
+import type { EstimateTemplate } from '../domain/types';
+import type { PageProps } from '../ui-types';
+
+type Scenario = 'o' | 'm' | 'p';
+type ScenarioForm = Record<string, { o: string; m: string; p: string }>;
+interface CalcResult {
+  stage1: number; tcActualize: number; tcNew: number; stage2: number;
+  stage3: number; envPrep: number; reporting: number; comms: number; stage4: number;
+  defects: number; retests: number; stage5: number;
+  subtotal: number; riskCoeff: number; withRisks: number; reserve: number; total: number;
+}
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
@@ -104,9 +115,9 @@ const FOCUS_CLR = { o:'#22c55e', m:'var(--accent)', p:'#f97316' };
 
 const gid = () => genId('tpl');
 
-function calcScenario(form, s) {
-  const raw = key => parseFloat(form[key]?.[s]) || 0;
-  const v   = key => PCT_KEYS.has(key) ? raw(key) / 100 : raw(key);
+function calcScenario(form: ScenarioForm, s: Scenario): CalcResult {
+  const raw = (key: string) => parseFloat(form[key]?.[s]) || 0;
+  const v   = (key: string) => PCT_KEYS.has(key) ? raw(key) / 100 : raw(key);
 
   const stage1      = (v('tasksCount') * v('analysisTimeMin')) / 60;
   const tcActualize = (v('tcUpdateCount') * v('tcUpdateTimeMin')) / 60;
@@ -128,19 +139,20 @@ function calcScenario(form, s) {
   return { stage1, tcActualize, tcNew, stage2, stage3, envPrep, reporting, comms, stage4, defects, retests, stage5, subtotal, riskCoeff, withRisks, reserve, total };
 }
 
-function fmtH(h) {
+function fmtH(h: number): string {
   if (!h || h <= 0) return '0 ч';
   if (h < 0.5) return `${Math.round(h * 60)} мин`;
   return `${h.toFixed(1)} ч`;
 }
-function fmtHInt(h) { return `${Math.round(h)} ч`; }
+function fmtHInt(h: number): string { return `${Math.round(h)} ч`; }
 
 // ─── SHARED PARAMETER FORM ────────────────────────────────────────────────────
 
-function ParameterForm({ form, onChange }) {
-  const [open, setOpen] = useState(() => Object.fromEntries(SECTIONS.map(s => [s.id, true])));
+interface ParamFormProps { form: ScenarioForm; onChange: (form: ScenarioForm) => void }
+function ParameterForm({ form, onChange }: ParamFormProps) {
+  const [open, setOpen] = useState<Record<string, boolean>>(() => Object.fromEntries(SECTIONS.map(s => [s.id, true])));
 
-  function setVal(key, s, val) {
+  function setVal(key: string, s: Scenario, val: string) {
     onChange({ ...form, [key]: { ...form[key], [s]: val } });
   }
 
@@ -177,9 +189,9 @@ function ParameterForm({ form, onChange }) {
                 <div style={{ fontSize:13, color:'var(--text-primary)' }}>{param.label}</div>
                 <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:1 }}>{param.hint}</div>
               </div>
-              {['o','m','p'].map(s => (
+              {(['o','m','p'] as const).map(s => (
                 <input
-                  key={s} type="number" min="0" step={param.step || '1'}
+                  key={s} type="number" min="0" step={('step' in param ? param.step : undefined) || '1'}
                   value={form[param.key]?.[s] ?? ''}
                   onChange={e => setVal(param.key, s, e.target.value)}
                   style={{
@@ -188,7 +200,7 @@ function ParameterForm({ form, onChange }) {
                     fontSize:13, fontWeight:500, boxSizing:'border-box',
                     background:'var(--bg-secondary)', color:'var(--text-primary)', outline:'none',
                   }}
-                  onFocus={e => { e.target.style.borderColor = FOCUS_CLR[s]; }}
+                  onFocus={e => { e.target.style.borderColor = FOCUS_CLR[s as Scenario]; }}
                   onBlur={e  => { e.target.style.borderColor = 'var(--border-mid)'; }}
                 />
               ))}
@@ -203,7 +215,14 @@ function ParameterForm({ form, onChange }) {
 
 // ─── TEMPLATE CARD (list item) ────────────────────────────────────────────────
 
-function TemplateCard({ tpl, onEdit, onArchive, onRestore, onDelete }) {
+interface TemplateCardProps {
+  tpl: EstimateTemplate;
+  onEdit?: () => void;
+  onArchive?: () => void;
+  onRestore?: () => void;
+  onDelete?: () => void;
+}
+function TemplateCard({ tpl, onEdit, onArchive, onRestore, onDelete }: TemplateCardProps) {
   return (
     <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', background:'var(--bg-secondary)', border:'0.5px solid var(--border-light)', borderRadius:8 }}>
       <div style={{ flex:1, minWidth:0 }}>
@@ -234,14 +253,19 @@ function TemplateCard({ tpl, onEdit, onArchive, onRestore, onDelete }) {
 
 // ─── TEMPLATE MANAGER MODAL ───────────────────────────────────────────────────
 
-function TemplateManager({ templates, updateTemplates, onClose }) {
-  const [tab,            setTab]            = useState('active');
-  const [mode,           setMode]           = useState('list');   // 'list' | 'edit'
-  const [editId,         setEditId]         = useState(null);
+interface TemplateManagerProps {
+  templates: EstimateTemplate[];
+  updateTemplates: (templates: EstimateTemplate[]) => void;
+  onClose: () => void;
+}
+function TemplateManager({ templates, updateTemplates, onClose }: TemplateManagerProps) {
+  const [tab,            setTab]            = useState<'active'|'archive'>('active');
+  const [mode,           setMode]           = useState<'list'|'edit'>('list');
+  const [editId,         setEditId]         = useState<string | null>(null);
   const [editName,       setEditName]       = useState('');
   const [editDesc,       setEditDesc]       = useState('');
-  const [editForm,       setEditForm]       = useState(DEFAULT_FORM);
-  const [confirmDeleteId, setConfirmDelete] = useState(null);
+  const [editForm,       setEditForm]       = useState<ScenarioForm>(DEFAULT_FORM);
+  const [confirmDeleteId, setConfirmDelete] = useState<string | null>(null);
 
   const active   = templates.filter(t => !t.archived);
   const archived = templates.filter(t =>  t.archived);
@@ -249,7 +273,7 @@ function TemplateManager({ templates, updateTemplates, onClose }) {
   function startNew() {
     setEditId(null); setEditName(''); setEditDesc(''); setEditForm(DEFAULT_FORM); setMode('edit');
   }
-  function startEdit(tpl) {
+  function startEdit(tpl: EstimateTemplate) {
     setEditId(tpl.id); setEditName(tpl.name); setEditDesc(tpl.description || '');
     setEditForm({ ...DEFAULT_FORM, ...tpl.form });
     setMode('edit');
@@ -272,14 +296,14 @@ function TemplateManager({ templates, updateTemplates, onClose }) {
     setMode('list');
   }
 
-  function archiveTemplate(id) {
+  function archiveTemplate(id: string) {
     const now = new Date().toISOString().slice(0, 10);
     updateTemplates(templates.map(t => t.id === id ? { ...t, archived: true, archivedAt: now } : t));
   }
-  function restoreTemplate(id) {
+  function restoreTemplate(id: string) {
     updateTemplates(templates.map(t => t.id === id ? { ...t, archived: false, archivedAt: null } : t));
   }
-  function deleteTemplate(id) {
+  function deleteTemplate(id: string) {
     updateTemplates(templates.filter(t => t.id !== id));
     setConfirmDelete(null);
   }
@@ -316,10 +340,10 @@ function TemplateManager({ templates, updateTemplates, onClose }) {
             {/* Tabs + new button */}
             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
               <div style={{ display:'flex', gap:4, flex:1 }}>
-                {[
-                  { key:'active',  label:`Активные (${active.length})`  },
-                  { key:'archive', label:`Архив (${archived.length})`   },
-                ].map(t => (
+                {([
+                  { key:'active' as const,  label:`Активные (${active.length})`  },
+                  { key:'archive' as const, label:`Архив (${archived.length})`   },
+                ]).map(t => (
                   <button key={t.key} onClick={() => setTab(t.key)} style={{
                     padding:'6px 16px', border:'none', borderRadius:6, cursor:'pointer',
                     fontSize:13, fontWeight:600, transition:'all 0.15s',
@@ -436,16 +460,16 @@ function TemplateManager({ templates, updateTemplates, onClose }) {
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
-export default function Estimate({ data, updateData }) {
+export default function Estimate({ data, updateData }: PageProps) {
   const allTasks  = data.tasks || [];
-  const templates = data.estimateTemplates || [];
+  const templates: EstimateTemplate[] = data.estimateTemplates || [];
 
   // Tasks visible in the selector: active ones + any task that has a saved estimate
   const displayTasks = allTasks.filter(t => t.status === 'active' || t.estimateForm);
   const withEstimate  = displayTasks.filter(t =>  t.estimateForm);
   const withoutEst    = displayTasks.filter(t => !t.estimateForm);
 
-  const [form,           setForm]        = useState(DEFAULT_FORM);
+  const [form,           setForm]        = useState<ScenarioForm>(DEFAULT_FORM);
   const [selectedTaskId, setSelectedTaskId] = useState('');
   const [activeTplId,    setActiveTplId] = useState('');
   const [showManager,    setShowManager] = useState(false);
@@ -463,7 +487,7 @@ export default function Estimate({ data, updateData }) {
   const selectedTask    = allTasks.find(t => t.id === selectedTaskId) || null;
 
   // Load task estimate into the form
-  function selectTask(id) {
+  function selectTask(id: string) {
     setSelectedTaskId(id);
     setSaved(false);
     setConfirmSave(false);
@@ -477,14 +501,14 @@ export default function Estimate({ data, updateData }) {
     }
   }
 
-  function applyTemplate(id) {
+  function applyTemplate(id: string) {
     setActiveTplId(id);
     if (!id) { setForm(DEFAULT_FORM); return; }
     const tpl = templates.find(t => t.id === id);
     if (tpl) setForm({ ...DEFAULT_FORM, ...tpl.form });
   }
 
-  function updateTemplates(newTemplates) {
+  function updateTemplates(newTemplates: EstimateTemplate[]) {
     updateData(prev => ({ ...prev, estimateTemplates: newTemplates }));
   }
 
@@ -588,7 +612,7 @@ export default function Estimate({ data, updateData }) {
                 <div style={{ minWidth:0 }}>
                   <div style={{ fontSize:11, fontWeight:700, color:'var(--accent)', marginBottom:2 }}>ЗАДАЧА</div>
                   <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{selectedTask.name}</div>
-                  {selectedTask.estimateHours > 0 && (
+                  {selectedTask.estimateHours != null && selectedTask.estimateHours > 0 && (
                     <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:2 }}>
                       Сохранено: {selectedTask.estimateHours} ч
                       {selectedTask.estimateForm && ' · полная форма'}

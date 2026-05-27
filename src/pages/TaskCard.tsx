@@ -5,30 +5,53 @@ import { REGULAR_TASKS } from '../domain/tasks';
 import {
   getEffectiveTeam,
   addEngineerToTask, removeEngineerFromTask,
-  unlinkParent as unlinkParentOp, unlinkChild as unlinkChildOp,
+  unlinkChild as unlinkChildOp,
   completeTask as completeTaskOp, reopenTask as reopenTaskOp, archiveTask as archiveTaskOp,
   updateTaskProgress,
 } from '../domain/task';
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
 import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm } from '../components/UI';
+import type { Task } from '../domain/types';
+import type { PageProps } from '../ui-types';
 
-export default function TaskCard({ data, updateData, navigate, taskId, onBack }) {
+interface Props extends PageProps {
+  taskId: string;
+  onBack: () => void;
+}
+
+interface EditForm {
+  name: string;
+  direction: string;
+  estimateHours: string | number;
+  startDate: string;
+  deadline: string;
+  totalCases: string | number;
+  hoursAnalysis: string | number;
+  hoursActualize: string | number;
+  hoursDevelopment: string | number;
+  hoursTesting: string | number;
+  dependsOn: string;
+  newChildId: string;
+}
+
+type CompleteMode = 'today' | 'custom';
+
+export default function TaskCard({ data, updateData, navigate, taskId, onBack }: Props) {
   const { engineers, tasks, history } = data;
   const task = tasks.find(t => t.id === taskId);
   const [editMode, setEditMode]     = useState(false);
-  const [editForm, setEditForm]     = useState(null);
+  const [editForm, setEditForm]     = useState<EditForm | null>(null);
   const [showAddEng, setShowAddEng] = useState(false);
   const [selectedEng, setSelectedEng] = useState('');
   const [completeModal, setCompleteModal] = useState(false);
-  const [completeDateMode, setCompleteDateMode] = useState('today');
+  const [completeDateMode, setCompleteDateMode] = useState<CompleteMode>('today');
   const [completeCustomDate, setCompleteCustomDate] = useState('');
   const { confirm, ConfirmEl } = useConfirm();
-  const progressInputRef = useRef(null);
+  const progressInputRef = useRef<HTMLInputElement>(null);
 
   if (!task) return <div style={{ padding:24 }}>Задача не найдена</div>;
 
   const activeTasks = tasks.filter(t => t.status === 'active');
-  // Текущий дочерний элемент (задача, которая зависит от этой)
   const currentChild = tasks.find(t => t.dependsOn === taskId && t.status === 'active');
   const effectiveDl = task.deadline || getDerivedDeadline(task, activeTasks, engineers) || null;
   const fc        = calcForecast(task, engineers, effectiveDl);
@@ -37,15 +60,14 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
   const assignedEngs = engineers.filter(e => task.assignedEngineers?.includes(e.id));
   const taskHistory  = history.filter(h => h.fromTask===taskId||h.toTask===taskId).sort((a,b)=>b.date.localeCompare(a.date));
   const available    = engineers.filter(e => isWorkingRole(e) && !task.assignedEngineers?.includes(e.id) && isAvailableToday(e));
-  // Рекомендованные: сначала те у кого regularTask совпадает с направлением задачи, потом остальные свободные
   const recommended = available
     .map(e => {
-      const matchesDirection = task.direction && e.regularTask === task.direction;
-      const exp = (e.experience || {})[task.direction] || 0;
+      const matchesDirection = !!(task.direction && e.regularTask === task.direction);
+      const exp = task.direction ? ((e.experience || {})[task.direction] || 0) : 0;
       return { eng: e, matchesDirection, exp };
     })
     .sort((a,b) => {
-      if (a.matchesDirection !== b.matchesDirection) return b.matchesDirection - a.matchesDirection;
+      if (a.matchesDirection !== b.matchesDirection) return (b.matchesDirection ? 1 : 0) - (a.matchesDirection ? 1 : 0);
       return b.exp - a.exp;
     })
     .slice(0, 4)
@@ -53,53 +75,50 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
 
   function startEdit() {
     setEditForm({
-      name: task.name, direction: task.direction || '',
-      estimateHours: task.estimateHours || '',
-      startDate: task.startDate || '', deadline: task.deadline || '',
-      totalCases: task.totalCases || '',
-      hoursAnalysis:    task.hoursAnalysis    || '',
-      hoursActualize:   task.hoursActualize   || '',
-      hoursDevelopment: task.hoursDevelopment || '',
-      hoursTesting:     task.hoursTesting     || '',
-      dependsOn:  task.dependsOn || '',
+      name: task!.name, direction: task!.direction || '',
+      estimateHours: task!.estimateHours || '',
+      startDate: task!.startDate || '', deadline: task!.deadline || '',
+      totalCases: task!.totalCases || '',
+      hoursAnalysis:    task!.hoursAnalysis    || '',
+      hoursActualize:   task!.hoursActualize   || '',
+      hoursDevelopment: task!.hoursDevelopment || '',
+      hoursTesting:     task!.hoursTesting     || '',
+      dependsOn:  task!.dependsOn || '',
       newChildId: '',
     });
     setEditMode(true);
   }
 
   function saveEdit() {
+    if (!editForm) return;
     const breakdown = {
-      hoursAnalysis:    Math.max(0, parseInt(editForm.hoursAnalysis)    || 0),
-      hoursActualize:   Math.max(0, parseInt(editForm.hoursActualize)   || 0),
-      hoursDevelopment: Math.max(0, parseInt(editForm.hoursDevelopment) || 0),
-      hoursTesting:     Math.max(0, parseInt(editForm.hoursTesting)     || 0),
+      hoursAnalysis:    Math.max(0, parseInt(String(editForm.hoursAnalysis))    || 0),
+      hoursActualize:   Math.max(0, parseInt(String(editForm.hoursActualize))   || 0),
+      hoursDevelopment: Math.max(0, parseInt(String(editForm.hoursDevelopment)) || 0),
+      hoursTesting:     Math.max(0, parseInt(String(editForm.hoursTesting))     || 0),
     };
     const totalFromBreakdown = Object.values(breakdown).reduce((s,v) => s+v, 0);
 
     updateData(prev => {
-      // Определяем итоговый dependsOn для текущей задачи.
-      // Если привязываем дочернюю задачу и у неё был родитель — вставляемся в цепочку.
-      let effectiveDependsOn = editForm.dependsOn || null;
+      let effectiveDependsOn: string | null = editForm.dependsOn || null;
       if (editForm.newChildId && !effectiveDependsOn) {
         const selectedChild = prev.tasks.find(t => t.id === editForm.newChildId);
         if (selectedChild?.dependsOn) {
-          effectiveDependsOn = selectedChild.dependsOn; // вставка в цепочку: Y→this→X
+          effectiveDependsOn = selectedChild.dependsOn;
         }
       }
 
-      let newTasks = prev.tasks.map(t => {
+      const newTasks: Task[] = prev.tasks.map(t => {
         if (t.id === taskId) return {
           ...t,
           name: editForm.name, direction: editForm.direction || null,
-          estimateHours: totalFromBreakdown > 0 ? totalFromBreakdown : (parseInt(editForm.estimateHours) > 0 ? parseInt(editForm.estimateHours) : null),
+          estimateHours: totalFromBreakdown > 0 ? totalFromBreakdown : (parseInt(String(editForm.estimateHours)) > 0 ? parseInt(String(editForm.estimateHours)) : null),
           ...breakdown,
-          // Дата старта только для независимых задач; дочерние считают от родителя
           startDate: effectiveDependsOn ? null : (editForm.startDate || null),
           deadline: editForm.deadline || null,
-          totalCases: editForm.totalCases ? parseInt(editForm.totalCases) : null,
+          totalCases: editForm.totalCases ? parseInt(String(editForm.totalCases)) : null,
           dependsOn: effectiveDependsOn,
         };
-        // Новая дочерняя задача: обновляем её dependsOn
         if (editForm.newChildId && t.id === editForm.newChildId) {
           return { ...t, dependsOn: taskId, startDate: null };
         }
@@ -111,24 +130,22 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
     setEditMode(false);
   }
 
-  function unlinkParent()          { updateData(prev => unlinkParentOp(prev, taskId)); }
-  function unlinkChild(childId)    { updateData(prev => unlinkChildOp(prev, childId)); }
-  function addEngineer(engId)      {
+  function unlinkChild(childId: string) { updateData(prev => unlinkChildOp(prev, childId)); }
+  function addEngineer(engId: string)   {
     if (!engineers.find(e => e.id === engId)) return;
     updateData(prev => addEngineerToTask(prev, taskId, engId));
     setShowAddEng(false);
   }
-  function removeEngineer(engId)   { updateData(prev => removeEngineerFromTask(prev, taskId, engId)); }
+  function removeEngineer(engId: string) { updateData(prev => removeEngineerFromTask(prev, taskId, engId)); }
 
-  // Эффективная мощность команды
   const totalCount = assignedEngs.length;
 
   const parentTask      = task.dependsOn ? tasks.find(t => t.id === task.dependsOn) : null;
   const inheritedEngIds = parentTask ? getEffectiveTeam(parentTask, tasks) : [];
-  const inheritedEngs   = inheritedEngIds.map(id => engineers.find(e => e.id === id)).filter(Boolean);
+  const inheritedEngs   = inheritedEngIds.map(id => engineers.find(e => e.id === id)).filter((e): e is NonNullable<typeof e> => !!e);
   const inheritedCount  = inheritedEngs.length;
 
-  function completeTask(date) {
+  function completeTask(date: string) {
     updateData(prev => completeTaskOp(prev, taskId, date));
     onBack();
   }
@@ -152,7 +169,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
 
   async function archiveTask() {
     const ok = await confirm(
-      `Удалить задачу «${task.name}»?`,
+      `Удалить задачу «${task!.name}»?`,
       'Задача будет перемещена в архив. Её можно будет восстановить в разделе «Задачи» → «Архив».',
       { confirmLabel: 'Удалить' }
     );
@@ -209,24 +226,24 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
           <div>
             <Card style={{ marginBottom:14 }}>
               <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', marginBottom:14, textTransform:'uppercase', letterSpacing:'0.05em' }}>Детали задачи</div>
-              {editMode ? (
+              {editMode && editForm ? (
                 <>
-                  <FormRow label="Название"><Input value={editForm.name} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))}/></FormRow>
+                  <FormRow label="Название"><Input value={editForm.name} onChange={e=>setEditForm(f=>f?{...f, name:e.target.value}:f)}/></FormRow>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                     <FormRow label="Направление">
-                      <Select value={editForm.direction||''} onChange={e=>setEditForm(f=>({...f,direction:e.target.value}))}>
+                      <Select value={editForm.direction||''} onChange={e=>setEditForm(f=>f?{...f, direction:e.target.value}:f)}>
                         <option value="">— не задано —</option>
                         {REGULAR_TASKS.map(t=><option key={t} value={t}>{t}</option>)}
                       </Select>
                     </FormRow>
                     <FormRow label="Оценка (чч)" hint="человеко-часы">
-                      <Input type="number" value={editForm.estimateHours} onChange={e=>setEditForm(f=>({...f,estimateHours:e.target.value}))}/>
+                      <Input type="number" value={editForm.estimateHours} onChange={e=>setEditForm(f=>f?{...f, estimateHours:e.target.value}:f)}/>
                     </FormRow>
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                     {!editForm.dependsOn ? (
                       <FormRow label="Дата старта">
-                        <DatePicker value={editForm.startDate} onChange={v => setEditForm(f=>({...f,startDate:v}))} placeholder="Не задана"/>
+                        <DatePicker value={editForm.startDate} onChange={v => setEditForm(f=>f?{...f, startDate:v}:f)} placeholder="Не задана"/>
                       </FormRow>
                     ) : (
                       <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
@@ -235,11 +252,11 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                       </div>
                     )}
                     <FormRow label="Дедлайн">
-                      <DatePicker value={editForm.deadline} onChange={v => setEditForm(f=>({...f,deadline:v}))} placeholder="Без дедлайна"/>
+                      <DatePicker value={editForm.deadline} onChange={v => setEditForm(f=>f?{...f, deadline:v}:f)} placeholder="Без дедлайна"/>
                     </FormRow>
                   </div>
                   <FormRow label="Кейсов всего" hint="Оставьте пустым для авто-расчёта прогресса">
-                    <Input type="number" value={editForm.totalCases} onChange={e=>setEditForm(f=>({...f,totalCases:e.target.value}))} placeholder="например, 500"/>
+                    <Input type="number" value={editForm.totalCases} onChange={e=>setEditForm(f=>f?{...f, totalCases:e.target.value}:f)} placeholder="например, 500"/>
                   </FormRow>
 
                   {/* Зависимости */}
@@ -254,13 +271,13 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                           <span style={{ fontSize:13, color:'var(--accent)', fontWeight:500, flex:1 }}>
                             ↳ {tasks.find(t=>t.id===editForm.dependsOn)?.name || editForm.dependsOn}
                           </span>
-                          <button type="button" onClick={()=>setEditForm(f=>({...f,dependsOn:''}))}
+                          <button type="button" onClick={()=>setEditForm(f=>f?{...f, dependsOn:''}:f)}
                             style={{ fontSize:11, color:'var(--red)', border:'1px solid var(--red)', borderRadius:4, padding:'3px 8px', background:'transparent', cursor:'pointer' }}>
                             Убрать
                           </button>
                         </div>
                       ) : (
-                        <Select value={editForm.dependsOn||''} onChange={e=>setEditForm(f=>({...f,dependsOn:e.target.value}))}>
+                        <Select value={editForm.dependsOn||''} onChange={e=>setEditForm(f=>f?{...f, dependsOn:e.target.value}:f)}>
                           <option value="">— нет родительской задачи —</option>
                           {activeTasks.filter(t=>t.id!==taskId && t.dependsOn!==taskId).map(t=>(
                             <option key={t.id} value={t.id}>{t.name}</option>
@@ -283,7 +300,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                           </button>
                         </div>
                       ) : (
-                        <Select value={editForm.newChildId||''} onChange={e=>setEditForm(f=>({...f,newChildId:e.target.value}))}>
+                        <Select value={editForm.newChildId||''} onChange={e=>setEditForm(f=>f?{...f, newChildId:e.target.value}:f)}>
                           <option value="">— нет следующей задачи —</option>
                           {activeTasks.filter(t=>t.id!==taskId && t.dependsOn!==taskId && t.id!==editForm.dependsOn).map(t=>(
                             <option key={t.id} value={t.id}>
@@ -295,7 +312,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                       {editForm.newChildId && (() => {
                         const sel = tasks.find(t=>t.id===editForm.newChildId);
                         const oldParent = sel?.dependsOn ? tasks.find(t=>t.id===sel.dependsOn) : null;
-                        if (!oldParent) return null;
+                        if (!oldParent || !sel) return null;
                         const willInherit = !editForm.dependsOn;
                         return (
                           <div style={{ fontSize:12, color:'var(--amber)', marginTop:6, padding:'5px 8px', background:'var(--amber-bg)', borderRadius:5 }}>
@@ -309,20 +326,21 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                   </div>
 
                   <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', margin:'12px 0 6px', textTransform:'uppercase', letterSpacing:'0.04em' }}>Оценка по этапам (чч)</div>
-                  {[
+                  {([
                     ['hoursAnalysis',    'Анализ'],
                     ['hoursActualize',   'Актуализация'],
                     ['hoursDevelopment', 'Разработка'],
                     ['hoursTesting',     'Тестирование'],
-                  ].map(([k, l]) => (
+                  ] as const).map(([k, l]) => (
                     <div key={k} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
                       <span style={{ flex:1, fontSize:13, color:'var(--text-primary)' }}>{l}</span>
-                      <Input type="number" value={editForm[k]||''} onChange={e=>setEditForm(f=>({...f,[k]:e.target.value}))} placeholder="—" style={{ width:80, textAlign:'center' }}/>
+                      <Input type="number" value={editForm[k]||''} onChange={e=>setEditForm(f=>f?{...f, [k]:e.target.value}:f)} placeholder="—" style={{ width:80, textAlign:'center' }}/>
                       <span style={{ fontSize:12, color:'var(--text-tertiary)' }}>чч</span>
                     </div>
                   ))}
                   {(() => {
-                    const total = ['hoursAnalysis','hoursActualize','hoursDevelopment','hoursTesting'].reduce((s,k)=>s+(parseInt(editForm[k])||0),0);
+                    const keys = ['hoursAnalysis','hoursActualize','hoursDevelopment','hoursTesting'] as const;
+                    const total = keys.reduce((s,k)=>s+(parseInt(String(editForm[k]))||0),0);
                     return total > 0 ? <div style={{ fontSize:13, color:'var(--text-secondary)', textAlign:'right', marginBottom:4 }}>Итого: <strong style={{ color:'var(--text-primary)' }}>{total} чч</strong></div> : null;
                   })()}
                 </>
@@ -335,19 +353,20 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                     </span>
                   </FieldRow>
                   <FieldRow label="Дата старта">{formatDate(task.startDate)}</FieldRow>
-                  <FieldRow label="Дедлайн">{task.deadline?<span style={{ color:'var(--red)',fontWeight:600 }}>{formatDate(task.deadline)}</span>:'—'}</FieldRow>
+                  <FieldRow label="Дедлайн">{task.deadline?<span style={{ color:'var(--red)', fontWeight:600 }}>{formatDate(task.deadline)}</span>:'—'}</FieldRow>
                   <FieldRow label="Итоговая оценка"><strong>{fmtHours(task.estimateHours)}</strong></FieldRow>
                   {/* Разбивка по этапам */}
-                  {[['hoursAnalysis','Анализ'],['hoursActualize','Актуализация'],['hoursDevelopment','Разработка'],['hoursTesting','Тестирование']].map(([k,l]) =>
-                    task[k] > 0 ? <FieldRow key={k} label={`  · ${l}`}><span style={{ color:'var(--text-secondary)' }}>{fmtHours(task[k])}</span></FieldRow> : null
-                  )}
+                  {(([['hoursAnalysis','Анализ'],['hoursActualize','Актуализация'],['hoursDevelopment','Разработка'],['hoursTesting','Тестирование']]) as const).map(([k,l]) => {
+                    const v = task[k];
+                    return v && v > 0 ? <FieldRow key={k} label={`  · ${l}`}><span style={{ color:'var(--text-secondary)' }}>{fmtHours(v)}</span></FieldRow> : null;
+                  })}
                   <FieldRow label="Кейсов всего">{task.totalCases||'—'}</FieldRow>
                   {task.dependsOn && (() => {
                     const parent = tasks.find(t=>t.id===task.dependsOn);
                     return parent ? (
                       <FieldRow label="Зависит от">
                         <span style={{ fontSize:13, color:'var(--accent)', fontWeight:500, cursor:'pointer' }}
-                          onClick={()=>navigate('task',parent.id)}>
+                          onClick={()=>navigate('task', parent.id)}>
                           ↳ {parent.name}
                         </span>
                       </FieldRow>
@@ -370,7 +389,6 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                 <Card style={{ marginBottom:14 }}>
                   <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', marginBottom:14, textTransform:'uppercase', letterSpacing:'0.05em' }}>Прогресс</div>
 
-
                   <ProgressBar pct={fc?.progressPct||0} color={barColor} height={7}/>
                   <div style={{ fontSize:12, color:'var(--text-tertiary)', display:'flex', justifyContent:'space-between', marginTop:5 }}>
                     <span>{task.totalCases?`${task.doneCases} / ${task.totalCases} кейсов`:'Автоматический расчёт'}</span>
@@ -378,7 +396,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                   </div>
 
                   {/* Ручной ввод прогресса по кейсам */}
-                  {task.totalCases > 0 && (
+                  {task.totalCases && task.totalCases > 0 && (
                     <div style={{ marginTop:12, display:'flex', alignItems:'center', gap:10 }}>
                       <span style={{ fontSize:13, color:'var(--text-secondary)', flex:1 }}>Внести факт:</span>
                       <input type="number" defaultValue={task.doneCases}
@@ -387,7 +405,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                       />
                       <span style={{ fontSize:12, color:'var(--text-tertiary)' }}>из {task.totalCases}</span>
                       <button onClick={() => {
-                        const val = parseInt(progressInputRef.current?.value);
+                        const val = parseInt(progressInputRef.current?.value || '');
                         if (!isNaN(val)) updateData(prev => updateTaskProgress(prev, taskId, val));
                       }} style={{ padding:'5px 12px', background:'var(--accent)', color:'#fff', border:'none', borderRadius:6, fontSize:12, fontWeight:500, cursor:'pointer' }}>
                         Сохранить
@@ -396,12 +414,12 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                   )}
 
                   <div style={{ marginTop:12, background:'var(--bg-secondary)', borderRadius:8, padding:'12px 14px' }}>
-                    {[
+                    {([
                       ['Осталось работы', fmtHours(fc?.hoursLeft), false],
                       ['Рабочих дней до конца', fc?.daysLeft??'—', false],
                       ['Расчётная дата завершения', fc?.forecastDate?formatDateShort(fc.forecastDate):'—', fc?.deadlineStatus==='overdue'],
                       ['Инженеров на задаче', Math.round(fc?.capacity??0), false],
-                    ].map(([label,val,warn]) => (
+                    ] as const).map(([label,val,warn]) => (
                       <div key={label} style={{ display:'flex', justifyContent:'space-between', fontSize:14, padding:'4px 0' }}>
                         <span style={{ color:'var(--text-secondary)' }}>{label}</span>
                         <span style={{ fontWeight:600, color:warn?'var(--red)':'var(--text-primary)' }}>{val}</span>
@@ -442,23 +460,16 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
           <div>
             <Card style={{ marginBottom:14 }}>
               <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', marginBottom:14, textTransform:'uppercase', letterSpacing:'0.05em' }}>Команда на задаче</div>
-              {assignedEngs.map(eng => {
-                const isHome = eng.homeTask===taskId;
-                return (
-                  <div key={eng.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:'0.5px solid var(--border-light)' }}>
-                    <Avatar name={eng.name} size={32}/>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:14, fontWeight:600, cursor:'pointer', color:'var(--blue)' }} onClick={()=>navigate('engineer',eng.id)}>{eng.name}</div>
-                      <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:1 }}>
-                        {isHome?'домашняя':'переключён'}
-                      </div>
-                    </div>
-                    {!isHome && (
-                      <button onClick={()=>removeEngineer(eng.id)} style={{ fontSize:12, color:'var(--accent)', border:'1.5px solid var(--accent)', padding:'4px 10px', borderRadius:4, background:'transparent', cursor:'pointer', fontWeight:500 }}>↩ Вернуть</button>
-                    )}
+              {assignedEngs.map(eng => (
+                <div key={eng.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:'0.5px solid var(--border-light)' }}>
+                  <Avatar name={eng.name} size={32}/>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:14, fontWeight:600, cursor:'pointer', color:'var(--blue)' }} onClick={()=>navigate('engineer',eng.id)}>{eng.name}</div>
+                    <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:1 }}>{eng.regularTask||'—'}</div>
                   </div>
-                );
-              })}
+                  <button onClick={()=>removeEngineer(eng.id)} style={{ fontSize:12, color:'var(--accent)', border:'1.5px solid var(--accent)', padding:'4px 10px', borderRadius:4, background:'transparent', cursor:'pointer', fontWeight:500 }}>↩ Снять</button>
+                </div>
+              ))}
               {assignedEngs.length > 0 && (
                 <div style={{ fontSize:12, color:'var(--text-tertiary)', paddingTop:8, borderTop:'0.5px solid var(--border-light)', marginTop:4 }}>
                   Инженеров: <strong style={{ color:'var(--text-primary)' }}>{totalCount}</strong>
@@ -477,8 +488,8 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                   <span
                     style={{ fontSize:13, color:'var(--accent)', fontWeight:600, cursor:'pointer', flex:1 }}
                     onClick={() => navigate('task', parentTask.id)}
-                    onMouseEnter={e => e.currentTarget.style.textDecoration='underline'}
-                    onMouseLeave={e => e.currentTarget.style.textDecoration='none'}
+                    onMouseEnter={e => (e.currentTarget.style.textDecoration='underline')}
+                    onMouseLeave={e => (e.currentTarget.style.textDecoration='none')}
                   >
                     ↳ {parentTask.name}
                   </span>
@@ -506,8 +517,8 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                   {task.direction ? <>По направлению <strong style={{ color:'var(--accent)' }}>{task.direction}</strong></> : 'Доступные инженеры'}
                 </div>
                 {recommended.map(eng => {
-                  const matchDir  = task.direction && eng.regularTask === task.direction;
-                  const expStars  = (eng.experience||{})[task.direction] || 0;
+                  const matchDir  = !!(task.direction && eng.regularTask === task.direction);
+                  const expStars  = task.direction ? ((eng.experience||{})[task.direction] || 0) : 0;
                   return (
                     <div key={eng.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:'0.5px solid var(--border-light)' }}>
                       <Avatar name={eng.name} size={30}/>
