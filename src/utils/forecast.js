@@ -7,8 +7,9 @@ import { roleCoeff, capacityToday } from '../domain/availability';
 export const HOURS_PER_DAY = 8;
 export { roleCoeff };
 
-// Суммарная мощность команды на задаче сегодня (учитывает отпуска/больничные/дейофы)
-export function effectiveCapacity(task, engineers) {
+// Текущая мощность команды задачи — учитывает кто сегодня в отпуске/больничном/дейофе.
+// Это «реальная» capacity, на которую можно положиться при расчёте сроков.
+export function currentCapacity(task, engineers) {
   return (task.assignedEngineers || []).reduce((sum, id) => {
     const eng = engineers.find(e => e.id === id);
     if (!eng) return sum;
@@ -16,9 +17,11 @@ export function effectiveCapacity(task, engineers) {
   }, 0);
 }
 
-// Номинальная мощность команды без учёта временных отсутствий (для elapsed-based прогресса)
-// Используется когда задача стартовала в прошлом и нужно прикинуть сколько часов уже отработано
-export function effectiveCapacityFull(task, engineers) {
+// Номинальная мощность команды — игнорирует временные отсутствия (отпуск/дейоф/больничный).
+// Используется при elapsed-based прогрессе: «предполагаем что команда была вся,
+// и за прошедшие N дней отработала X часов». Это апроксимация — реальная картина
+// может быть хуже из-за пропусков, но для отображения прогресса так проще.
+export function nominalCapacity(task, engineers) {
   return (task.assignedEngineers || []).reduce((sum, id) => {
     const eng = engineers.find(e => e.id === id);
     if (!eng) return sum;
@@ -39,8 +42,8 @@ export function effectiveCapacityFull(task, engineers) {
  *   capacity         — текущая эффективная мощность (ед/день)
  */
 export function calcForecast(task, engineers, deadlineOverride = null, startOverride = null) {
-  const cap = effectiveCapacity(task, engineers);         // эфф. мощность сегодня
-  const capFull = effectiveCapacityFull(task, engineers); // полная (для авто-прогресса)
+  const cap = currentCapacity(task, engineers);         // эфф. мощность сегодня
+  const capFull = nominalCapacity(task, engineers); // полная (для авто-прогресса)
   const totalHours = task.estimateHours || 0;
 
   let progressPct = 0;
@@ -161,7 +164,7 @@ export function calcDependentStart(parentTask, parentEngineers) {
  * Возвращает дату старта дочерней задачи.
  */
 export function calcScheduledChildStart(parentTask, parentEngineers, parentDynStart) {
-  const cap = effectiveCapacity(parentTask, parentEngineers);
+  const cap = currentCapacity(parentTask, parentEngineers);
   if (!cap || !parentDynStart) return null;
   const totalHours = parentTask.estimateHours || 0;
   const hoursPerDay = cap * HOURS_PER_DAY;
@@ -182,7 +185,7 @@ export function engineersNeeded(task, engineers, deadlineOverride = null) {
   if (fc.deadlineStatus !== 'overdue') return 0;
 
   const totalHours = task.estimateHours || 0;
-  const cap = effectiveCapacity(task, engineers);
+  const cap = currentCapacity(task, engineers);
 
   // Рабочих дней до дедлайна
   const daysToDeadline = workdaysBetween(todayStr(), effectiveDl);
@@ -194,7 +197,7 @@ export function engineersNeeded(task, engineers, deadlineOverride = null) {
     const pct = Math.min(1, (task.doneCases || 0) / task.totalCases);
     remainingHours = totalHours * (1 - pct);
   } else {
-    const capFull = effectiveCapacityFull(task, engineers);
+    const capFull = nominalCapacity(task, engineers);
     const elapsed = workdaysElapsed(task.startDate);
     const usedHours = elapsed * capFull * HOURS_PER_DAY;
     remainingHours = Math.max(0, totalHours - usedHours);
@@ -223,12 +226,12 @@ export function getDerivedDeadline(task, allTasks, engineers, _depth = 0) {
 
   // Для обратного планирования используем полную оценку (estimateHours),
   // а не hoursLeft — иначе устаревший startDate занижает длительность.
-  const childCap = effectiveCapacity(child, engineers);
+  const childCap = currentCapacity(child, engineers);
   const childTotalHours = child.estimateHours || 0;
   const childDays = childCap > 0
     ? Math.max(1, Math.ceil(childTotalHours / (childCap * HOURS_PER_DAY)))
     : (() => {
-        const parentCap = effectiveCapacity(task, engineers);
+        const parentCap = currentCapacity(task, engineers);
         const estimateCap = parentCap > 0 ? parentCap : 1;
         return Math.max(1, Math.ceil(childTotalHours / (estimateCap * HOURS_PER_DAY)));
       })();

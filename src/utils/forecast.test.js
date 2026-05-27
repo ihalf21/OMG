@@ -1,7 +1,7 @@
 // Тесты на utils/forecast.js — capacity, прогноз сроков, дедлайн-статус.
 import {
   HOURS_PER_DAY, roleCoeff,
-  effectiveCapacity, effectiveCapacityFull,
+  currentCapacity, nominalCapacity,
   calcForecast, statusColor, statusLabel,
   fmtHours, engineersNeeded, getDerivedDeadline,
 } from './forecast';
@@ -40,39 +40,39 @@ describe('roleCoeff', () => {
   });
 });
 
-describe('effectiveCapacity', () => {
+describe('currentCapacity', () => {
   test('пустая задача — 0', () => {
-    expect(effectiveCapacity(task(), [])).toBe(0);
+    expect(currentCapacity(task(), [])).toBe(0);
   });
   test('один инженер на задаче — 1.0', () => {
     const e = eng({ id: 'e1' });
     const t = task({ assignedEngineers: ['e1'] });
-    expect(effectiveCapacity(t, [e])).toBe(1);
+    expect(currentCapacity(t, [e])).toBe(1);
   });
   test('лид не считается', () => {
     const e = eng({ id: 'e1', role: 'lead' });
     const t = task({ assignedEngineers: ['e1'] });
-    expect(effectiveCapacity(t, [e])).toBe(0);
+    expect(currentCapacity(t, [e])).toBe(0);
   });
   test('больной не считается', () => {
     const e = eng({ id: 'e1', status: 'sick' });
     const t = task({ assignedEngineers: ['e1'] });
-    expect(effectiveCapacity(t, [e])).toBe(0);
+    expect(currentCapacity(t, [e])).toBe(0);
   });
   test('в дейофе сегодня — не считается', () => {
     const e = eng({ id: 'e1', dayoffDate: todayStr() });
     const t = task({ assignedEngineers: ['e1'] });
-    expect(effectiveCapacity(t, [e])).toBe(0);
+    expect(currentCapacity(t, [e])).toBe(0);
   });
   test('запланированный дейоф (будущий) — считается', () => {
     const future = addWorkdays(todayStr(), 5);
     const e = eng({ id: 'e1', dayoffDate: future });
     const t = task({ assignedEngineers: ['e1'] });
-    expect(effectiveCapacity(t, [e])).toBe(1);
+    expect(currentCapacity(t, [e])).toBe(1);
   });
   test('несуществующий ID игнорируется', () => {
     const t = task({ assignedEngineers: ['ghost'] });
-    expect(effectiveCapacity(t, [])).toBe(0);
+    expect(currentCapacity(t, [])).toBe(0);
   });
   test('несколько инженеров суммируются', () => {
     const engs = [
@@ -81,11 +81,11 @@ describe('effectiveCapacity', () => {
       eng({ id: 'e3', role: 'lead' }), // не считается
     ];
     const t = task({ assignedEngineers: ['e1', 'e2', 'e3'] });
-    expect(effectiveCapacity(t, engs)).toBe(2);
+    expect(currentCapacity(t, engs)).toBe(2);
   });
 });
 
-describe('effectiveCapacityFull', () => {
+describe('nominalCapacity', () => {
   test('игнорирует временные отсутствия (больничный, отпуск, дейоф)', () => {
     const engs = [
       eng({ id: 'e1', status: 'sick' }),
@@ -94,13 +94,13 @@ describe('effectiveCapacityFull', () => {
     ];
     const t = task({ assignedEngineers: ['e1', 'e2', 'e3'] });
     // Все трое имеют roleCoeff=1, но в дейофе/больничном/отпуске сейчас.
-    // effectiveCapacityFull их всё равно считает — это «номинальная» мощность.
-    expect(effectiveCapacityFull(t, engs)).toBe(3);
+    // nominalCapacity их всё равно считает — это «номинальная» мощность.
+    expect(nominalCapacity(t, engs)).toBe(3);
   });
   test('лиды всё равно 0', () => {
     const e = eng({ id: 'e1', role: 'lead' });
     const t = task({ assignedEngineers: ['e1'] });
-    expect(effectiveCapacityFull(t, [e])).toBe(0);
+    expect(nominalCapacity(t, [e])).toBe(0);
   });
 });
 
