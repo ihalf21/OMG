@@ -2,6 +2,13 @@ import React, { useState, useRef } from 'react';
 import { calcForecast, statusColor, statusLabel, statusBadgeStyle, fmtHours, getDerivedDeadline } from '../utils/forecast';
 import { isAvailableToday, isWorkingRole } from '../domain/availability';
 import { REGULAR_TASKS } from '../domain/tasks';
+import {
+  getEffectiveTeam,
+  addEngineerToTask, removeEngineerFromTask,
+  unlinkParent as unlinkParentOp, unlinkChild as unlinkChildOp,
+  completeTask as completeTaskOp, reopenTask as reopenTaskOp, archiveTask as archiveTaskOp,
+  updateTaskProgress,
+} from '../domain/task';
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
 import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm } from '../components/UI';
 
@@ -104,101 +111,25 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
     setEditMode(false);
   }
 
-  function unlinkParent() {
-    updateData(prev => ({
-      ...prev,
-      tasks: prev.tasks.map(t => t.id === taskId ? { ...t, dependsOn: null, startDate: null } : t),
-    }));
-  }
-
-  function unlinkChild(childId) {
-    updateData(prev => ({
-      ...prev,
-      tasks: prev.tasks.map(t => t.id === childId ? { ...t, dependsOn: null } : t),
-    }));
-  }
-
-  function addEngineer(engId) {
-    const eng = engineers.find(e=>e.id===engId);
-    if (!eng) return;
-    updateData(prev => ({
-      ...prev,
-      tasks: prev.tasks.map(t => t.id===taskId?{...t,assignedEngineers:[...(t.assignedEngineers||[]),engId]}:t),
-      history:[...prev.history,{id:'h'+Date.now(),date:todayStr(),engineerId:engId,type:'switch',fromTask:eng.homeTask||null,toTask:taskId,note:'Добавлен на задачу'}],
-    }));
+  function unlinkParent()          { updateData(prev => unlinkParentOp(prev, taskId)); }
+  function unlinkChild(childId)    { updateData(prev => unlinkChildOp(prev, childId)); }
+  function addEngineer(engId)      {
+    if (!engineers.find(e => e.id === engId)) return;
+    updateData(prev => addEngineerToTask(prev, taskId, engId));
     setShowAddEng(false);
   }
-
-  function removeEngineer(engId) {
-    const eng = engineers.find(e=>e.id===engId);
-    updateData(prev => ({
-      ...prev,
-      tasks: prev.tasks.map(t => t.id===taskId?{...t,assignedEngineers:(t.assignedEngineers||[]).filter(id=>id!==engId)}:t),
-      history:[...prev.history,{id:'h'+Date.now(),date:todayStr(),engineerId:engId,type:'return',fromTask:taskId,toTask:eng?.homeTask||null,note:'Возврат на домашнюю'}],
-    }));
-  }
+  function removeEngineer(engId)   { updateData(prev => removeEngineerFromTask(prev, taskId, engId)); }
 
   // Эффективная мощность команды
   const totalCount = assignedEngs.length;
-
-  // Рекурсивный расчёт полной команды задачи (своя + унаследованная от родителей)
-  function getEffectiveTeam(t, allTasks, depth = 0) {
-    if (!t || depth > 9) return [];
-    const own = t.assignedEngineers || [];
-    if (!t.dependsOn) return own;
-    const parent = allTasks.find(x => x.id === t.dependsOn);
-    const parentTeam = getEffectiveTeam(parent, allTasks, depth + 1);
-    if (own.length === 0) return parentTeam;
-    return [...new Set([...parentTeam, ...own])];
-  }
 
   const parentTask      = task.dependsOn ? tasks.find(t => t.id === task.dependsOn) : null;
   const inheritedEngIds = parentTask ? getEffectiveTeam(parentTask, tasks) : [];
   const inheritedEngs   = inheritedEngIds.map(id => engineers.find(e => e.id === id)).filter(Boolean);
   const inheritedCount  = inheritedEngs.length;
 
-  // Перенос команды на дочернюю задачу при завершении/удалении текущей
-  function transferTeamToChild(prev) {
-    const child = prev.tasks.find(t => t.dependsOn === taskId && t.status === 'active');
-    if (!child) return { tasks: prev.tasks, history: prev.history, childId: null };
-
-    const completedTask = prev.tasks.find(t => t.id === taskId);
-    const team = getEffectiveTeam(completedTask, prev.tasks);
-    if (team.length === 0) return { tasks: prev.tasks, history: prev.history, childId: null };
-
-    const today = todayStr();
-    const merged = [...new Set([...team, ...(child.assignedEngineers || [])])];
-    const newHistory = team.map((engId, i) => ({
-      id: 'h' + (Date.now() + i),
-      date: today,
-      engineerId: engId,
-      type: 'switch',
-      fromTask: taskId,
-      toTask: child.id,
-      note: 'Автоперевод при завершении задачи',
-    }));
-
-    return {
-      tasks: prev.tasks.map(t =>
-        t.id === child.id ? { ...t, assignedEngineers: merged, startDate: today, dependsOn: null } : t
-      ),
-      history: [...prev.history, ...newHistory],
-      childId: child.id,
-    };
-  }
-
   function completeTask(date) {
-    updateData(prev => {
-      const { tasks: newTasks, history: newHistory, childId } = transferTeamToChild(prev);
-      return {
-        ...prev,
-        tasks: newTasks.map(t => t.id===taskId
-          ? { ...t, status:'done', completedDate: date, completedWithChildId: childId || null }
-          : t
-        ),
-        history: newHistory,
-      };
-    });
+    updateData(prev => completeTaskOp(prev, taskId, date));
     onBack();
   }
 
@@ -216,20 +147,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
   }
 
   function reopenTask() {
-    updateData(prev => {
-      const parent = prev.tasks.find(t => t.id === taskId);
-      const childId = parent?.completedWithChildId;
-      return {
-        ...prev,
-        tasks: prev.tasks.map(t => {
-          if (t.id === taskId)
-            return { ...t, status:'active', completedDate:null, completedWithChildId:null };
-          if (childId && t.id === childId)
-            return { ...t, dependsOn: taskId, startDate: null };
-          return t;
-        }),
-      };
-    });
+    updateData(prev => reopenTaskOp(prev, taskId));
   }
 
   async function archiveTask() {
@@ -239,14 +157,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
       { confirmLabel: 'Удалить' }
     );
     if (!ok) return;
-    updateData(prev => {
-      const { tasks: newTasks, history: newHistory } = transferTeamToChild(prev);
-      return {
-        ...prev,
-        tasks: newTasks.map(t => t.id===taskId ? { ...t, status:'archived', archivedDate:todayStr() } : t),
-        history: newHistory,
-      };
-    });
+    updateData(prev => archiveTaskOp(prev, taskId));
     onBack();
   }
 
@@ -477,7 +388,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack })
                       <span style={{ fontSize:12, color:'var(--text-tertiary)' }}>из {task.totalCases}</span>
                       <button onClick={() => {
                         const val = parseInt(progressInputRef.current?.value);
-                        if (!isNaN(val)) updateData(prev => ({ ...prev, tasks: prev.tasks.map(t => t.id===taskId?{...t,doneCases:Math.min(val,t.totalCases||val)}:t) }));
+                        if (!isNaN(val)) updateData(prev => updateTaskProgress(prev, taskId, val));
                       }} style={{ padding:'5px 12px', background:'var(--accent)', color:'#fff', border:'none', borderRadius:6, fontSize:12, fontWeight:500, cursor:'pointer' }}>
                         Сохранить
                       </button>
