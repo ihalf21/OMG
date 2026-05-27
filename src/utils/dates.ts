@@ -116,6 +116,14 @@ export function workdaysElapsed(startDateStr: ISODate | null | undefined): numbe
   return workdaysBetween(startDateStr, today);
 }
 
+// Следующий календарный день (включая выходные и праздники)
+export function addCalendarDay(dateStr: ISODate): ISODate {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() + 1);
+  return toDateStr(date);
+}
+
 // Следующий рабочий день после указанной даты
 export function nextWorkday(dateStr: ISODate): ISODate {
   const [y, m, d] = dateStr.split('-').map(Number);

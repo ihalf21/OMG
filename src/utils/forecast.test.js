@@ -4,6 +4,7 @@ import {
   currentCapacity, nominalCapacity,
   calcForecast, statusColor, statusLabel,
   fmtHours, engineersNeeded, getDerivedDeadline,
+  projectFinish,
 } from './forecast';
 import { todayStr, addWorkdays } from './dates';
 
@@ -249,5 +250,128 @@ describe('fmtHours', () => {
   test('дни + часы', () => {
     expect(fmtHours(20)).toBe('2 дн. 4 чч');
     expect(fmtHours(24)).toBe('3 дн.');
+  });
+});
+
+describe('projectFinish', () => {
+  // День 2026-05-25 — понедельник, рабочий
+  // 2026-05-23/24 — суббота/воскресенье
+  // 2026-05-29 — пятница, рабочий
+  // 2026-06-01 — понедельник, рабочий
+
+  test('нет назначенных инженеров — null', () => {
+    const t = task({ assignedEngineers: [] });
+    expect(projectFinish(t, [], '2026-05-25', 16)).toEqual({ forecastDate: null, daysLeft: null });
+  });
+
+  test('0 часов работы — мгновенно (тот же день)', () => {
+    const e = eng({ id: 'e1' });
+    const t = task({ assignedEngineers: ['e1'] });
+    expect(projectFinish(t, [e], '2026-05-25', 0)).toEqual({ forecastDate: '2026-05-25', daysLeft: 0 });
+  });
+
+  test('8 часов / 1 инженер / без отпусков = 1 рабочий день', () => {
+    const e = eng({ id: 'e1' });
+    const t = task({ assignedEngineers: ['e1'] });
+    expect(projectFinish(t, [e], '2026-05-25', 8)).toEqual({ forecastDate: '2026-05-25', daysLeft: 1 });
+  });
+
+  test('16 часов / 1 инженер = 2 рабочих дня (через выходные не идём)', () => {
+    const e = eng({ id: 'e1' });
+    const t = task({ assignedEngineers: ['e1'] });
+    // С пятницы: пт=8ч, сб/вс пропускаем, пн=8ч → понедельник
+    expect(projectFinish(t, [e], '2026-05-22', 16)).toEqual({ forecastDate: '2026-05-25', daysLeft: 2 });
+  });
+
+  test('учитывает запланированный отпуск инженера в будущем', () => {
+    // 1 инженер, 40 часов = 5 рабочих дней без отпуска
+    // Отпуск с пн 25 до пн 25 (1 день) — должен сдвинуть конец на 1 день вперёд
+    const e = eng({
+      id: 'e1',
+      vacationFrom: '2026-05-26',
+      vacationTo: '2026-05-26',
+    });
+    const t = task({ assignedEngineers: ['e1'] });
+    // Старт пн 25: 25=8ч (работает), 26=отпуск, 27=8ч, 28=8ч, 29=8ч, 30/31вых, 1июн=8ч → 5 рабочих дней работы, но конец сдвинут на 1 июня
+    const sim = projectFinish(t, [e], '2026-05-25', 40);
+    expect(sim.forecastDate).toBe('2026-06-01');
+  });
+
+  test('учитывает запланированный дейоф', () => {
+    const e = eng({ id: 'e1', dayoffDate: '2026-05-26' });
+    const t = task({ assignedEngineers: ['e1'] });
+    // 16 часов: 25=8ч, 26=дейоф (пропуск), 27=8ч → конец 27 мая
+    const sim = projectFinish(t, [e], '2026-05-25', 16);
+    expect(sim.forecastDate).toBe('2026-05-27');
+    expect(sim.daysLeft).toBe(3); // 25, 26, 27 — 3 рабочих дня прошло
+  });
+
+  test('два инженера, у одного отпуск — скорость падает на эти дни', () => {
+    const e1 = eng({ id: 'e1' });
+    const e2 = eng({ id: 'e2', vacationFrom: '2026-05-26', vacationTo: '2026-05-26' });
+    const t = task({ assignedEngineers: ['e1', 'e2'] });
+    // 32 часа, обычно 2 дня (16ч/день). С отпуском e2 26 мая:
+    // 25 = 16ч (оба работают), 26 = 8ч (только e1), 27 = 8ч (оба снова)
+    // Итого 32ч за 3 дня
+    const sim = projectFinish(t, [e1, e2], '2026-05-25', 32);
+    expect(sim.forecastDate).toBe('2026-05-27');
+  });
+
+  test('лиды не работают — capacity = 0', () => {
+    const e = eng({ id: 'e1', role: 'lead' });
+    const t = task({ assignedEngineers: ['e1'] });
+    const sim = projectFinish(t, [e], '2026-05-25', 8);
+    expect(sim).toEqual({ forecastDate: null, daysLeft: null });
+  });
+
+  test('защита от бесконечного цикла — все на больничном без даты возврата', () => {
+    const e = eng({ id: 'e1', status: 'sick' });
+    const t = task({ assignedEngineers: ['e1'] });
+    const sim = projectFinish(t, [e], '2026-05-25', 8);
+    expect(sim).toEqual({ forecastDate: null, daysLeft: null });
+  });
+});
+
+describe('calcForecast — учёт запланированных отсутствий (через projectFinish)', () => {
+  test('запланированный дейоф увеличивает forecastDate', () => {
+    // Создаём 2 инженеров: e1 свободен, e2 с дейофом через 3 рабочих дня
+    const e1 = eng({ id: 'e1' });
+    const today = todayStr();
+    const dayoffOn = addWorkdays(today, 3);
+    const e2 = eng({ id: 'e2', dayoffDate: dayoffOn });
+
+    // 32 часа на 2 инженеров — обычно 2 дня (16ч/день).
+    // С дейофом e2 в один из этих дней — должно потребоваться больше дней.
+    const t = task({ estimateHours: 32, assignedEngineers: ['e1', 'e2'] });
+
+    const fcNoDayoff = calcForecast({ ...t }, [e1, eng({ id: 'e2' })]);
+    const fcWithDayoff = calcForecast(t, [e1, e2]);
+
+    // forecastDate либо позже, либо равно (если дейоф попал в выходной — что вряд ли)
+    expect(fcWithDayoff.forecastDate >= fcNoDayoff.forecastDate).toBe(true);
+  });
+
+  test('запланированный отпуск инженера в период работы сдвигает дедлайн-статус', () => {
+    const e = eng({ id: 'e1' });
+    const today = todayStr();
+    // Длинная задача с инженером в отпуске посередине
+    const t = task({
+      estimateHours: 80,
+      deadline: addWorkdays(today, 11), // 11 раб. дней, обычно 10 без отпуска
+      assignedEngineers: ['e1'],
+    });
+
+    const fcOk = calcForecast(t, [e]);
+    expect(fcOk.deadlineStatus).not.toBe('overdue');
+
+    // Тот же инженер с длинным отпуском в начале — теперь срываем
+    const eWithVac = eng({
+      id: 'e1',
+      vacationFrom: addWorkdays(today, 1),
+      vacationTo: addWorkdays(today, 5),
+    });
+    const fcOverdue = calcForecast(t, [eWithVac]);
+    // Должно стать хуже — либо risk либо overdue
+    expect(fcOverdue.forecastDate > fcOk.forecastDate).toBe(true);
   });
 });

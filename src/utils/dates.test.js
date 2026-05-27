@@ -1,7 +1,7 @@
 // Тесты на utils/dates.js — рабочие дни, праздники РФ, форматирование.
 import {
   toDateStr, todayStr, isWorkday, isHoliday, isWeekend, isOff,
-  addWorkdays, subtractWorkdays, workdaysBetween, workdaysElapsed,
+  addWorkdays, addCalendarDay, subtractWorkdays, workdaysBetween, workdaysElapsed,
   nextWorkday, formatDate, formatDateShort, getMonthDays,
 } from './dates';
 
@@ -122,6 +122,22 @@ describe('workdaysElapsed', () => {
   test('будущая дата — 0', () => {
     const future = addWorkdays(todayStr(), 30);
     expect(workdaysElapsed(future)).toBe(0);
+  });
+});
+
+describe('addCalendarDay', () => {
+  test('обычный день — +1 день', () => {
+    expect(addCalendarDay('2026-05-25')).toBe('2026-05-26');
+  });
+  test('конец месяца — переход в новый', () => {
+    expect(addCalendarDay('2026-05-31')).toBe('2026-06-01');
+  });
+  test('конец года — переход в новый', () => {
+    expect(addCalendarDay('2026-12-31')).toBe('2027-01-01');
+  });
+  test('пятница → суббота (не пропускает выходные)', () => {
+    // 2026-05-22 — пятница
+    expect(addCalendarDay('2026-05-22')).toBe('2026-05-23');
   });
 });
 

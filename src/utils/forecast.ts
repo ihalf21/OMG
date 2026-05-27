@@ -1,8 +1,8 @@
 // utils/forecast.ts — расчёт прогноза завершения задачи.
 // Оценка в человеко-часах. Рабочий день = 8 часов.
 
-import { addWorkdays, subtractWorkdays, workdaysElapsed, todayStr, workdaysBetween } from './dates';
-import { roleCoeff, capacityToday } from '../domain/availability';
+import { addWorkdays, addCalendarDay, isWorkday, subtractWorkdays, workdaysElapsed, todayStr, workdaysBetween } from './dates';
+import { roleCoeff, capacityToday, capacityOn } from '../domain/availability';
 import type { Engineer, ISODate, Task } from '../domain/types';
 
 export const HOURS_PER_DAY = 8;
@@ -26,6 +26,54 @@ export function nominalCapacity(task: Task, engineers: Engineer[]): number {
     if (!eng) return sum;
     return sum + roleCoeff(eng.role);
   }, 0);
+}
+
+// Максимальное число дней симуляции — 2 года. Защита от бесконечного цикла
+// (никто никогда не работает) или неподъёмной задачи.
+const MAX_SIM_DAYS = 730;
+
+/**
+ * Симулирует выполнение задачи день за днём от startDate.
+ * Учитывает запланированные на будущее отпуска и дейофы инженеров —
+ * это даёт более точный прогноз, чем формула «часы / текущая_capacity».
+ *
+ * Возвращает дату последнего рабочего дня (когда часы добиты) и количество
+ * рабочих дней с момента старта до этого дня включительно.
+ */
+export function projectFinish(
+  task: Task,
+  engineers: Engineer[],
+  startDate: ISODate,
+  remainingHours: number,
+): { forecastDate: ISODate | null; daysLeft: number | null } {
+  if (remainingHours <= 0) return { forecastDate: startDate, daysLeft: 0 };
+
+  const assignedIds = task.assignedEngineers || [];
+  const assigned: Engineer[] = [];
+  for (const id of assignedIds) {
+    const eng = engineers.find(e => e.id === id);
+    if (eng) assigned.push(eng);
+  }
+  if (assigned.length === 0) return { forecastDate: null, daysLeft: null };
+
+  let cursor = startDate;
+  let hoursLeft = remainingHours;
+  let lastWorkday: ISODate | null = null;
+
+  for (let i = 0; i < MAX_SIM_DAYS && hoursLeft > 0; i++) {
+    if (isWorkday(cursor)) {
+      const dailyCap = assigned.reduce((sum, eng) => sum + capacityOn(eng, cursor), 0);
+      if (dailyCap > 0) {
+        hoursLeft -= dailyCap * HOURS_PER_DAY;
+        lastWorkday = cursor;
+      }
+    }
+    if (hoursLeft <= 0) break;
+    cursor = addCalendarDay(cursor);
+  }
+
+  if (!lastWorkday) return { forecastDate: null, daysLeft: null };
+  return { forecastDate: lastWorkday, daysLeft: workdaysBetween(startDate, lastWorkday) };
 }
 
 export type DeadlineStatus = 'ok' | 'risk' | 'overdue';
@@ -69,11 +117,9 @@ export function calcForecast(
       : 0;
   }
 
-  const hoursPerDay = cap * HOURS_PER_DAY;
-  const daysLeft = (hoursPerDay > 0 && totalHours > 0) ? Math.max(1, Math.round(remainingHours / hoursPerDay)) : null;
-
   let forecastDate: ISODate | null = null;
-  if (daysLeft !== null) {
+  let daysLeft: number | null = null;
+  if (totalHours > 0 && remainingHours > 0) {
     const today = todayStr();
     let baseDate: ISODate;
     if (startOverride) {
@@ -81,7 +127,11 @@ export function calcForecast(
     } else {
       baseDate = task.startDate && task.startDate > today ? task.startDate : today;
     }
-    forecastDate = addWorkdays(baseDate, Math.max(0, daysLeft - 1));
+    // День-за-днём симуляция: учитывает запланированные отпуска/дейофы
+    // которые ещё не наступили, но повлияют на длительность задачи.
+    const sim = projectFinish(task, engineers, baseDate, remainingHours);
+    forecastDate = sim.forecastDate;
+    daysLeft = sim.daysLeft;
   }
 
   const effectiveDl = deadlineOverride !== null ? deadlineOverride : (task.deadline || null);
@@ -169,16 +219,18 @@ export function calcDependentStart(parentTask: Task, parentEngineers: Engineer[]
 
 /**
  * Schedule-forward: вычислить когда закончится родитель если он стартует в parentDynStart.
- * Возвращает дату старта дочерней задачи.
+ * Возвращает дату старта дочерней задачи (= следующий рабочий день после конца родителя).
+ *
+ * Использует посуточную симуляцию — учитывает запланированные отпуска/дейофы
+ * на период работы родителя.
  */
 export function calcScheduledChildStart(parentTask: Task, parentEngineers: Engineer[], parentDynStart: ISODate | null): ISODate | null {
-  const cap = currentCapacity(parentTask, parentEngineers);
-  if (!cap || !parentDynStart) return null;
+  if (!parentDynStart) return null;
   const totalHours = parentTask.estimateHours || 0;
-  const hoursPerDay = cap * HOURS_PER_DAY;
-  const exactDays = totalHours > 0 ? totalHours / hoursPerDay : 0;
-  const daysTotal = Math.max(1, Math.round(exactDays));
-  return addWorkdays(parentDynStart, daysTotal);
+  if (totalHours <= 0) return parentDynStart;
+  const sim = projectFinish(parentTask, parentEngineers, parentDynStart, totalHours);
+  if (!sim.forecastDate) return null;
+  return addWorkdays(sim.forecastDate, 1);
 }
 
 /**
