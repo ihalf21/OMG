@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 
-export default function Topbar({ theme, onToggleTheme }) {
+export type Theme = 'light' | 'dark';
+
+interface Props {
+  theme: Theme;
+  onToggleTheme: () => void;
+}
+
+export default function Topbar({ theme, onToggleTheme }: Props) {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -47,8 +54,8 @@ export default function Topbar({ theme, onToggleTheme }) {
           fontWeight: 500,
           transition: 'all 0.2s',
         }}
-        onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-        onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-mid)'}
+        onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+        onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border-mid)')}
       >
         <span style={{ fontSize: 16 }}>{isDark ? '☀️' : '🌙'}</span>
         {isDark ? 'Светлая' : 'Тёмная'}

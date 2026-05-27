@@ -1,6 +1,18 @@
 import React from 'react';
+import type { EngineerRole, EngineerStatus, ISODate } from '../domain/types';
 
-export function Badge({ children, bg, color, style = {} }) {
+type StyleProp = React.CSSProperties;
+
+// ─── Badges ───────────────────────────────────────────────────────────────────
+
+interface BadgeProps {
+  children: React.ReactNode;
+  bg?: string;
+  color?: string;
+  style?: StyleProp;
+}
+
+export function Badge({ children, bg, color, style = {} }: BadgeProps) {
   return (
     <span style={{ display:'inline-block', fontSize:12, padding:'3px 9px', borderRadius:4, background:bg, color, whiteSpace:'nowrap', fontWeight:500, ...style }}>
       {children}
@@ -8,8 +20,8 @@ export function Badge({ children, bg, color, style = {} }) {
   );
 }
 
-export function RoleBadge({ role }) {
-  const map = {
+export function RoleBadge({ role }: { role: EngineerRole }) {
+  const map: Record<EngineerRole, { bg: string; color: string; label: string }> = {
     lead:        { bg:'#EEEDFE', color:'#3C3489', label:'Лид' },
     responsible: { bg:'var(--amber-bg)', color:'var(--amber)', label:'Ответственный' },
     engineer:    { bg:'var(--bg-secondary)', color:'var(--text-secondary)', label:'Инженер' },
@@ -19,8 +31,8 @@ export function RoleBadge({ role }) {
   return <Badge bg={s.bg} color={s.color}>{s.label}</Badge>;
 }
 
-export function StatusBadge({ status }) {
-  const map = {
+export function StatusBadge({ status }: { status: EngineerStatus }) {
+  const map: Record<EngineerStatus, { bg: string; color: string; label: string }> = {
     active:   { bg:'var(--success-bg)', color:'var(--success)', label:'Доступен' },
     vacation: { bg:'var(--amber-bg)', color:'var(--amber)', label:'Отпуск' },
     sick:     { bg:'var(--red-bg)', color:'var(--red)', label:'Больничный' },
@@ -30,14 +42,22 @@ export function StatusBadge({ status }) {
   return <Badge bg={s.bg} color={s.color}>{s.label}</Badge>;
 }
 
-export function TypeBadge({ type }) {
+export function TypeBadge({ type }: { type: 'regular' | string }) {
   return type === 'regular'
     ? <Badge bg="var(--bg-secondary)" color="var(--text-secondary)">Регулярная</Badge>
     : <Badge bg="var(--blue-bg)" color="var(--blue)">Нерегулярная</Badge>;
 }
 
-// Star rating component
-export function StarRating({ value = 0, max = 5, onChange, readonly = true }) {
+// ─── Stars ────────────────────────────────────────────────────────────────────
+
+interface StarRatingProps {
+  value?: number;
+  max?: number;
+  onChange?: (value: number) => void;
+  readonly?: boolean;
+}
+
+export function StarRating({ value = 0, max = 5, onChange, readonly = true }: StarRatingProps) {
   return (
     <div style={{ display:'flex', gap:3 }}>
       {Array.from({ length: max }, (_, i) => {
@@ -54,8 +74,8 @@ export function StarRating({ value = 0, max = 5, onChange, readonly = true }) {
               display: 'inline-block',
               lineHeight: 1,
             }}
-            onMouseEnter={e => { if (!readonly) e.currentTarget.style.transform = 'scale(1.2)'; }}
-            onMouseLeave={e => { if (!readonly) e.currentTarget.style.transform = 'scale(1)'; }}
+            onMouseEnter={e => { if (!readonly) (e.currentTarget as HTMLElement).style.transform = 'scale(1.2)'; }}
+            onMouseLeave={e => { if (!readonly) (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
           >★</span>
         );
       })}
@@ -63,7 +83,15 @@ export function StarRating({ value = 0, max = 5, onChange, readonly = true }) {
   );
 }
 
-export function Avatar({ name, size = 28, style = {} }) {
+// ─── Avatar ───────────────────────────────────────────────────────────────────
+
+interface AvatarProps {
+  name: string;
+  size?: number;
+  style?: StyleProp;
+}
+
+export function Avatar({ name, size = 28, style = {} }: AvatarProps) {
   const colors = [
     { bg:'#9FE1CB', color:'#085041' },
     { bg:'#B5D4F4', color:'#0C447C' },
@@ -85,7 +113,15 @@ export function Avatar({ name, size = 28, style = {} }) {
   );
 }
 
-export function ProgressBar({ pct, color='var(--accent)', height=5 }) {
+// ─── ProgressBar ──────────────────────────────────────────────────────────────
+
+interface ProgressBarProps {
+  pct: number;
+  color?: string;
+  height?: number;
+}
+
+export function ProgressBar({ pct, color = 'var(--accent)', height = 5 }: ProgressBarProps) {
   return (
     <div style={{ height, background:'var(--border-light)', borderRadius:height/2, overflow:'hidden' }}>
       <div style={{ width:`${Math.min(100,pct)}%`, height:'100%', background:color, borderRadius:height/2, transition:'width 0.3s' }}/>
@@ -93,20 +129,35 @@ export function ProgressBar({ pct, color='var(--accent)', height=5 }) {
   );
 }
 
-export function Card({ children, style={}, onClick }) {
+// ─── Card ─────────────────────────────────────────────────────────────────────
+
+interface CardProps {
+  children: React.ReactNode;
+  style?: StyleProp;
+  onClick?: () => void;
+}
+
+export function Card({ children, style = {}, onClick }: CardProps) {
   return (
     <div onClick={onClick} style={{
       background:'var(--bg-primary)', border:'0.5px solid var(--border-light)',
       borderRadius:10, padding:'14px 16px', ...style,
       cursor:onClick?'pointer':undefined, transition:'border-color 0.15s',
     }}
-    onMouseEnter={onClick?e=>e.currentTarget.style.borderColor='var(--border-mid)':undefined}
-    onMouseLeave={onClick?e=>e.currentTarget.style.borderColor='var(--border-light)':undefined}
+    onMouseEnter={onClick?(e: React.MouseEvent<HTMLDivElement>)=>(e.currentTarget.style.borderColor='var(--border-mid)'):undefined}
+    onMouseLeave={onClick?(e: React.MouseEvent<HTMLDivElement>)=>(e.currentTarget.style.borderColor='var(--border-light)'):undefined}
     >{children}</div>
   );
 }
 
-export function PageTopbar({ title, children }) {
+// ─── PageTopbar ───────────────────────────────────────────────────────────────
+
+interface PageTopbarProps {
+  title: string;
+  children?: React.ReactNode;
+}
+
+export function PageTopbar({ title, children }: PageTopbarProps) {
   return (
     <div style={{
       background:'var(--bg-primary)', borderBottom:'0.5px solid var(--border-light)',
@@ -118,7 +169,15 @@ export function PageTopbar({ title, children }) {
   );
 }
 
-export function BtnPrimary({ children, onClick, style={} }) {
+// ─── Buttons ──────────────────────────────────────────────────────────────────
+
+interface BtnProps {
+  children: React.ReactNode;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  style?: StyleProp;
+}
+
+export function BtnPrimary({ children, onClick, style = {} }: BtnProps) {
   return (
     <button onClick={onClick} style={{
       display:'flex', alignItems:'center', gap:6,
@@ -126,13 +185,13 @@ export function BtnPrimary({ children, onClick, style={} }) {
       border:'none', borderRadius:6, fontSize:14, fontWeight:600,
       cursor:'pointer', transition:'background 0.15s', ...style,
     }}
-    onMouseEnter={e=>e.currentTarget.style.background='var(--accent-hover)'}
-    onMouseLeave={e=>e.currentTarget.style.background='var(--accent)'}
+    onMouseEnter={e=>(e.currentTarget.style.background='var(--accent-hover)')}
+    onMouseLeave={e=>(e.currentTarget.style.background='var(--accent)')}
     >{children}</button>
   );
 }
 
-export function BtnSecondary({ children, onClick, style={} }) {
+export function BtnSecondary({ children, onClick, style = {} }: BtnProps) {
   return (
     <button onClick={onClick} style={{
       display:'flex', alignItems:'center', gap:6,
@@ -146,7 +205,7 @@ export function BtnSecondary({ children, onClick, style={} }) {
   );
 }
 
-export function BtnDanger({ children, onClick, style={} }) {
+export function BtnDanger({ children, onClick, style = {} }: BtnProps) {
   return (
     <button onClick={onClick} style={{
       display:'flex', alignItems:'center', gap:6,
@@ -154,13 +213,13 @@ export function BtnDanger({ children, onClick, style={} }) {
       border:'1.5px solid var(--red)', borderRadius:6, fontSize:14, fontWeight:500,
       cursor:'pointer', transition:'all 0.15s', ...style,
     }}
-    onMouseEnter={e=>e.currentTarget.style.background='var(--red-bg)'}
-    onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+    onMouseEnter={e=>(e.currentTarget.style.background='var(--red-bg)')}
+    onMouseLeave={e=>(e.currentTarget.style.background='transparent')}
     >{children}</button>
   );
 }
 
-export function BackBtn({ onClick, label='Назад' }) {
+export function BackBtn({ onClick, label = 'Назад' }: { onClick?: React.MouseEventHandler<HTMLButtonElement>; label?: string }) {
   return (
     <button onClick={onClick} style={{
       display:'flex', alignItems:'center', gap:6, fontSize:14,
@@ -168,13 +227,15 @@ export function BackBtn({ onClick, label='Назад' }) {
       border:'1.5px solid var(--border-mid)', borderRadius:6,
       background:'var(--bg-secondary)', cursor:'pointer', fontWeight:500,
     }}
-    onMouseEnter={e=>e.currentTarget.style.background='var(--bg-tertiary)'}
-    onMouseLeave={e=>e.currentTarget.style.background='var(--bg-secondary)'}
+    onMouseEnter={e=>(e.currentTarget.style.background='var(--bg-tertiary)')}
+    onMouseLeave={e=>(e.currentTarget.style.background='var(--bg-secondary)')}
     >← {label}</button>
   );
 }
 
-export function FieldRow({ label, children }) {
+// ─── Form rows ────────────────────────────────────────────────────────────────
+
+export function FieldRow({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{
       display:'flex', justifyContent:'space-between', alignItems:'center',
@@ -186,7 +247,7 @@ export function FieldRow({ label, children }) {
   );
 }
 
-export function SectionTitle({ children, action, onAction }) {
+export function SectionTitle({ children, action, onAction }: { children: React.ReactNode; action?: React.ReactNode; onAction?: () => void }) {
   return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
       <div style={{ fontSize:15, fontWeight:600, color:'var(--text-primary)' }}>{children}</div>
@@ -195,7 +256,16 @@ export function SectionTitle({ children, action, onAction }) {
   );
 }
 
-export function Modal({ title, onClose, children, width=480 }) {
+// ─── Modal ────────────────────────────────────────────────────────────────────
+
+interface ModalProps {
+  title: React.ReactNode;
+  onClose: () => void;
+  children: React.ReactNode;
+  width?: number;
+}
+
+export function Modal({ title, onClose, children, width = 480 }: ModalProps) {
   return (
     <div style={{
       position:'fixed', inset:0, background:'rgba(0,0,0,0.45)',
@@ -214,7 +284,7 @@ export function Modal({ title, onClose, children, width=480 }) {
   );
 }
 
-export function FormRow({ label, children, hint }) {
+export function FormRow({ label, children, hint }: { label: React.ReactNode; children: React.ReactNode; hint?: React.ReactNode }) {
   return (
     <div style={{ marginBottom:14 }}>
       <div style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:5, fontWeight:500 }}>{label}</div>
@@ -224,7 +294,15 @@ export function FormRow({ label, children, hint }) {
   );
 }
 
-export function Input({ value, onChange, placeholder, type='text', style={} }) {
+interface InputProps {
+  value: string | number;
+  onChange: React.ChangeEventHandler<HTMLInputElement>;
+  placeholder?: string;
+  type?: string;
+  style?: StyleProp;
+}
+
+export function Input({ value, onChange, placeholder, type = 'text', style = {} }: InputProps) {
   return (
     <input value={value} onChange={onChange} placeholder={placeholder} type={type} style={{
       width:'100%', padding:'9px 11px',
@@ -232,13 +310,20 @@ export function Input({ value, onChange, placeholder, type='text', style={} }) {
       fontSize:14, background:'var(--bg-secondary)', color:'var(--text-primary)',
       outline:'none', transition:'border-color 0.15s', ...style,
     }}
-    onFocus={e=>e.target.style.borderColor='var(--accent)'}
-    onBlur={e=>e.target.style.borderColor='var(--border-mid)'}
+    onFocus={e=>(e.target.style.borderColor='var(--accent)')}
+    onBlur={e=>(e.target.style.borderColor='var(--border-mid)')}
     />
   );
 }
 
-export function Select({ value, onChange, children, style={} }) {
+interface SelectProps {
+  value: string | number;
+  onChange: React.ChangeEventHandler<HTMLSelectElement>;
+  children: React.ReactNode;
+  style?: StyleProp;
+}
+
+export function Select({ value, onChange, children, style = {} }: SelectProps) {
   return (
     <select value={value} onChange={onChange} style={{
       width:'100%', padding:'9px 11px',
@@ -249,7 +334,7 @@ export function Select({ value, onChange, children, style={} }) {
   );
 }
 
-export function ModalFooter({ onCancel, onSave, saveLabel='Сохранить' }) {
+export function ModalFooter({ onCancel, onSave, saveLabel = 'Сохранить' }: { onCancel: () => void; onSave: () => void; saveLabel?: string }) {
   return (
     <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:20 }}>
       <BtnSecondary onClick={onCancel}>Отмена</BtnSecondary>
@@ -258,26 +343,33 @@ export function ModalFooter({ onCancel, onSave, saveLabel='Сохранить' }
   );
 }
 
-// Resizable columns hook — persists widths to localStorage
-export function useResizableColumns(storageKey, initialWidths) {
-  const [widths, setWidths] = React.useState(() => {
+// ─── Resizable columns ────────────────────────────────────────────────────────
+
+interface DraggingState {
+  colIdx: number;
+  startX: number;
+  startWidth: number;
+}
+
+export function useResizableColumns(storageKey: string, initialWidths: number[]) {
+  const [widths, setWidths] = React.useState<number[]>(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem(storageKey));
+      const stored = JSON.parse(localStorage.getItem(storageKey) || 'null');
       return Array.isArray(stored) && stored.length === initialWidths.length ? stored : initialWidths;
     } catch { return initialWidths; }
   });
-  const dragging = React.useRef(null);
+  const dragging = React.useRef<DraggingState | null>(null);
 
-  function startResize(colIdx, e) {
+  function startResize(colIdx: number, e: React.MouseEvent) {
     e.preventDefault();
     dragging.current = { colIdx, startX: e.clientX, startWidth: widths[colIdx] };
 
-    function onMouseMove(e) {
+    function onMouseMove(ev: MouseEvent) {
       if (!dragging.current) return;
-      const newWidth = Math.max(50, dragging.current.startWidth + e.clientX - dragging.current.startX);
+      const newWidth = Math.max(50, dragging.current.startWidth + ev.clientX - dragging.current.startX);
       setWidths(prev => {
         const next = [...prev];
-        next[dragging.current.colIdx] = newWidth;
+        next[dragging.current!.colIdx] = newWidth;
         try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch {}
         return next;
       });
@@ -296,7 +388,7 @@ export function useResizableColumns(storageKey, initialWidths) {
   return { widths, startResize };
 }
 
-export function ResizeHandle({ onMouseDown }) {
+export function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
   const [hovered, setHovered] = React.useState(false);
   return (
     <div
@@ -314,9 +406,19 @@ export function ResizeHandle({ onMouseDown }) {
   );
 }
 
-// ── ConfirmDialog + useConfirm ────────────────────────────────────────────────
+// ─── ConfirmDialog + useConfirm ───────────────────────────────────────────────
 
-export function ConfirmDialog({ open, title, message, confirmLabel='Подтвердить', danger=true, onConfirm, onCancel }) {
+interface ConfirmDialogProps {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export function ConfirmDialog({ open, title, message, confirmLabel = 'Подтвердить', danger = true, onConfirm, onCancel }: ConfirmDialogProps) {
   if (!open) return null;
   return (
     <div
@@ -337,11 +439,25 @@ export function ConfirmDialog({ open, title, message, confirmLabel='Подтве
   );
 }
 
-export function useConfirm() {
-  const [state, setState] = React.useState({ open:false, title:'', message:'', confirmLabel:'Подтвердить', danger:true, resolve:null });
+interface ConfirmOptions {
+  confirmLabel?: string;
+  danger?: boolean;
+}
 
-  const confirm = React.useCallback((title, message, opts = {}) => {
-    return new Promise(resolve => {
+interface ConfirmState {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger: boolean;
+  resolve: ((value: boolean) => void) | null;
+}
+
+export function useConfirm() {
+  const [state, setState] = React.useState<ConfirmState>({ open:false, title:'', message:'', confirmLabel:'Подтвердить', danger:true, resolve:null });
+
+  const confirm = React.useCallback((title: string, message: string, opts: ConfirmOptions = {}): Promise<boolean> => {
+    return new Promise<boolean>(resolve => {
       setState({ open:true, title, message, confirmLabel:opts.confirmLabel||'Подтвердить', danger:opts.danger!==false, resolve });
     });
   }, []);
@@ -371,51 +487,56 @@ export function useConfirm() {
   return { confirm, ConfirmEl };
 }
 
-// ── DateRangePicker / DatePicker ──────────────────────────────────────────────
+// ─── DateRangePicker / DatePicker ─────────────────────────────────────────────
 const CAL_MONTHS  = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const CAL_DAYS    = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
-const CAL_NAV_BTN = { background:'none', border:'none', cursor:'pointer', fontSize:20, lineHeight:1, color:'var(--text-secondary)', padding:'2px 12px', borderRadius:6 };
+const CAL_NAV_BTN: StyleProp = { background:'none', border:'none', cursor:'pointer', fontSize:20, lineHeight:1, color:'var(--text-secondary)', padding:'2px 12px', borderRadius:6 };
 
-function buildCells(year, month) {
+function buildCells(year: number, month: number): (number | null)[] {
   const firstDow = new Date(year, month, 1).getDay();
   const offset   = firstDow === 0 ? 6 : firstDow - 1;
   const last     = new Date(year, month + 1, 0).getDate();
-  const cells    = Array(offset).fill(null);
+  const cells: (number | null)[] = Array(offset).fill(null);
   for (let d = 1; d <= last; d++) cells.push(d);
   return cells;
 }
 
-function toISO(y, m, d) {
+function toISO(y: number, m: number, d: number): ISODate {
   return `${y}-${String(m + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 }
 
-function fmtRu(iso) {
+function fmtRu(iso: string | null | undefined): string {
   if (!iso) return '—';
   const [y, m, d] = iso.split('-');
   return `${parseInt(d)} ${CAL_MONTHS[parseInt(m)-1].slice(0,3).toLowerCase()}. ${y}`;
 }
 
-export function DateRangePicker({ from, to, onChange }) {
+interface DateRangePickerProps {
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+}
+
+export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
   const todayISO = new Date().toISOString().slice(0, 10);
   const init     = from ? new Date(from + 'T00:00:00') : new Date();
 
   const [vy, setVy] = React.useState(init.getFullYear());
   const [vm, setVm] = React.useState(init.getMonth());
-  const [hov, setHov] = React.useState(null);
+  const [hov, setHov] = React.useState<string | null>(null);
 
   const selecting = !!from && !to;
 
   function prevMonth() { if (vm === 0) { setVm(11); setVy(y => y-1); } else setVm(m => m-1); }
   function nextMonth() { if (vm === 11) { setVm(0); setVy(y => y+1); } else setVm(m => m+1); }
 
-  function handleClick(d) {
+  function handleClick(d: number) {
     const s = toISO(vy, vm, d);
     if (!from || (from && to)) { onChange(s, ''); return; }
     const [lo, hi] = s < from ? [s, from] : [from, s];
     onChange(lo, hi);
   }
 
-  // Effective range including hover preview
   const effTo = selecting && hov ? hov : to;
   const lo = from && effTo ? (from <= effTo ? from : effTo) : from || null;
   const hi = from && effTo ? (from <= effTo ? effTo : from) : from || null;
@@ -424,9 +545,8 @@ export function DateRangePicker({ from, to, onChange }) {
 
   return (
     <div>
-      {/* Selected dates */}
       <div style={{ display:'flex', gap:8, marginBottom:12 }}>
-        {[['НАЧАЛО', from, 'Первый нерабочий день'], ['КОНЕЦ', to, 'Последний день отпуска']].map(([lbl, val]) => (
+        {([['НАЧАЛО', from, 'Первый нерабочий день'], ['КОНЕЦ', to, 'Последний день отпуска']] as const).map(([lbl, val]) => (
           <div key={lbl} style={{
             flex:1, padding:'9px 12px', background:'var(--bg-secondary)', borderRadius:6,
             border:`1.5px solid ${val ? 'var(--accent)' : 'var(--border-mid)'}`,
@@ -443,10 +563,7 @@ export function DateRangePicker({ from, to, onChange }) {
         </div>
       )}
 
-      {/* Calendar card */}
       <div style={{ background:'var(--bg-secondary)', border:'0.5px solid var(--border-light)', borderRadius:10, overflow:'hidden' }}>
-
-        {/* Month navigation */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 4px', borderBottom:'0.5px solid var(--border-light)' }}>
           <button style={CAL_NAV_BTN} onClick={prevMonth}>‹</button>
           <span style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)' }}>
@@ -455,7 +572,6 @@ export function DateRangePicker({ from, to, onChange }) {
           <button style={CAL_NAV_BTN} onClick={nextMonth}>›</button>
         </div>
 
-        {/* Day-of-week headers */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'10px 10px 2px' }}>
           {CAL_DAYS.map((d, i) => (
             <div key={d} style={{ textAlign:'center', fontSize:11, fontWeight:600, paddingBottom:4,
@@ -465,7 +581,6 @@ export function DateRangePicker({ from, to, onChange }) {
           ))}
         </div>
 
-        {/* Day cells */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'2px 10px 12px', gap:2 }}>
           {cells.map((d, i) => {
             if (!d) return <div key={i}/>;
@@ -511,8 +626,14 @@ export function DateRangePicker({ from, to, onChange }) {
   );
 }
 
-// ── DatePicker (single date) ──────────────────────────────────────────────────
-export function DatePicker({ value, onChange, placeholder = 'Выбрать дату', clearable = true }) {
+interface DatePickerProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  clearable?: boolean;
+}
+
+export function DatePicker({ value, onChange, placeholder = 'Выбрать дату', clearable = true }: DatePickerProps) {
   const todayISO = new Date().toISOString().slice(0, 10);
   const init = value ? new Date(value + 'T00:00:00') : new Date();
 
@@ -523,7 +644,7 @@ export function DatePicker({ value, onChange, placeholder = 'Выбрать да
   function prevMonth() { if (vm === 0) { setVm(11); setVy(y => y-1); } else setVm(m => m-1); }
   function nextMonth() { if (vm === 11) { setVm(0); setVy(y => y+1); } else setVm(m => m+1); }
 
-  function handleDayClick(d) {
+  function handleDayClick(d: number) {
     onChange(toISO(vy, vm, d));
     setOpen(false);
   }
@@ -532,7 +653,6 @@ export function DatePicker({ value, onChange, placeholder = 'Выбрать да
 
   return (
     <div>
-      {/* Trigger */}
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
@@ -552,18 +672,15 @@ export function DatePicker({ value, onChange, placeholder = 'Выбрать да
         <span style={{ fontSize:13, opacity:0.5, flexShrink:0 }}>▾</span>
       </button>
 
-      {/* Calendar dropdown */}
       {open && (
         <div style={{ marginTop:6, background:'var(--bg-secondary)', border:'0.5px solid var(--border-light)', borderRadius:10, overflow:'hidden' }}>
 
-          {/* Month navigation */}
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 4px', borderBottom:'0.5px solid var(--border-light)' }}>
             <button type="button" style={CAL_NAV_BTN} onClick={prevMonth}>‹</button>
             <span style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)' }}>{CAL_MONTHS[vm]} {vy}</span>
             <button type="button" style={CAL_NAV_BTN} onClick={nextMonth}>›</button>
           </div>
 
-          {/* Day-of-week headers */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'10px 10px 2px' }}>
             {CAL_DAYS.map((d, i) => (
               <div key={d} style={{ textAlign:'center', fontSize:11, fontWeight:600, paddingBottom:4,
@@ -573,7 +690,6 @@ export function DatePicker({ value, onChange, placeholder = 'Выбрать да
             ))}
           </div>
 
-          {/* Day cells */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'2px 10px 12px', gap:2 }}>
             {cells.map((d, i) => {
               if (!d) return <div key={i}/>;
@@ -585,8 +701,8 @@ export function DatePicker({ value, onChange, placeholder = 'Выбрать да
                 <div
                   key={i}
                   onClick={() => handleDayClick(d)}
-                  onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--accent-bg)'; }}
-                  onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = isSel ? 'var(--accent)' : 'transparent'; }}
+                  onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = 'var(--accent-bg)'; }}
+                  onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = isSel ? 'var(--accent)' : 'transparent'; }}
                   style={{
                     textAlign:'center', padding:'7px 0', borderRadius:6,
                     cursor:'pointer', fontSize:13, userSelect:'none',
@@ -604,14 +720,13 @@ export function DatePicker({ value, onChange, placeholder = 'Выбрать да
             })}
           </div>
 
-          {/* Clear / Today row */}
           <div style={{ padding:'6px 10px 10px', borderTop:'0.5px solid var(--border-light)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <button
               type="button"
               onClick={() => { onChange(todayISO); setOpen(false); }}
               style={{ fontSize:12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer', padding:'4px 6px', borderRadius:4, fontWeight:500 }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-bg)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-bg)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
             >Сегодня</button>
             {clearable && value && (
               <button
@@ -629,15 +744,24 @@ export function DatePicker({ value, onChange, placeholder = 'Выбрать да
   );
 }
 
-// Tooltip hook
-export function useTooltip() {
-  const [tooltip, setTooltip] = React.useState({ visible:false, x:0, y:0, title:'', rows:[] });
+// ─── Tooltip hook ─────────────────────────────────────────────────────────────
 
-  const show = React.useCallback((e, title, rows) => {
+interface TooltipState {
+  visible: boolean;
+  x: number;
+  y: number;
+  title: string;
+  rows: React.ReactNode[];
+}
+
+export function useTooltip() {
+  const [tooltip, setTooltip] = React.useState<TooltipState>({ visible:false, x:0, y:0, title:'', rows:[] });
+
+  const show = React.useCallback((e: { clientX: number; clientY: number }, title: string, rows: React.ReactNode[]) => {
     setTooltip({ visible:true, x:e.clientX+14, y:e.clientY-10, title, rows });
   }, []);
 
-  const move = React.useCallback((e) => {
+  const move = React.useCallback((e: { clientX: number; clientY: number }) => {
     setTooltip(t => t.visible ? { ...t, x:e.clientX+14, y:e.clientY-10 } : t);
   }, []);
 

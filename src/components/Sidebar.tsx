@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { Modal, ModalFooter } from './UI';
 import CHANGELOG from '../changelog.json';
+import type { Project } from '../domain/types';
+import type { NavTarget } from '../ui-types';
 
+interface IconProps { active: boolean }
 
-function IconDashboard({ active }) {
+function IconDashboard({ active }: IconProps) {
   const c = active ? 'var(--accent)' : 'var(--text-tertiary)';
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -15,7 +18,7 @@ function IconDashboard({ active }) {
   );
 }
 
-function IconTasks({ active }) {
+function IconTasks({ active }: IconProps) {
   const c = active ? 'var(--accent)' : 'var(--text-tertiary)';
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -27,7 +30,7 @@ function IconTasks({ active }) {
   );
 }
 
-function IconTeam({ active }) {
+function IconTeam({ active }: IconProps) {
   const c = active ? 'var(--accent)' : 'var(--text-tertiary)';
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -39,7 +42,7 @@ function IconTeam({ active }) {
   );
 }
 
-function IconGantt({ active }) {
+function IconGantt({ active }: IconProps) {
   const c = active ? 'var(--accent)' : 'var(--text-tertiary)';
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -52,7 +55,7 @@ function IconGantt({ active }) {
   );
 }
 
-function IconEstimate({ active }) {
+function IconEstimate({ active }: IconProps) {
   const c = active ? '#1D9E75' : '#8C8B87';
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -67,13 +70,27 @@ function IconEstimate({ active }) {
   );
 }
 
-const NAV = [
+interface NavItem { id: NavTarget; label: string; Icon: React.FC<IconProps> }
+
+const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Дашборд',   Icon: IconDashboard },
   { id: 'tasks',     label: 'Задачи',    Icon: IconTasks },
   { id: 'estimate',  label: 'Оценка',    Icon: IconEstimate },
   { id: 'team',      label: 'Команда',   Icon: IconTeam },
   { id: 'gantt',     label: 'Диаграмма', Icon: IconGantt },
 ];
+
+type ProjectModalState = null | { mode: 'add' } | { mode: 'edit'; project: Project };
+
+interface SidebarProps {
+  activePage: NavTarget;
+  onNavigate: (target: NavTarget) => void;
+  projects?: Project[];
+  currentProjectId: string;
+  onSelectProject: (id: string) => void;
+  onAddProject: (name: string) => void;
+  onEditProject: (id: string, name: string) => void;
+}
 
 export default function Sidebar({
   activePage,
@@ -83,13 +100,13 @@ export default function Sidebar({
   onSelectProject,
   onAddProject,
   onEditProject,
-}) {
+}: SidebarProps) {
   const [showChangelog, setShowChangelog] = useState(false);
-  const [hoveredProject, setHoveredProject] = useState(null);
-  const [projectModal, setProjectModal] = useState(null); // null | { mode: 'add' } | { mode: 'edit', project }
+  const [hoveredProject, setHoveredProject] = useState<string | null>(null);
+  const [projectModal, setProjectModal] = useState<ProjectModalState>(null);
   const [projectName, setProjectName] = useState('');
 
-  const active = activePage === 'task' ? 'tasks' : activePage === 'engineer' ? 'team' : activePage;
+  const active: NavTarget = activePage === 'task' ? 'tasks' : activePage === 'engineer' ? 'team' : activePage;
   const currentVersion = CHANGELOG[0].version;
 
   function openAdd() {
@@ -97,14 +114,14 @@ export default function Sidebar({
     setProjectModal({ mode: 'add' });
   }
 
-  function openEdit(project) {
+  function openEdit(project: Project) {
     setProjectName(project.name);
     setProjectModal({ mode: 'edit', project });
   }
 
   function handleProjectSave() {
     const name = projectName.trim();
-    if (!name) return;
+    if (!name || !projectModal) return;
     if (projectModal.mode === 'add') {
       onAddProject(name);
     } else {
@@ -146,8 +163,8 @@ export default function Sidebar({
                 padding: '0 2px', display: 'flex', alignItems: 'center',
                 borderRadius: 4, transition: 'color 0.15s',
               }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+              onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-tertiary)')}
             >+</button>
           </div>
 
@@ -189,8 +206,8 @@ export default function Sidebar({
                     opacity: isActive || isHovered ? 1 : 0,
                     transition: 'opacity 0.15s, color 0.15s',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-                  onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-tertiary)')}
                 >✎</button>
               </div>
             );
@@ -204,8 +221,8 @@ export default function Sidebar({
               display: 'flex', alignItems: 'center', gap: 6,
               transition: 'color 0.15s',
             }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = 'var(--accent)')}
+            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)')}
           >
             <span style={{ fontSize: 15, lineHeight: 1 }}>+</span>
             <span>Добавить проект</span>
@@ -226,8 +243,8 @@ export default function Sidebar({
                 borderLeft: `2.5px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
                 cursor: 'pointer', userSelect: 'none', transition: 'background 0.12s',
               }}
-              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg-secondary)'; }}
-              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+              onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--bg-secondary)'; }}
+              onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
               >
                 <Icon active={isActive} />
                 {label}
@@ -241,8 +258,8 @@ export default function Sidebar({
           <div
             onClick={() => setShowChangelog(true)}
             style={{ fontSize: 12, color: 'var(--text-tertiary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = 'var(--accent)')}
+            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)')}
           >
             <span>📋</span>
             <span>История версий v{currentVersion}</span>
@@ -301,8 +318,8 @@ export default function Sidebar({
                 fontSize: 14, background: 'var(--bg-secondary)', color: 'var(--text-primary)',
                 outline: 'none', transition: 'border-color 0.15s',
               }}
-              onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-              onBlur={e => e.target.style.borderColor = 'var(--border-mid)'}
+              onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+              onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
             />
           </div>
           <ModalFooter

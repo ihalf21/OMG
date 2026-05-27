@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { loadData, saveData, checkServer } from './utils/storage';
 import { todayStr } from './utils/dates';
 import { genId } from './utils/ids';
 import Sidebar from './components/Sidebar';
-import Topbar from './components/Topbar';
+import Topbar, { type Theme } from './components/Topbar';
 import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
 import TaskCard from './pages/TaskCard';
@@ -11,14 +11,16 @@ import Team from './pages/Team';
 import EngineerCard from './pages/EngineerCard';
 import Gantt from './pages/Gantt';
 import Estimate from './pages/Estimate';
+import type { Engineer, HistoryEntry, Project, ProjectState, Task, Workspace } from './domain/types';
+import type { NavTarget } from './ui-types';
 
 // Исправляет статусы инженеров на основе дат отпуска/дейофа (работает на одном проекте)
-function normalizeStatuses(d) {
+function normalizeStatuses(d: ProjectState): ProjectState {
   const today = todayStr();
-  const extraHistory = [];
-  const removeFromTasks = new Set();
+  const extraHistory: HistoryEntry[] = [];
+  const removeFromTasks = new Set<string>();
 
-  const engineers = (d.engineers || []).map(eng => {
+  const engineers: Engineer[] = (d.engineers || []).map(eng => {
     // ── Дейоф ────────────────────────────────────────────────────────────────
     if (eng.dayoffDate) {
       if (eng.dayoffDate < today) {
@@ -55,7 +57,7 @@ function normalizeStatuses(d) {
     return eng;
   });
 
-  const tasks = removeFromTasks.size > 0
+  const tasks: Task[] = removeFromTasks.size > 0
     ? (d.tasks || []).map(t => ({
         ...t,
         assignedEngineers: (t.assignedEngineers || []).filter(id => !removeFromTasks.has(id)),
@@ -65,15 +67,39 @@ function normalizeStatuses(d) {
   return { ...d, engineers, tasks, history: [...(d.history || []), ...extraHistory] };
 }
 
+// Старый flat-формат (на случай если сервер вернёт legacy данные)
+interface LegacyData {
+  engineers?: Engineer[];
+  tasks?: Task[];
+  history?: HistoryEntry[];
+  projects?: Project[];
+  currentProjectId?: string;
+}
+
+function ensureWorkspace(d: LegacyData | Workspace): Workspace {
+  if ('projects' in d && d.projects) return d as Workspace;
+  return {
+    currentProjectId: 'p1',
+    projects: [{
+      id: 'p1',
+      name: 'Проект 1',
+      engineers: (d as LegacyData).engineers || [],
+      tasks: (d as LegacyData).tasks || [],
+      history: (d as LegacyData).history || [],
+    }],
+  };
+}
+
 export default function App() {
-  const [data, setData]         = useState(null);
+  const [data, setData]         = useState<Workspace | null>(null);
   const [loading, setLoading]   = useState(true);
   const [serverOk, setServerOk] = useState(true);
-  const [page, setPage]         = useState('dashboard');
-  const [selectedTaskId, setSelectedTaskId]         = useState(null);
-  const [selectedEngineerId, setSelectedEngineerId] = useState(null);
-  const [theme, setTheme]       = useState(() => localStorage.getItem('omg_theme') || 'light');
-  const saveTimer = useRef(null);
+  const [page, setPage]         = useState<NavTarget>('dashboard');
+  const [selectedTaskId, setSelectedTaskId]         = useState<string | null>(null);
+  const [selectedEngineerId, setSelectedEngineerId] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('omg_theme') as Theme) || 'light');
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('omg_theme', theme);
@@ -85,10 +111,7 @@ export default function App() {
       setServerOk(ok);
       if (ok) {
         const d = await loadData();
-        // Поддержка старого flat-формата на клиенте (резервная миграция)
-        const base = d.projects
-          ? d
-          : { currentProjectId: 'p1', projects: [{ id: 'p1', name: 'Проект 1', engineers: d.engineers || [], tasks: d.tasks || [], history: d.history || [] }] };
+        const base = ensureWorkspace(d as unknown as LegacyData);
         setData({ ...base, projects: base.projects.map(p => normalizeStatuses(p)) });
       }
       setLoading(false);
@@ -96,7 +119,6 @@ export default function App() {
   }, []);
 
   // Пересчёт статусов при переходе через полночь.
-  // Если вкладка открыта сутками, без этого dayoff/отпуск не закроются автоматически.
   useEffect(() => {
     let lastDay = todayStr();
     const interval = setInterval(() => {
@@ -114,50 +136,48 @@ export default function App() {
     if (!data || !serverOk) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => saveData(data), 800);
-    return () => clearTimeout(saveTimer.current);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
   }, [data, serverOk]);
 
   // Обновляет данные текущего проекта (используется страницами)
-  function updateProjectData(fn) {
-    setData(prev => ({
+  function updateProjectData(fn: (state: ProjectState) => ProjectState) {
+    setData(prev => prev ? ({
       ...prev,
-      projects: prev.projects.map(p =>
-        p.id === prev.currentProjectId ? fn(p) : p
-      ),
-    }));
+      projects: prev.projects.map(p => p.id === prev.currentProjectId ? fn(p) : p),
+    }) : prev);
   }
 
-  function navigate(target, id) {
+  function navigate(target: NavTarget, id?: string) {
     setPage(target);
-    if (target === 'task')     setSelectedTaskId(id);
-    if (target === 'engineer') setSelectedEngineerId(id);
+    if (target === 'task'     && id) setSelectedTaskId(id);
+    if (target === 'engineer' && id) setSelectedEngineerId(id);
   }
 
   // ── Управление проектами ──────────────────────────────────────────────────
 
-  function selectProject(id) {
-    setData(prev => ({ ...prev, currentProjectId: id }));
+  function selectProject(id: string) {
+    setData(prev => prev ? ({ ...prev, currentProjectId: id }) : prev);
     setPage('dashboard');
   }
 
-  function addProject(name) {
+  function addProject(name: string) {
     const newId = genId('p');
-    setData(prev => ({
+    setData(prev => prev ? ({
       ...prev,
       projects: [...prev.projects, { id: newId, name, engineers: [], tasks: [], history: [] }],
       currentProjectId: newId,
-    }));
+    }) : prev);
     setPage('dashboard');
   }
 
-  function editProject(id, name) {
-    setData(prev => ({
+  function editProject(id: string, name: string) {
+    setData(prev => prev ? ({
       ...prev,
       projects: prev.projects.map(p => p.id === id ? { ...p, name } : p),
-    }));
+    }) : prev);
   }
-
-  // ── Тестовые данные ───────────────────────────────────────────────────────
 
   // ── Экран загрузки ────────────────────────────────────────────────────────
   if (loading) {
@@ -185,7 +205,11 @@ export default function App() {
     );
   }
 
-  const currentProject = data?.projects?.find(p => p.id === data.currentProjectId) ?? data?.projects?.[0];
+  if (!data) return null;
+
+  const currentProject = data.projects.find(p => p.id === data.currentProjectId) ?? data.projects[0];
+  if (!currentProject) return null;
+
   const ctx = { data: currentProject, updateData: updateProjectData, navigate };
 
   return (
@@ -193,21 +217,21 @@ export default function App() {
       <Sidebar
         activePage={page}
         onNavigate={p => navigate(p)}
-        projects={data?.projects || []}
-        currentProjectId={data?.currentProjectId}
+        projects={data.projects}
+        currentProjectId={data.currentProjectId}
         onSelectProject={selectProject}
         onAddProject={addProject}
         onEditProject={editProject}
       />
       <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
-        <Topbar theme={theme} onToggleTheme={() => setTheme(t => t==='light'?'dark':'light')}/>
+        <Topbar theme={theme} onToggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')}/>
         <div style={{ flex:1, overflow:'hidden', display:'flex', justifyContent:'center', alignItems:'stretch' }}>
         <div style={{ width:'100%', maxWidth:1680, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         {page==='dashboard' && <Dashboard {...ctx}/>}
         {page==='tasks'     && <Tasks     {...ctx}/>}
-        {page==='task'      && <TaskCard  {...ctx} taskId={selectedTaskId}     onBack={()=>navigate('tasks')}/>}
+        {page==='task'      && <TaskCard  {...ctx} taskId={selectedTaskId!}     onBack={()=>navigate('tasks')}/>}
         {page==='team'      && <Team      {...ctx}/>}
-        {page==='engineer'  && <EngineerCard {...ctx} engineerId={selectedEngineerId} onBack={()=>navigate('team')}/>}
+        {page==='engineer'  && <EngineerCard {...ctx} engineerId={selectedEngineerId!} onBack={()=>navigate('team')}/>}
         {page==='gantt'     && <Gantt     {...ctx}/>}
         {page==='estimate'  && <Estimate  {...ctx}/>}
         </div>
