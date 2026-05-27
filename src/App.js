@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { loadData, saveData, resetToSeed, saveSeed, checkServer } from './utils/storage';
+import { loadData, saveData, checkServer } from './utils/storage';
 import { todayStr } from './utils/dates';
-import { useConfirm } from './components/UI';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import Dashboard from './pages/Dashboard';
@@ -74,8 +73,6 @@ export default function App() {
   const [selectedEngineerId, setSelectedEngineerId] = useState(null);
   const [theme, setTheme]       = useState(() => localStorage.getItem('omg_theme') || 'light');
   const saveTimer = useRef(null);
-  const { confirm, ConfirmEl } = useConfirm();
-
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('omg_theme', theme);
@@ -147,41 +144,6 @@ export default function App() {
 
   // ── Тестовые данные ───────────────────────────────────────────────────────
 
-  async function handleSaveSeed() {
-    const ok = await confirm(
-      'Сохранить тестовые данные?',
-      'Текущие данные будут сохранены как тестовые и будут использоваться при следующем сбросе.',
-      { confirmLabel: 'Сохранить', danger: false }
-    );
-    if (!ok) return;
-    try {
-      await saveSeed();
-    } catch (err) {
-      alert('Ошибка сохранения: ' + err.message);
-    }
-  }
-
-  async function handleReset() {
-    const ok = await confirm(
-      'Сбросить все данные?',
-      'Все данные будут заменены тестовыми. Это действие нельзя отменить.',
-      { confirmLabel: 'Сбросить' }
-    );
-    if (!ok) return;
-    setLoading(true);
-    try {
-      const fresh = await resetToSeed();
-      const base = fresh.projects
-        ? fresh
-        : { currentProjectId: 'p1', projects: [{ id: 'p1', name: 'Проект 1', engineers: fresh.engineers || [], tasks: fresh.tasks || [], history: fresh.history || [] }] };
-      setData({ ...base, projects: base.projects.map(p => normalizeStatuses(p)) });
-      setPage('dashboard');
-    } catch (err) {
-      alert('Ошибка сброса: ' + err.message);
-    }
-    setLoading(false);
-  }
-
   // ── Экран загрузки ────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -213,12 +175,9 @@ export default function App() {
 
   return (
     <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:'var(--bg-tertiary)' }}>
-      {ConfirmEl}
       <Sidebar
         activePage={page}
         onNavigate={p => navigate(p)}
-        onReset={handleReset}
-        onSaveSeed={handleSaveSeed}
         projects={data?.projects || []}
         currentProjectId={data?.currentProjectId}
         onSelectProject={selectProject}

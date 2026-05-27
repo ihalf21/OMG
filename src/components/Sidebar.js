@@ -222,8 +222,6 @@ const NAV = [
 export default function Sidebar({
   activePage,
   onNavigate,
-  onReset,
-  onSaveSeed,
   projects = [],
   currentProjectId,
   onSelectProject,
@@ -382,8 +380,8 @@ export default function Sidebar({
           })}
         </nav>
 
-        {/* Version history + reset */}
-        <div style={{ borderTop: '0.5px solid var(--border-light)', padding: '12px 20px', display:'flex', flexDirection:'column', gap:8 }}>
+        {/* Version history */}
+        <div style={{ borderTop: '0.5px solid var(--border-light)', padding: '12px 20px' }}>
           <div
             onClick={() => setShowChangelog(true)}
             style={{ fontSize: 12, color: 'var(--text-tertiary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
@@ -392,24 +390,6 @@ export default function Sidebar({
           >
             <span>📋</span>
             <span>История версий v{currentVersion}</span>
-          </div>
-          <div
-            onClick={onSaveSeed}
-            style={{ fontSize: 12, color: 'var(--text-tertiary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
-          >
-            <span>💾</span>
-            <span>Сохранить тестовые данные</span>
-          </div>
-          <div
-            onClick={onReset}
-            style={{ fontSize: 12, color: 'var(--text-tertiary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
-          >
-            <span>🔄</span>
-            <span>Сбросить тестовые данные</span>
           </div>
         </div>
       </div>
