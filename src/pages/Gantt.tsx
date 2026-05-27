@@ -1,33 +1,36 @@
 // src/pages/Gantt.tsx
-// @ts-nocheck — этот файл крупный (970+ строк) и требует постепенной типизации.
-// Domain-импорты (forecast, availability, dates) уже строго типизированы, поэтому
-// тип-чек на границе работает. Внутренняя реализация будет затипизирована инкрементально.
 import React, { useState, useMemo } from 'react';
-import { getMonthDays, todayStr, addWorkdays } from '../utils/dates';
+import { getMonthDays, todayStr, addWorkdays, type MonthDay } from '../utils/dates';
 import { calcForecast, calcDependentStart, calcScheduledChildStart, statusColor, getDerivedDeadline, HOURS_PER_DAY } from '../utils/forecast';
 import { isAvailableOn, isWorkingRole, leaveTypeOn } from '../domain/availability';
 import { genId } from '../utils/ids';
 import { Avatar, PageTopbar, useTooltip } from '../components/UI';
+import type { Engineer, ISODate, Task } from '../domain/types';
+import type { PageProps } from '../ui-types';
 
-export default function Gantt({ data, updateData, navigate }) {
+type Mode = 'tasks' | 'team';
+type DragEngState = { engId: string; fromTaskId: string } | null;
+type FreeModalState = { day: MonthDay; engineers: Engineer[] } | null;
+
+export default function Gantt({ data, updateData, navigate }: PageProps) {
   const { engineers, tasks } = data;
-  const [mode, setMode]         = useState('tasks');
+  const [mode, setMode]         = useState<Mode>('tasks');
   const [year, setYear]         = useState(new Date().getFullYear());
   const [month, setMonth]       = useState(new Date().getMonth());
   const [hideOff, setHideOff]   = useState(true);
-  const [hoveredTask, setHoveredTask] = useState(null);
-  const [freeModal, setFreeModal]     = useState(null);
-  const [dragIdx, setDragIdx]         = useState(null);
-  const [dragOver, setDragOver]       = useState(null);
-  const [dragEng, setDragEng]         = useState(null); // { engId, fromTaskId }
-  const [dragEngOver, setDragEngOver] = useState(null); // taskId — цель при drag инженера
-  const ganttBodyRef = React.useRef(null);
-  const weekRowRef   = React.useRef(null);
+  const [hoveredTask, setHoveredTask] = useState<string | null>(null);
+  const [freeModal, setFreeModal]     = useState<FreeModalState>(null);
+  const [dragIdx, setDragIdx]         = useState<number | null>(null);
+  const [dragOver, setDragOver]       = useState<number | null>(null);
+  const [dragEng, setDragEng]         = useState<DragEngState>(null);
+  const [dragEngOver, setDragEngOver] = useState<string | null>(null);
+  const ganttBodyRef = React.useRef<HTMLDivElement>(null);
+  const weekRowRef   = React.useRef<HTMLDivElement>(null);
   const [weekRowH, setWeekRowH] = useState(0);
   const { show, move, hide, TooltipEl } = useTooltip();
 
   const [showDone, setShowDone]       = useState(false);
-  const [hoveredCol, setHoveredCol]   = useState(null);
+  const [hoveredCol, setHoveredCol]   = useState<number | null>(null);
 
   const allDays = useMemo(() => getMonthDays(year, month), [year, month]);
   const days  = useMemo(() => hideOff ? allDays.filter(d => !d.off) : allDays, [allDays, hideOff]);
@@ -46,9 +49,9 @@ export default function Gantt({ data, updateData, navigate }) {
   // Для каждой задачи — эффективная команда:
   // если задача не имеет инженеров, наследуем от ближайшего предка с командой.
   // Это позволяет планировать длинные цепочки: команда переходит с задачи на задачу.
-  const inheritedEngIds = useMemo(() => {
-    const cache = {};
-    function get(taskId, depth) {
+  const inheritedEngIds = useMemo<Record<string, string[]>>(() => {
+    const cache: Record<string, string[]> = {};
+    function get(taskId: string, depth: number): string[] {
       if (depth > 9 || cache[taskId] !== undefined) return cache[taskId] || [];
       const task = allActiveTasks.find(t => t.id === taskId);
       if (!task) { cache[taskId] = []; return []; }
@@ -66,9 +69,9 @@ export default function Gantt({ data, updateData, navigate }) {
 
   // Динамические даты старта по цепочке зависимостей (до 9 уровней).
   // Зависимые задачи используют унаследованную команду для расчёта длительности.
-  const dynamicStarts = useMemo(() => {
-    const cache = {};
-    function getDynStart(taskId, depth) {
+  const dynamicStarts = useMemo<Record<string, ISODate | null>>(() => {
+    const cache: Record<string, ISODate | null> = {};
+    function getDynStart(taskId: string, depth: number): ISODate | null {
       if (depth > 9) return null;
       if (cache[taskId] !== undefined) return cache[taskId];
       const task = allActiveTasks.find(t => t.id === taskId);
@@ -78,9 +81,9 @@ export default function Gantt({ data, updateData, navigate }) {
       if (!parent) { cache[taskId] = task.startDate || null; return cache[taskId]; }
       const parentDynStart = getDynStart(parent.id, depth + 1);
       // Задача с унаследованной командой для корректного расчёта capacity
-      const parentEff = { ...parent, assignedEngineers: inheritedEngIds[parent.id] || [] };
+      const parentEff: Task = { ...parent, assignedEngineers: inheritedEngIds[parent.id] || [] };
 
-      let date;
+      let date: ISODate | null = null;
       if (!parent.dependsOn && parent.startDate) {
         // Корневая запущенная задача — elapsed-based прогресс
         const { date: d } = calcDependentStart(parentEff, engineers);
@@ -112,19 +115,19 @@ export default function Gantt({ data, updateData, navigate }) {
   // - Дедлайн всей цепочки = максимальный (самый поздний) дедлайн любого её звена
   // - Листовая задача получает этот дедлайн как жёсткий (красная линия)
   // - Каждая родительская задача — мягкий дедлайн назад от листа (жёлтая линия)
-  const effectiveDls = useMemo(() => {
-    const result = {};
-    const leafIds = new Set(
+  const effectiveDls = useMemo<Record<string, ISODate>>(() => {
+    const result: Record<string, ISODate> = {};
+    const leafIds = new Set<string>(
       allActiveTasks.filter(t => !allActiveTasks.some(c => c.dependsOn === t.id)).map(t => t.id)
     );
 
     // Максимальный дедлайн в линейной цепочке от данной задачи до листа
-    function chainMaxDl(taskId, depth = 0) {
+    function chainMaxDl(taskId: string, depth: number = 0): ISODate | null {
       if (depth > 9) return null;
       const task = allActiveTasks.find(t => t.id === taskId);
       if (!task) return null;
       const child = allActiveTasks.find(t => t.dependsOn === taskId);
-      const childMax = child ? chainMaxDl(child.id, depth + 1) : null;
+      const childMax: ISODate | null = child ? chainMaxDl(child.id, depth + 1) : null;
       if (!task.deadline && !childMax) return null;
       if (!task.deadline) return childMax;
       if (!childMax) return task.deadline;
@@ -134,7 +137,7 @@ export default function Gantt({ data, updateData, navigate }) {
     // Шаг 1: каждой листовой задаче — максимальный дедлайн всей её цепочки
     allActiveTasks.forEach(t => {
       if (!leafIds.has(t.id)) return;
-      let rootId = t.id, cur = t;
+      let rootId = t.id, cur: Task = t;
       for (let i = 0; i < 9; i++) {
         if (!cur.dependsOn) break;
         const p = allActiveTasks.find(x => x.id === cur.dependsOn);
@@ -147,7 +150,7 @@ export default function Gantt({ data, updateData, navigate }) {
 
     // Шаг 2: родительские задачи — мягкий дедлайн назад от листа,
     // с учётом унаследованной команды для точного расчёта длительности
-    const tasksForDl = allActiveTasks.map(t => ({
+    const tasksForDl: Task[] = allActiveTasks.map(t => ({
       ...t,
       assignedEngineers: inheritedEngIds[t.id] || t.assignedEngineers || [],
       deadline: leafIds.has(t.id) ? (result[t.id] || null) : null,
@@ -162,13 +165,13 @@ export default function Gantt({ data, updateData, navigate }) {
   }, [allActiveTasks, engineers, inheritedEngIds]);
 
   // Прогнозы: зависимые задачи используют унаследованную команду и dynStart вместо startDate
-  const forecasts = useMemo(() => {
-    const result = {};
+  const forecasts = useMemo<Record<string, ReturnType<typeof calcForecast>>>(() => {
+    const result: Record<string, ReturnType<typeof calcForecast>> = {};
     allActiveTasks.forEach(t => {
       const dynStart = dynamicStarts[t.id];
       const engIds = inheritedEngIds[t.id] || t.assignedEngineers || [];
       // Для зависимых: убираем устаревший startDate, подставляем inherited engineers и dynStart
-      const taskForFc = t.dependsOn
+      const taskForFc: Task = t.dependsOn
         ? { ...t, assignedEngineers: engIds, startDate: null }
         : { ...t, assignedEngineers: engIds };
       const startOverride = t.dependsOn && dynStart ? dynStart : null;
@@ -181,13 +184,13 @@ export default function Gantt({ data, updateData, navigate }) {
   }, [allActiveTasks, dynamicStarts, effectiveDls, engineers, inheritedEngIds, tasks]);
 
   // Активные задачи, пересекающиеся с текущим месяцем (используем динамические даты)
-  const activeTasks = useMemo(() => {
+  const activeTasks = useMemo<Task[]>(() => {
     const monthStart = `${year}-${String(month+1).padStart(2,'0')}-01`;
     const lastDay    = new Date(year, month+1, 0).getDate();
     const monthEnd   = `${year}-${String(month+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
     return allActiveTasks.filter(t => {
       if (t.deadline && t.deadline >= monthStart && t.deadline <= monthEnd) return true;
-      const effStart = dynamicStarts[t.id] || t.createdDate || todayStr();
+      const effStart = dynamicStarts[t.id] || todayStr();
       if (effStart > monthEnd) return false;
       const fc = forecasts[t.id];
       const endDate = fc?.forecastDate || t.deadline || monthEnd;
@@ -197,7 +200,7 @@ export default function Gantt({ data, updateData, navigate }) {
   }, [allActiveTasks, dynamicStarts, forecasts, year, month]);
 
   // Завершённые задачи — фильтруем по completedDate в текущем месяце
-  const doneTasks = useMemo(() => {
+  const doneTasks = useMemo<Task[]>(() => {
     if (!showDone) return [];
     const monthStart = `${year}-${String(month+1).padStart(2,'0')}-01`;
     const lastDay    = new Date(year, month+1, 0).getDate();
@@ -216,24 +219,22 @@ export default function Gantt({ data, updateData, navigate }) {
   function nextMonth() { if (month === 11) { setMonth(0);  setYear(y => y+1); } else setMonth(m => m+1); }
 
   // Переводим дату в индекс среди ВИДИМЫХ дней
-  function dateToIdx(dateStr) {
+  function dateToIdx(dateStr: ISODate | null | undefined): number | null {
     if (!dateStr) return null;
     const [dy, dm, dd] = dateStr.split('-').map(Number);
     if (dy !== year || dm - 1 !== month) return null;
-    // Найти индекс в отфильтрованном массиве
     const idx = days.findIndex(d => d.day === dd);
     return idx >= 0 ? idx : null;
   }
 
   // Если дата попадает на скрытый (выходной) день — берём следующий видимый
-  function dateToIdxSafe(dateStr, fallback = 'next') {
+  function dateToIdxSafe(dateStr: ISODate | null | undefined, fallback: 'next' | 'prev' = 'next'): number | null {
     if (!dateStr) return null;
     const [dy, dm, dd] = dateStr.split('-').map(Number);
     if (dy !== year || dm - 1 !== month) return null;
     let idx = days.findIndex(d => d.day === dd);
     if (idx >= 0) return idx;
     if (!hideOff) return null;
-    // Дата скрыта — ищем ближайший видимый день
     if (fallback === 'next') {
       idx = days.findIndex(d => d.day > dd);
       return idx >= 0 ? idx : null;
@@ -243,9 +244,9 @@ export default function Gantt({ data, updateData, navigate }) {
     }
   }
 
-  function L(i)   { return `${(i / DAYS * 100).toFixed(4)}%`; }
-  function W(s,e) { return `${((e - s) / DAYS * 100).toFixed(4)}%`; }
-  function Ldl(i) { return `${((i + 1) / DAYS * 100).toFixed(4)}%`; }
+  function L(i: number)              { return `${(i / DAYS * 100).toFixed(4)}%`; }
+  function W(s: number, e: number)   { return `${((e - s) / DAYS * 100).toFixed(4)}%`; }
+  function Ldl(i: number)            { return `${((i + 1) / DAYS * 100).toFixed(4)}%`; }
 
   const todayIdx = days.findIndex(d => d.today);
 
@@ -268,25 +269,25 @@ export default function Gantt({ data, updateData, navigate }) {
     );
   }
 
-  function fmtDate(str) {
+  function fmtDate(str: ISODate | null | undefined): string {
     if (!str) return '—';
     const [y,m,d] = str.split('-').map(Number);
     return new Date(y, m-1, d).toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
   }
 
   // Эффективная дата старта:
-  // - независимые задачи: startDate или createdDate
+  // - независимые задачи: startDate
   // - зависимые: всегда dynStart из цепочки (игнорируем хранимый startDate — может быть устаревшим)
-  function effectiveStart(task) {
-    if (!task.dependsOn) return task.startDate || task.createdDate || todayStr();
-    if (dynamicStarts[task.id]) return dynamicStarts[task.id];
+  function effectiveStart(task: Task): ISODate {
+    if (!task.dependsOn) return task.startDate || todayStr();
+    if (dynamicStarts[task.id]) return dynamicStarts[task.id]!;
     const parent = allActiveTasks.find(t => t.id === task.dependsOn);
-    return dynamicStarts[parent?.id] || task.createdDate || todayStr();
+    return (parent && dynamicStarts[parent.id]) || todayStr();
   }
 
 
   // Drag-and-drop: поменять задачи местами
-  function handleDrop(fromIdx, toIdx) {
+  function handleDrop(fromIdx: number, toIdx: number) {
     if (fromIdx === toIdx) return;
     const reordered = [...activeTasks];
     const [moved] = reordered.splice(fromIdx, 1);
@@ -303,7 +304,7 @@ export default function Gantt({ data, updateData, navigate }) {
   }
 
   // Перенос инженера с одной задачи на другую
-  function handleEngDrop(engId, fromTaskId, toTaskId) {
+  function handleEngDrop(engId: string, fromTaskId: string, toTaskId: string) {
     if (fromTaskId === toTaskId) { setDragEng(null); setDragEngOver(null); return; }
     updateData(prev => ({
       ...prev,
@@ -319,12 +320,12 @@ export default function Gantt({ data, updateData, navigate }) {
   }
 
   // Собираем все задачи цепочки (вверх к корню + вниз к листу) для подсветки и стрелок
-  function getChain(hovId) {
+  function getChain(hovId: string): Task[] {
     const allVisible = [...activeTasks, ...doneTasks];
     const task = allVisible.find(t => t.id === hovId);
     if (!task) return [];
-    const chain = [task];
-    let cur = task;
+    const chain: Task[] = [task];
+    let cur: Task = task;
     for (let i = 0; i < 9; i++) {
       if (!cur.dependsOn) break;
       const parent = allVisible.find(t => t.id === cur.dependsOn);
@@ -343,12 +344,13 @@ export default function Gantt({ data, updateData, navigate }) {
   }
 
   // Строим данные для стрелок зависимости при наведении (все пары цепочки)
-  function getDependencyArrows(hovId) {
+  interface DepArrow { key: string; x1: number; y1: number; x2: number; y2: number; }
+  function getDependencyArrows(hovId: string | null): DepArrow[] {
     if (!hovId || !ganttBodyRef.current) return [];
     const chain = getChain(hovId);
     if (chain.length < 2) return [];
     const base = ganttBodyRef.current.getBoundingClientRect();
-    const arrows = [];
+    const arrows: DepArrow[] = [];
     for (let i = 0; i < chain.length - 1; i++) {
       const pTask = chain[i];
       const cTask = chain[i + 1];
@@ -371,10 +373,10 @@ export default function Gantt({ data, updateData, navigate }) {
 
   const workdaysCount = allDays.filter(d => !d.off).length;
   const depArrows = getDependencyArrows(hoveredTask);
-  const hoveredChainIds = useMemo(() => {
-    if (!hoveredTask) return new Set();
+  const hoveredChainIds = useMemo<Set<string>>(() => {
+    if (!hoveredTask) return new Set<string>();
     return new Set(getChain(hoveredTask).map(t => t.id));
-  }, [hoveredTask, activeTasks, doneTasks]); // getChain зависит от activeTasks и doneTasks
+  }, [hoveredTask, activeTasks, doneTasks]);
 
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
@@ -383,7 +385,7 @@ export default function Gantt({ data, updateData, navigate }) {
         <div style={{ padding:'7px 16px', border:'1.5px solid var(--border-mid)', borderRadius:6, fontSize:14, fontWeight:600, minWidth:160, textAlign:'center', background:'var(--bg-secondary)', color:'var(--text-primary)', textTransform:'capitalize' }}>{monthName}</div>
         <button onClick={nextMonth} style={{ padding:'7px 12px', border:'1.5px solid var(--border-mid)', borderRadius:6, background:'var(--bg-secondary)', fontSize:14, cursor:'pointer', color:'var(--text-primary)', fontWeight:600 }}>›</button>
         <div style={{ width:1, height:24, background:'var(--border-light)' }}/>
-        {[['team','👥 С командой'],['tasks','📋 Только задачи']].map(([val,label]) => (
+        {([['team','👥 С командой'],['tasks','📋 Только задачи']] as const).map(([val,label]) => (
           <button key={val} onClick={() => setMode(val)} style={{
             padding:'7px 14px', border:'1.5px solid var(--border-mid)', borderRadius:6,
             background: mode===val ? 'var(--accent)' : 'var(--bg-secondary)',
@@ -405,7 +407,7 @@ export default function Gantt({ data, updateData, navigate }) {
           {showDone && doneTasks.length > 0 && <span style={{ fontSize:12, color:'var(--text-tertiary)', fontWeight:400 }}>({doneTasks.length})</span>}
         </button>
         {/* Чекбокс скрыть выходные */}
-        <label style={{ display:'flex', alignItems:'center', gap:7, fontSize:14, color:'var(--text-secondary)', cursor:'pointer', userSelect:'none', padding:'6px 12px', border:'1.5px solid var(--border-mid)', borderRadius:6, background: hideOff ? 'var(--accent-bg)' : 'var(--bg-secondary)', color: hideOff ? 'var(--accent)' : 'var(--text-secondary)' }}>
+        <label style={{ display:'flex', alignItems:'center', gap:7, fontSize:14, cursor:'pointer', userSelect:'none', padding:'6px 12px', border:'1.5px solid var(--border-mid)', borderRadius:6, background: hideOff ? 'var(--accent-bg)' : 'var(--bg-secondary)', color: hideOff ? 'var(--accent)' : 'var(--text-secondary)' }}>
           <input type="checkbox" checked={hideOff} onChange={e => setHideOff(e.target.checked)} style={{ cursor:'pointer', accentColor:'var(--accent)' }}/>
           Только рабочие дни
           {hideOff && <span style={{ fontSize:12, color:'var(--text-tertiary)', fontWeight:400 }}>({workdaysCount} дн.)</span>}
@@ -434,16 +436,16 @@ export default function Gantt({ data, updateData, navigate }) {
           {(() => {
             // Группируем видимые дни по ISO-неделям
             const DOW_RU = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
-            function getISOWeek(str) {
+            function getISOWeek(str: ISODate): number {
               const [y,m,d] = str.split('-').map(Number);
-              const date = new Date(y, m-1, d);
               const tmp  = new Date(Date.UTC(y, m-1, d));
               tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay()||7));
               const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(),0,1));
-              return Math.ceil((((tmp-yearStart)/86400000)+1)/7);
+              return Math.ceil((((tmp.getTime() - yearStart.getTime())/86400000)+1)/7);
             }
             // Строим сегменты недель
-            const segments = [];
+            interface WeekSeg { week: number; start: number; count: number }
+            const segments: WeekSeg[] = [];
             days.forEach((d, i) => {
               const wk = getISOWeek(d.str);
               if (!segments.length || segments[segments.length-1].week !== wk) {
@@ -479,8 +481,8 @@ export default function Gantt({ data, updateData, navigate }) {
                   <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0 }}/>
                   <div style={{ flex:1, display:'flex', borderBottom:'0.5px solid var(--border-light)' }}>
                     {days.map((d,i) => {
-                      const [,, dd] = d.str.split('-').map(Number);
-                      const jsDay   = new Date(d.str.split('-')[0], d.str.split('-')[1]-1, dd).getDay();
+                      const [yy, mm, dd] = d.str.split('-').map(Number);
+                      const jsDay   = new Date(yy, mm-1, dd).getDay();
                       const dowRu   = DOW_RU[jsDay];
                       const isToday = d.today;
                       const isOff   = d.off && !hideOff;
@@ -534,7 +536,7 @@ export default function Gantt({ data, updateData, navigate }) {
             const barBg     = hasStart ? barColor
               : 'repeating-linear-gradient(45deg,#A8A6A0,#A8A6A0 4px,#C8C7C3 4px,#C8C7C3 8px)';
             // Эффективная команда: унаследованные + дополнительные на этой задаче
-            const assignedEngs = (inheritedEngIds[task.id] || task.assignedEngineers || []).map(id=>engineers.find(e=>e.id===id)).filter(Boolean);
+            const assignedEngs: Engineer[] = (inheritedEngIds[task.id] || task.assignedEngineers || []).map(id=>engineers.find(e=>e.id===id)).filter((e): e is Engineer => !!e);
 
             const barStartIdx   = dateToIdxSafe(effectSt, 'next') ?? 0;
             const barStart      = barStartIdx;
@@ -575,7 +577,7 @@ export default function Gantt({ data, updateData, navigate }) {
                   }}
                   onDrop={() => {
                     if (dragEng) { if (dragEng.fromTaskId !== task.id) handleEngDrop(dragEng.engId, dragEng.fromTaskId, task.id); }
-                    else handleDrop(dragIdx, rowIdx);
+                    else if (dragIdx !== null) handleDrop(dragIdx, rowIdx);
                   }}
                   style={{
                     display:'flex', alignItems:'center',
@@ -734,12 +736,12 @@ export default function Gantt({ data, updateData, navigate }) {
             // Для каждого дня считаем: задействованы (на активных задачах) и свободны.
             // Доступность считается per-day — учитывает дейофы и диапазоны отпусков.
             const nonLeadEngs = engineers.filter(isWorkingRole);
-            const engagedPerDay = [];
-            const freePerDay = [];
-            const totalPerDay = [];
+            const engagedPerDay: number[] = [];
+            const freePerDay: Engineer[][] = [];
+            const totalPerDay: number[] = [];
             days.forEach(day => {
               const availableForDay = nonLeadEngs.filter(e => isAvailableOn(e, day.str));
-              const ids = new Set();
+              const ids = new Set<string>();
               activeTasks.forEach(task => {
                 const fc = forecasts[task.id];
                 const st = task.startDate || day.str;
@@ -785,7 +787,7 @@ export default function Gantt({ data, updateData, navigate }) {
                         <div key={i}
                           onClick={() => cnt > 0 && setFreeModal({ day: d, engineers: freeEngs })}
                           style={{ flex:1, height:22, background:bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:600, color:col, borderRight:i<DAYS-1?'0.5px solid var(--bg-primary)':'none', cursor: cnt > 0 ? 'pointer' : 'default' }}
-                          onMouseEnter={e => { if (!cnt) return; const rows = freeEngs.slice(0,5).map(e2=>`${e2.name} (${e2.regularTask||'—'})`); if (freeEngs.length > 5) rows.push(`и ещё ${freeEngs.length - 5} инженеров`); show(e, `Свободны ${fmtDate(d.str)}`, rows); }}
+                          onMouseEnter={e => { if (!cnt) return; const rows = freeEngs.slice(0,5).map((e2: Engineer)=>`${e2.name} (${e2.regularTask||'—'})`); if (freeEngs.length > 5) rows.push(`и ещё ${freeEngs.length - 5} инженеров`); show(e, `Свободны ${fmtDate(d.str)}`, rows); }}
                           onMouseLeave={hide}
                         >
                           {cnt > 0 ? cnt : '—'}
