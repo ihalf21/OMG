@@ -671,8 +671,13 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                       const cnt = engagedPerDay[i];
                       const total = totalPerDay[i];
                       const p = total > 0 ? cnt / total : 0;
-                      const bg = p > 0.8 ? 'var(--success-bg)' : p > 0.4 ? 'var(--amber-bg)' : 'var(--bg-secondary)';
-                      const col = p > 0.8 ? 'var(--success)' : p > 0.4 ? 'var(--amber)' : 'var(--text-tertiary)';
+                      // Задействовано: <75% — зелёный (есть запас), 75–90% — жёлтый, >90% — красный (перегрев)
+                      let bg = 'var(--bg-secondary)', col: string = 'var(--text-tertiary)';
+                      if (total > 0 && cnt > 0) {
+                        if (p > 0.9)        { bg = 'var(--red-bg)';     col = 'var(--red)'; }
+                        else if (p >= 0.75) { bg = 'var(--amber-bg)';   col = 'var(--amber)'; }
+                        else                { bg = 'var(--success-bg)'; col = 'var(--success)'; }
+                      }
                       return (
                         <div key={i} style={{ flex:1, height:22, background:bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:600, color:col, borderRight:i<DAYS-1?'0.5px solid var(--bg-primary)':'none' }}>
                           {cnt > 0 ? cnt : '—'}
@@ -688,8 +693,15 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                     {days.map((d,i) => {
                       const freeEngs = freePerDay[i];
                       const cnt = freeEngs.length;
-                      const bg = cnt > 0 ? 'var(--red-bg)' : 'var(--bg-secondary)';
-                      const col = cnt > 0 ? 'var(--red)' : 'var(--text-tertiary)';
+                      const total = totalPerDay[i];
+                      const p = total > 0 ? cnt / total : 0;
+                      // Свободны: <10% — зелёный (почти все заняты), 10–25% — жёлтый, >25% — красный (много простоя)
+                      let bg = 'var(--bg-secondary)', col: string = 'var(--text-tertiary)';
+                      if (total > 0 && cnt > 0) {
+                        if (p > 0.25)       { bg = 'var(--red-bg)';     col = 'var(--red)'; }
+                        else if (p >= 0.10) { bg = 'var(--amber-bg)';   col = 'var(--amber)'; }
+                        else                { bg = 'var(--success-bg)'; col = 'var(--success)'; }
+                      }
                       return (
                         <div key={i}
                           onClick={() => cnt > 0 && setFreeModal({ day: d, engineers: freeEngs })}
