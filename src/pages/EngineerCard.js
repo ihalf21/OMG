@@ -2,12 +2,9 @@ import React, { useState } from 'react';
 import { Avatar, RoleBadge, StatusBadge, StarRating, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, Modal, ModalFooter, FormRow, Input, DateRangePicker, DatePicker, useConfirm } from '../components/UI';
 import { formatDate, formatDateShort, todayStr, nextWorkday } from '../utils/dates';
 
-const selectStyle = { fontSize:13, border:'1.5px solid var(--border-mid)', borderRadius:4, padding:'4px 8px', background:'var(--bg-secondary)', color:'var(--text-primary)', width:'100%' };
+import { REGULAR_TASKS } from '../domain/tasks';
 
-// Справочник регулярных задач
-export const REGULAR_TASKS = [
-  'Релиз', 'Регресс', 'Смоук', 'Синхронизация', 'Сверка', 'Приёмка', 'Спецзадачи',
-];
+const selectStyle = { fontSize:13, border:'1.5px solid var(--border-mid)', borderRadius:4, padding:'4px 8px', background:'var(--bg-secondary)', color:'var(--text-primary)', width:'100%' };
 
 export default function EngineerCard({ data, updateData, navigate, engineerId, onBack }) {
   const { engineers, tasks, history } = data;

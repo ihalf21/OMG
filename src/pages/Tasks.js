@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { calcForecast, statusColor, statusLabel, statusBadgeStyle, computeEffectiveDls } from '../utils/forecast';
-import { REGULAR_TASKS } from './EngineerCard';
+import { REGULAR_TASKS } from '../domain/tasks';
 import { formatDateShort, todayStr } from '../utils/dates';
 import { Avatar, Card, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, ProgressBar, DatePicker, useTooltip, useResizableColumns, ResizeHandle, useConfirm } from '../components/UI';
 

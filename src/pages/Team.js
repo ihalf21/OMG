@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Avatar, RoleBadge, StatusBadge, StarRating, Card, PageTopbar, BtnPrimary, BtnDanger, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
-import { REGULAR_TASKS } from './EngineerCard';
+import { REGULAR_TASKS } from '../domain/tasks';
 import { isAvailableToday, isWorkingRole } from '../domain/availability';
 
 export default function Team({ data, updateData, navigate }) {

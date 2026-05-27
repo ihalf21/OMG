@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { calcForecast, statusColor, statusLabel, statusBadgeStyle, fmtHours, getDerivedDeadline } from '../utils/forecast';
 import { isAvailableToday, isWorkingRole } from '../domain/availability';
-import { REGULAR_TASKS } from './EngineerCard';
+import { REGULAR_TASKS } from '../domain/tasks';
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
 import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm } from '../components/UI';
 

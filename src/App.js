@@ -94,6 +94,20 @@ export default function App() {
     })();
   }, []);
 
+  // Пересчёт статусов при переходе через полночь.
+  // Если вкладка открыта сутками, без этого dayoff/отпуск не закроются автоматически.
+  useEffect(() => {
+    let lastDay = todayStr();
+    const interval = setInterval(() => {
+      const currentDay = todayStr();
+      if (currentDay !== lastDay) {
+        lastDay = currentDay;
+        setData(prev => prev ? { ...prev, projects: prev.projects.map(p => normalizeStatuses(p)) } : prev);
+      }
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Автосохранение — debounce 800ms
   useEffect(() => {
     if (!data || !serverOk) return;

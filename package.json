@@ -14,7 +14,9 @@
     "start": "concurrently \"npm run server\" \"npm run client\"",
     "client": "react-scripts start",
     "server": "node server/index.js",
-    "build": "react-scripts build"
+    "build": "react-scripts build",
+    "test": "react-scripts test --watchAll=false",
+    "test:watch": "react-scripts test"
   },
   "proxy": "http://localhost:3001",
   "browserslist": {

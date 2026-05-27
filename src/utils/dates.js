@@ -111,6 +111,7 @@ export function workdaysBetween(fromStr, toStr) {
 
 // Рабочих дней прошло с даты старта до сегодня
 export function workdaysElapsed(startDateStr) {
+  if (!startDateStr) return 0;
   const today = todayStr();
   if (startDateStr > today) return 0;
   return workdaysBetween(startDateStr, today);
