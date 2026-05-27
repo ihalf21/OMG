@@ -1,7 +1,16 @@
 import React, { useState } from 'react';
-import { Modal } from './UI';
+import { Modal, ModalFooter } from './UI';
 
 const CHANGELOG = [
+  {
+    version: '0.12',
+    date: '2025',
+    changes: [
+      'Мультипроектность: несколько проектов с независимыми командами и задачами',
+      'Раздел «Проекты» в сайдбаре — переключение, создание и переименование проектов',
+      'Новый проект создаётся пустым — без инженеров, задач и шаблонов',
+    ],
+  },
   {
     version: '0.11',
     date: '2025',
@@ -210,10 +219,45 @@ const NAV = [
   { id: 'gantt',     label: 'Диаграмма', Icon: IconGantt },
 ];
 
-export default function Sidebar({ activePage, onNavigate, onReset, onSaveSeed }) {
+export default function Sidebar({
+  activePage,
+  onNavigate,
+  onReset,
+  onSaveSeed,
+  projects = [],
+  currentProjectId,
+  onSelectProject,
+  onAddProject,
+  onEditProject,
+}) {
   const [showChangelog, setShowChangelog] = useState(false);
+  const [hoveredProject, setHoveredProject] = useState(null);
+  const [projectModal, setProjectModal] = useState(null); // null | { mode: 'add' } | { mode: 'edit', project }
+  const [projectName, setProjectName] = useState('');
+
   const active = activePage === 'task' ? 'tasks' : activePage === 'engineer' ? 'team' : activePage;
   const currentVersion = CHANGELOG[0].version;
+
+  function openAdd() {
+    setProjectName('');
+    setProjectModal({ mode: 'add' });
+  }
+
+  function openEdit(project) {
+    setProjectName(project.name);
+    setProjectModal({ mode: 'edit', project });
+  }
+
+  function handleProjectSave() {
+    const name = projectName.trim();
+    if (!name) return;
+    if (projectModal.mode === 'add') {
+      onAddProject(name);
+    } else {
+      onEditProject(projectModal.project.id, name);
+    }
+    setProjectModal(null);
+  }
 
   return (
     <>
@@ -227,6 +271,91 @@ export default function Sidebar({ activePage, onNavigate, onReset, onSaveSeed })
         <div style={{ padding: '20px 20px 16px', borderBottom: '0.5px solid var(--border-light)' }}>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>OMG</div>
           <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>Oh My Gantt</div>
+        </div>
+
+        {/* Projects */}
+        <div style={{ borderBottom: '0.5px solid var(--border-light)', paddingBottom: 8 }}>
+          <div style={{
+            padding: '10px 20px 6px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <div style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
+              color: 'var(--text-tertiary)', textTransform: 'uppercase',
+            }}>Проекты</div>
+            <button
+              onClick={openAdd}
+              title="Добавить проект"
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--text-tertiary)', fontSize: 18, lineHeight: 1,
+                padding: '0 2px', display: 'flex', alignItems: 'center',
+                borderRadius: 4, transition: 'color 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+            >+</button>
+          </div>
+
+          {projects.map(p => {
+            const isActive = p.id === currentProjectId;
+            const isHovered = hoveredProject === p.id;
+            return (
+              <div
+                key={p.id}
+                onClick={() => onSelectProject(p.id)}
+                onMouseEnter={() => setHoveredProject(p.id)}
+                onMouseLeave={() => setHoveredProject(null)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '7px 12px 7px 16px', cursor: 'pointer',
+                  background: isActive ? 'var(--bg-secondary)' : isHovered ? 'var(--bg-secondary)' : 'transparent',
+                  borderLeft: `2.5px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                  transition: 'background 0.12s',
+                }}
+              >
+                <div style={{
+                  width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                  background: isActive ? 'var(--accent)' : 'var(--border-mid)',
+                  transition: 'background 0.15s',
+                }}/>
+                <span style={{
+                  flex: 1, fontSize: 13,
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontWeight: isActive ? 600 : 400,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{p.name}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); openEdit(p); }}
+                  title="Переименовать"
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'var(--text-tertiary)', fontSize: 13, padding: '2px 4px',
+                    borderRadius: 4, flexShrink: 0, lineHeight: 1,
+                    opacity: isActive || isHovered ? 1 : 0,
+                    transition: 'opacity 0.15s, color 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+                  onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+                >✎</button>
+              </div>
+            );
+          })}
+
+          <div
+            onClick={openAdd}
+            style={{
+              padding: '5px 20px', fontSize: 12,
+              color: 'var(--text-tertiary)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
+              transition: 'color 0.15s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+          >
+            <span style={{ fontSize: 15, lineHeight: 1 }}>+</span>
+            <span>Добавить проект</span>
+          </div>
         </div>
 
         {/* Nav */}
@@ -285,6 +414,7 @@ export default function Sidebar({ activePage, onNavigate, onReset, onSaveSeed })
         </div>
       </div>
 
+      {/* Changelog modal */}
       {showChangelog && (
         <Modal title="История версий" onClose={() => setShowChangelog(false)} width={520}>
           <div style={{ maxHeight: 440, overflowY: 'auto', paddingRight: 4 }}>
@@ -309,6 +439,41 @@ export default function Sidebar({ activePage, onNavigate, onReset, onSaveSeed })
               border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer',
             }}>Закрыть</button>
           </div>
+        </Modal>
+      )}
+
+      {/* Project add/edit modal */}
+      {projectModal && (
+        <Modal
+          title={projectModal.mode === 'add' ? 'Новый проект' : 'Переименовать проект'}
+          onClose={() => setProjectModal(null)}
+          width={380}
+        >
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 500 }}>
+              Название проекта
+            </div>
+            <input
+              value={projectName}
+              onChange={e => setProjectName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleProjectSave(); if (e.key === 'Escape') setProjectModal(null); }}
+              placeholder="Например: Релиз 4.5"
+              autoFocus
+              style={{
+                width: '100%', padding: '9px 11px', boxSizing: 'border-box',
+                border: '1.5px solid var(--border-mid)', borderRadius: 6,
+                fontSize: 14, background: 'var(--bg-secondary)', color: 'var(--text-primary)',
+                outline: 'none', transition: 'border-color 0.15s',
+              }}
+              onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.target.style.borderColor = 'var(--border-mid)'}
+            />
+          </div>
+          <ModalFooter
+            onCancel={() => setProjectModal(null)}
+            onSave={handleProjectSave}
+            saveLabel={projectModal.mode === 'add' ? 'Создать' : 'Сохранить'}
+          />
         </Modal>
       )}
     </>

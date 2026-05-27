@@ -12,28 +12,24 @@ import EngineerCard from './pages/EngineerCard';
 import Gantt from './pages/Gantt';
 import Estimate from './pages/Estimate';
 
-// Исправляет статусы инженеров на основе дат отпуска
+// Исправляет статусы инженеров на основе дат отпуска (работает на одном проекте)
 function normalizeStatuses(d) {
   const today = todayStr();
   const extraHistory = [];
-  const removeFromTasks = new Set(); // id инженеров, которых снимаем с задач
+  const removeFromTasks = new Set();
 
   const engineers = (d.engineers || []).map(eng => {
-    // Отпуск закончился → вернуть в active, очистить даты
     if (eng.status === 'vacation' && eng.vacationTo && eng.vacationTo < today) {
       extraHistory.push({ id: 'h' + Date.now() + eng.id, date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Возврат из отпуска' });
       return { ...eng, status: 'active', vacationFrom: null, vacationTo: null };
     }
-    // Отпуск в будущем, но статус уже vacation → вернуть в active
     if (eng.status === 'vacation' && eng.vacationFrom && eng.vacationFrom > today) {
       return { ...eng, status: 'active' };
     }
-    // Отпуск начался, а инженер ещё active → перевести в vacation и снять с задачи
     if (eng.status === 'active' && eng.vacationFrom && eng.vacationFrom <= today) {
       removeFromTasks.add(eng.id);
       return { ...eng, status: 'vacation' };
     }
-    // Отпуск начался, а инженер на больничном → закрыть больничный, уйти в отпуск, снять с задачи
     if (eng.status === 'sick' && eng.vacationFrom && eng.vacationFrom <= today) {
       extraHistory.push({ id: 'h' + Date.now() + eng.id, date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Больничный закрыт: начался отпуск' });
       removeFromTasks.add(eng.id);
@@ -53,30 +49,32 @@ function normalizeStatuses(d) {
 }
 
 export default function App() {
-  const [data, setData]         = useState(null);      // null = загружается
+  const [data, setData]         = useState(null);
   const [loading, setLoading]   = useState(true);
   const [serverOk, setServerOk] = useState(true);
   const [page, setPage]         = useState('dashboard');
-  const [selectedTaskId, setSelectedTaskId]       = useState(null);
+  const [selectedTaskId, setSelectedTaskId]         = useState(null);
   const [selectedEngineerId, setSelectedEngineerId] = useState(null);
   const [theme, setTheme]       = useState(() => localStorage.getItem('omg_theme') || 'light');
   const saveTimer = useRef(null);
   const { confirm, ConfirmEl } = useConfirm();
 
-  // Тема
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('omg_theme', theme);
   }, [theme]);
 
-  // Загрузка при старте
   useEffect(() => {
     (async () => {
       const ok = await checkServer();
       setServerOk(ok);
       if (ok) {
         const d = await loadData();
-        setData(normalizeStatuses(d));
+        // Поддержка старого flat-формата на клиенте (резервная миграция)
+        const base = d.projects
+          ? d
+          : { currentProjectId: 'p1', projects: [{ id: 'p1', name: 'Проект 1', engineers: d.engineers || [], tasks: d.tasks || [], history: d.history || [] }] };
+        setData({ ...base, projects: base.projects.map(p => normalizeStatuses(p)) });
       }
       setLoading(false);
     })();
@@ -90,8 +88,14 @@ export default function App() {
     return () => clearTimeout(saveTimer.current);
   }, [data, serverOk]);
 
-  function updateData(fn) {
-    setData(prev => fn(prev));
+  // Обновляет данные текущего проекта (используется страницами)
+  function updateProjectData(fn) {
+    setData(prev => ({
+      ...prev,
+      projects: prev.projects.map(p =>
+        p.id === prev.currentProjectId ? fn(p) : p
+      ),
+    }));
   }
 
   function navigate(target, id) {
@@ -99,6 +103,32 @@ export default function App() {
     if (target === 'task')     setSelectedTaskId(id);
     if (target === 'engineer') setSelectedEngineerId(id);
   }
+
+  // ── Управление проектами ──────────────────────────────────────────────────
+
+  function selectProject(id) {
+    setData(prev => ({ ...prev, currentProjectId: id }));
+    setPage('dashboard');
+  }
+
+  function addProject(name) {
+    const newId = 'p' + Date.now();
+    setData(prev => ({
+      ...prev,
+      projects: [...prev.projects, { id: newId, name, engineers: [], tasks: [], history: [] }],
+      currentProjectId: newId,
+    }));
+    setPage('dashboard');
+  }
+
+  function editProject(id, name) {
+    setData(prev => ({
+      ...prev,
+      projects: prev.projects.map(p => p.id === id ? { ...p, name } : p),
+    }));
+  }
+
+  // ── Тестовые данные ───────────────────────────────────────────────────────
 
   async function handleSaveSeed() {
     const ok = await confirm(
@@ -124,7 +154,10 @@ export default function App() {
     setLoading(true);
     try {
       const fresh = await resetToSeed();
-      setData(normalizeStatuses(fresh));
+      const base = fresh.projects
+        ? fresh
+        : { currentProjectId: 'p1', projects: [{ id: 'p1', name: 'Проект 1', engineers: fresh.engineers || [], tasks: fresh.tasks || [], history: fresh.history || [] }] };
+      setData({ ...base, projects: base.projects.map(p => normalizeStatuses(p)) });
       setPage('dashboard');
     } catch (err) {
       alert('Ошибка сброса: ' + err.message);
@@ -158,15 +191,25 @@ export default function App() {
     );
   }
 
-  const ctx = { data, updateData, navigate };
+  const currentProject = data?.projects?.find(p => p.id === data.currentProjectId) ?? data?.projects?.[0];
+  const ctx = { data: currentProject, updateData: updateProjectData, navigate };
 
   return (
     <div style={{ display:'flex', height:'100vh', overflow:'hidden', background:'var(--bg-tertiary)' }}>
       {ConfirmEl}
-      <Sidebar activePage={page} onNavigate={p => navigate(p)} onReset={handleReset} onSaveSeed={handleSaveSeed}/>
+      <Sidebar
+        activePage={page}
+        onNavigate={p => navigate(p)}
+        onReset={handleReset}
+        onSaveSeed={handleSaveSeed}
+        projects={data?.projects || []}
+        currentProjectId={data?.currentProjectId}
+        onSelectProject={selectProject}
+        onAddProject={addProject}
+        onEditProject={editProject}
+      />
       <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         <Topbar theme={theme} onToggleTheme={() => setTheme(t => t==='light'?'dark':'light')}/>
-        {/* Центрируем контент: оптимально для FHD, отступы на более широких экранах */}
         <div style={{ flex:1, overflow:'hidden', display:'flex', justifyContent:'center', alignItems:'stretch' }}>
         <div style={{ width:'100%', maxWidth:1680, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         {page==='dashboard' && <Dashboard {...ctx}/>}
