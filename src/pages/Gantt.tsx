@@ -1,8 +1,9 @@
 // src/pages/Gantt.tsx
 import React, { useState, useMemo } from 'react';
-import { getMonthDays, todayStr, addWorkdays, type MonthDay } from '../utils/dates';
-import { calcForecast, calcDependentStart, calcScheduledChildStart, statusColor, getDerivedDeadline, HOURS_PER_DAY } from '../utils/forecast';
+import { getMonthDays, todayStr, type MonthDay } from '../utils/dates';
+import { calcForecast, statusColor, getDerivedDeadline } from '../utils/forecast';
 import { isAvailableOn, isWorkingRole, leaveTypeOn } from '../domain/availability';
+import { computeInheritedTeam, computeDynamicStarts, getTaskChain, segmentByWeek } from '../domain/gantt';
 import { genId } from '../utils/ids';
 import { Avatar, PageTopbar, useTooltip } from '../components/UI';
 import type { Engineer, ISODate, Task } from '../domain/types';
@@ -46,70 +47,13 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       .sort((a,b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)),
   [tasks]);
 
-  // Для каждой задачи — эффективная команда:
-  // если задача не имеет инженеров, наследуем от ближайшего предка с командой.
-  // Это позволяет планировать длинные цепочки: команда переходит с задачи на задачу.
-  const inheritedEngIds = useMemo<Record<string, string[]>>(() => {
-    const cache: Record<string, string[]> = {};
-    function get(taskId: string, depth: number): string[] {
-      if (depth > 9 || cache[taskId] !== undefined) return cache[taskId] || [];
-      const task = allActiveTasks.find(t => t.id === taskId);
-      if (!task) { cache[taskId] = []; return []; }
-      const own = task.assignedEngineers || [];
-      if (!task.dependsOn) { cache[taskId] = own; return own; }
-      const parentIds = get(task.dependsOn, depth + 1);
-      if (own.length === 0) { cache[taskId] = parentIds; return parentIds; }
-      // Дочерняя задача с доп. инженерами: унаследованная команда + свои (без дублей)
-      const merged = [...new Set([...parentIds, ...own])];
-      cache[taskId] = merged; return merged;
-    }
-    allActiveTasks.forEach(t => get(t.id, 0));
-    return cache;
-  }, [allActiveTasks]);
+  // Эффективная команда: задача наследует инженеров от родителя если своих нет.
+  const inheritedEngIds = useMemo(() => computeInheritedTeam(allActiveTasks), [allActiveTasks]);
 
-  // Динамические даты старта по цепочке зависимостей (до 9 уровней).
-  // Зависимые задачи используют унаследованную команду для расчёта длительности.
-  const dynamicStarts = useMemo<Record<string, ISODate | null>>(() => {
-    const cache: Record<string, ISODate | null> = {};
-    function getDynStart(taskId: string, depth: number): ISODate | null {
-      if (depth > 9) return null;
-      if (cache[taskId] !== undefined) return cache[taskId];
-      const task = allActiveTasks.find(t => t.id === taskId);
-      if (!task) { cache[taskId] = null; return null; }
-      if (!task.dependsOn) { cache[taskId] = task.startDate || null; return cache[taskId]; }
-      const parent = allActiveTasks.find(t => t.id === task.dependsOn);
-      if (!parent) { cache[taskId] = task.startDate || null; return cache[taskId]; }
-      const parentDynStart = getDynStart(parent.id, depth + 1);
-      // Задача с унаследованной командой для корректного расчёта capacity
-      const parentEff: Task = { ...parent, assignedEngineers: inheritedEngIds[parent.id] || [] };
-
-      let date: ISODate | null = null;
-      if (!parent.dependsOn && parent.startDate) {
-        // Корневая запущенная задача — elapsed-based прогресс
-        const { date: d } = calcDependentStart(parentEff, engineers);
-        if (d) { date = d; }
-        else {
-          // Нет ни унаследованных инженеров — используем дедлайн или оценку
-          if (parent.deadline) date = addWorkdays(parent.deadline, 1);
-          else { const hrs = parent.estimateHours || HOURS_PER_DAY; date = addWorkdays(parent.startDate, Math.round(hrs / HOURS_PER_DAY)); }
-        }
-      } else {
-        // Зависимая или ещё не начатая задача — schedule-forward без учёта elapsed
-        if (!parentDynStart) { cache[taskId] = null; return null; }
-        const d = calcScheduledChildStart(parentEff, engineers, parentDynStart);
-        if (d) { date = d; }
-        else {
-          if (parent.deadline) date = addWorkdays(parent.deadline, 1);
-          else { const hrs = parent.estimateHours || HOURS_PER_DAY; date = addWorkdays(parentDynStart, Math.round(hrs / HOURS_PER_DAY)); }
-        }
-      }
-
-      cache[taskId] = date;
-      return date;
-    }
-    allActiveTasks.forEach(t => getDynStart(t.id, 0));
-    return cache;
-  }, [allActiveTasks, engineers, inheritedEngIds]);
+  // Динамические даты старта по цепочке зависимостей.
+  const dynamicStarts = useMemo(() =>
+    computeDynamicStarts(allActiveTasks, engineers, inheritedEngIds),
+    [allActiveTasks, engineers, inheritedEngIds]);
 
   // Эффективный дедлайн:
   // - Дедлайн всей цепочки = максимальный (самый поздний) дедлайн любого её звена
@@ -319,28 +263,9 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
     setDragEngOver(null);
   }
 
-  // Собираем все задачи цепочки (вверх к корню + вниз к листу) для подсветки и стрелок
+  // Цепочка задач — делегируется в domain/gantt
   function getChain(hovId: string): Task[] {
-    const allVisible = [...activeTasks, ...doneTasks];
-    const task = allVisible.find(t => t.id === hovId);
-    if (!task) return [];
-    const chain: Task[] = [task];
-    let cur: Task = task;
-    for (let i = 0; i < 9; i++) {
-      if (!cur.dependsOn) break;
-      const parent = allVisible.find(t => t.id === cur.dependsOn);
-      if (!parent) break;
-      chain.unshift(parent);
-      cur = parent;
-    }
-    cur = task;
-    for (let i = 0; i < 9; i++) {
-      const child = allVisible.find(t => t.dependsOn === cur.id);
-      if (!child) break;
-      chain.push(child);
-      cur = child;
-    }
-    return chain;
+    return getTaskChain(hovId, [...activeTasks, ...doneTasks]);
   }
 
   // Строим данные для стрелок зависимости при наведении (все пары цепочки)
@@ -436,24 +361,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
           {(() => {
             // Группируем видимые дни по ISO-неделям
             const DOW_RU = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
-            function getISOWeek(str: ISODate): number {
-              const [y,m,d] = str.split('-').map(Number);
-              const tmp  = new Date(Date.UTC(y, m-1, d));
-              tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay()||7));
-              const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(),0,1));
-              return Math.ceil((((tmp.getTime() - yearStart.getTime())/86400000)+1)/7);
-            }
-            // Строим сегменты недель
-            interface WeekSeg { week: number; start: number; count: number }
-            const segments: WeekSeg[] = [];
-            days.forEach((d, i) => {
-              const wk = getISOWeek(d.str);
-              if (!segments.length || segments[segments.length-1].week !== wk) {
-                segments.push({ week: wk, start: i, count: 1 });
-              } else {
-                segments[segments.length-1].count++;
-              }
-            });
+            const segments = segmentByWeek(days);
 
             return (
               <>
