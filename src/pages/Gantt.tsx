@@ -213,15 +213,6 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
     );
   }
 
-  // Progress-градиент: левая часть бара насыщенным цветом до прогресса %,
-  // правая — тот же цвет с прозрачностью (35% непрозрачности).
-  function progressGradient(color: string, pct: number): string {
-    const faded = `color-mix(in srgb, ${color} 35%, transparent)`;
-    if (pct >= 100) return color;
-    if (pct <= 0) return faded;
-    return `linear-gradient(to right, ${color} 0%, ${color} ${pct}%, ${faded} ${pct}%, ${faded} 100%)`;
-  }
-
   function fmtDate(str: ISODate | null | undefined): string {
     if (!str) return '—';
     const [y,m,d] = str.split('-').map(Number);
@@ -449,8 +440,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
             // Задача без даты: серая штриховка, стартует с сегодня визуально
             const effectSt  = effectiveStart(task);
             const barColor  = hasStart ? (statusColor(fc?.deadlineStatus) || '#A8A6A0') : '#A8A6A0';
-            const barBg     = hasStart
-              ? progressGradient(barColor, fc?.progressPct || 0)
+            const barBg     = hasStart ? barColor
               : 'repeating-linear-gradient(45deg,#A8A6A0,#A8A6A0 4px,#C8C7C3 4px,#C8C7C3 8px)';
             // Эффективная команда: унаследованные + дополнительные на этой задаче
             const assignedEngs: Engineer[] = (inheritedEngIds[task.id] || task.assignedEngineers || []).map(id=>engineers.find(e=>e.id===id)).filter((e): e is Engineer => !!e);
