@@ -68,9 +68,9 @@ describe('setSickLeave', () => {
     const s = setSickLeave(baseState(), 'e1');
     expect(s.engineers.find(e => e.id === 'e1').status).toBe('sick');
   });
-  test('снимает с активной задачи', () => {
+  test('остаётся на задаче (снимается только вручную)', () => {
     const s = setSickLeave(baseState(), 'e1');
-    expect(s.tasks.find(t => t.id === 't1').assignedEngineers).toEqual([]);
+    expect(s.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
   });
   test('добавляет history entry с типом sick', () => {
     const s = setSickLeave(baseState(), 'e1');

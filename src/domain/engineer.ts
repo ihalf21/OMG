@@ -84,10 +84,10 @@ export function updateEngineerProfile(state: ProjectState, engineerId: string, u
 
 export function setSickLeave(state: ProjectState, engineerId: string): ProjectState {
   const currentTask = findCurrentTask(state, engineerId);
+  // Инженер остаётся на задаче — снимается только вручную через clearSickLeave + переназначение.
   return {
     ...state,
     engineers: patchEngineer(state, engineerId, { status: 'sick' }),
-    tasks: removeEngineerFromAllTasks(state, engineerId),
     history: appendHistory(state, {
       date: todayStr(), engineerId, type: 'sick',
       fromTask: currentTask?.id || null, toTask: null, note: '',
