@@ -1,7 +1,7 @@
 // Тесты на domain/engineer.js — переходы состояния инженера.
 import {
   addEngineer, deleteEngineer, updateEngineerProfile,
-  setSickLeave, clearSickLeave, setSickReturn, cancelScheduledSickReturn,
+  setSickLeave, setSickLeaveFrom, clearSickLeave, setSickReturn, cancelScheduledSickReturn,
   setVacation, cancelVacation, endVacationEarly,
   setDayoff, cancelDayoff, endDayoffEarly,
   removeFromTask, switchToTask,
@@ -116,6 +116,40 @@ describe('clearSickLeave', () => {
     const sick    = setSickLeave(baseState(), 'e1');
     const cleared = clearSickLeave(sick, 'e1');
     expect(cleared.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
+  });
+});
+
+describe('setSickLeaveFrom', () => {
+  test('сегодня — поведение идентично setSickLeave', () => {
+    const s = setSickLeaveFrom(baseState(), 'e1', todayStr());
+    expect(s.engineers.find(e => e.id === 'e1').status).toBe('sick');
+    expect(s.history[0]).toMatchObject({ type: 'sick', engineerId: 'e1', fromTask: 't1' });
+  });
+
+  test('прошлая дата — history датируется прошлым днём', () => {
+    const past = subtractWorkdays(todayStr(), 2);
+    const s = setSickLeaveFrom(baseState(), 'e1', past);
+    expect(s.engineers.find(e => e.id === 'e1').status).toBe('sick');
+    expect(s.history[0].date).toBe(past);
+  });
+
+  test('прошлая дата — note содержит дату начала больничного', () => {
+    const past = subtractWorkdays(todayStr(), 2);
+    const s = setSickLeaveFrom(baseState(), 'e1', past);
+    expect(s.history[0].note).toMatch(/Больничный с/);
+  });
+
+  test('инженер остаётся на задаче при любой дате', () => {
+    const past = subtractWorkdays(todayStr(), 1);
+    const s = setSickLeaveFrom(baseState(), 'e1', past);
+    expect(s.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
+  });
+
+  test('сбрасывает sickReturnDate если была задана', () => {
+    // Инженер был на больничном с плановым выходом — новый больничный сбрасывает план
+    const withReturn = { ...baseState(), engineers: baseState().engineers.map(e => e.id === 'e1' ? { ...e, status: 'sick', sickReturnDate: '2099-01-01' } : e) };
+    const s = setSickLeaveFrom(withReturn, 'e1', todayStr());
+    expect(s.engineers.find(e => e.id === 'e1').sickReturnDate).toBe(null);
   });
 });
 

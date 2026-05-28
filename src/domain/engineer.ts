@@ -83,17 +83,26 @@ export function updateEngineerProfile(state: ProjectState, engineerId: string, u
 
 // ─── Sick leave ───────────────────────────────────────────────────────────────
 
-export function setSickLeave(state: ProjectState, engineerId: string): ProjectState {
+/**
+ * Отправить инженера на больничный начиная с указанной даты.
+ * Инженер остаётся назначен на задачу — снимается только вручную.
+ */
+export function setSickLeaveFrom(state: ProjectState, engineerId: string, fromDate: ISODate): ProjectState {
   const currentTask = findCurrentTask(state, engineerId);
-  // Инженер остаётся на задаче — снимается только вручную через clearSickLeave + переназначение.
+  const today = todayStr();
+  const note = fromDate < today ? `Больничный с ${formatDateShort(fromDate)}` : '';
   return {
     ...state,
     engineers: patchEngineer(state, engineerId, { status: 'sick', sickReturnDate: null }),
     history: appendHistory(state, {
-      date: todayStr(), engineerId, type: 'sick',
-      fromTask: currentTask?.id || null, toTask: null, note: '',
+      date: fromDate, engineerId, type: 'sick',
+      fromTask: currentTask?.id || null, toTask: null, note,
     }),
   };
+}
+
+export function setSickLeave(state: ProjectState, engineerId: string): ProjectState {
+  return setSickLeaveFrom(state, engineerId, todayStr());
 }
 
 export function clearSickLeave(state: ProjectState, engineerId: string): ProjectState {
