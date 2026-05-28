@@ -2,6 +2,7 @@
 import {
   getEffectiveTeam,
   addEngineerToTask, removeEngineerFromTask,
+  getEngineerCurrentTask, getEngineerActiveTasks,
   unlinkParent, unlinkChild,
   completeTask, reopenTask, archiveTask, restoreFromArchive,
   updateTaskProgress,
@@ -61,35 +62,86 @@ describe('addEngineerToTask', () => {
   });
 });
 
-describe('addEngineerToTask — автоперенос с предыдущей задачи', () => {
+describe('getEngineerActiveTasks', () => {
+  test('возвращает все активные задачи инженера', () => {
+    const state = {
+      ...baseState(),
+      tasks: [
+        { id: 't1', name: 'T1', status: 'active',   assignedEngineers: ['e1'], dependsOn: null },
+        { id: 't2', name: 'T2', status: 'active',   assignedEngineers: ['e1'], dependsOn: null },
+        { id: 't3', name: 'T3', status: 'done',     assignedEngineers: ['e1'], dependsOn: null },
+      ],
+    };
+    const result = getEngineerActiveTasks(state, 'e1');
+    expect(result.map(t => t.id)).toEqual(expect.arrayContaining(['t1', 't2']));
+    expect(result.find(t => t.id === 't3')).toBeUndefined();
+  });
+
+  test('excludeTaskId исключает задачу из результата', () => {
+    const result = getEngineerActiveTasks(baseState(), 'e1', 't1');
+    expect(result.find(t => t.id === 't1')).toBeUndefined();
+  });
+
+  test('возвращает пустой массив если инженер без задач', () => {
+    expect(getEngineerActiveTasks(baseState(), 'e3')).toHaveLength(0);
+  });
+});
+
+describe('getEngineerCurrentTask', () => {
+  test('возвращает активную задачу инженера', () => {
+    const s = baseState(); // e1 на t1
+    expect(getEngineerCurrentTask(s, 'e1').id).toBe('t1');
+  });
+
+  test('исключает targetTaskId', () => {
+    const s = baseState();
+    expect(getEngineerCurrentTask(s, 'e1', 't1')).toBe(null);
+  });
+
+  test('возвращает null если инженер без задачи', () => {
+    const s = baseState(); // e3 ни на какой задаче
+    expect(getEngineerCurrentTask(s, 'e3')).toBe(null);
+  });
+
+  test('не возвращает завершённые задачи', () => {
+    const state = {
+      ...baseState(),
+      tasks: [
+        { id: 't1', name: 'T1', status: 'done',   assignedEngineers: ['e1'], dependsOn: null },
+        { id: 't2', name: 'T2', status: 'active', assignedEngineers: [],    dependsOn: null },
+      ],
+    };
+    expect(getEngineerCurrentTask(state, 'e1')).toBe(null);
+  });
+});
+
+describe('addEngineerToTask — автоперенос с предыдущей задачи (transfer=true)', () => {
   test('снимает инженера с предыдущей активной задачи', () => {
-    // e1 уже на t1; добавляем на t2
-    const s = addEngineerToTask(baseState(), 't2', 'e1');
+    const s = addEngineerToTask(baseState(), 't2', 'e1', true);
     expect(s.tasks.find(t => t.id === 't1').assignedEngineers).not.toContain('e1');
     expect(s.tasks.find(t => t.id === 't2').assignedEngineers).toContain('e1');
   });
 
   test('история: fromTask указывает на предыдущую задачу', () => {
-    const s = addEngineerToTask(baseState(), 't2', 'e1');
+    const s = addEngineerToTask(baseState(), 't2', 'e1', true);
     const entry = s.history.find(h => h.engineerId === 'e1' && h.toTask === 't2');
     expect(entry.fromTask).toBe('t1');
   });
 
   test('история: note содержит название предыдущей задачи', () => {
-    const s = addEngineerToTask(baseState(), 't2', 'e1');
+    const s = addEngineerToTask(baseState(), 't2', 'e1', true);
     const entry = s.history.find(h => h.engineerId === 'e1' && h.toTask === 't2');
     expect(entry.note).toContain('T1');
   });
 
   test('без предыдущей задачи: fromTask = null', () => {
-    // e3 ни на какой задаче
-    const s = addEngineerToTask(baseState(), 't1', 'e3');
+    const s = addEngineerToTask(baseState(), 't1', 'e3', true);
     const entry = s.history.find(h => h.engineerId === 'e3' && h.toTask === 't1');
     expect(entry.fromTask).toBe(null);
   });
 
   test('без предыдущей задачи: note — «Добавлен на задачу»', () => {
-    const s = addEngineerToTask(baseState(), 't1', 'e3');
+    const s = addEngineerToTask(baseState(), 't1', 'e3', true);
     const entry = s.history.find(h => h.engineerId === 'e3' && h.toTask === 't1');
     expect(entry.note).toBe('Добавлен на задачу');
   });
@@ -130,6 +182,45 @@ describe('addEngineerToTask — автоперенос с предыдущей �
     const count = s.tasks.find(t => t.id === 't1').assignedEngineers.filter(id => id === 'e1').length;
     expect(count).toBe(2); // поведение без дедупликации — добавляется снова, это ожидаемо
     // (дублирование предотвращается на UI — кнопка «Добавить» фильтрует уже назначенных)
+  });
+});
+
+describe('addEngineerToTask — transfer vs планирование', () => {
+  const multiState = () => ({
+    ...baseState(),
+    tasks: [
+      { id: 't1', name: 'T1', status: 'active', assignedEngineers: ['e1'], dependsOn: null },
+      { id: 't2', name: 'T2', status: 'active', assignedEngineers: [],    dependsOn: null },
+      { id: 't3', name: 'T3', status: 'active', assignedEngineers: ['e1'], dependsOn: null },
+    ],
+    history: [],
+  });
+
+  test('transfer=true: снимает со ВСЕХ активных задач', () => {
+    const s = addEngineerToTask(multiState(), 't2', 'e1', true);
+    expect(s.tasks.find(t => t.id === 't1').assignedEngineers).not.toContain('e1');
+    expect(s.tasks.find(t => t.id === 't3').assignedEngineers).not.toContain('e1');
+    expect(s.tasks.find(t => t.id === 't2').assignedEngineers).toContain('e1');
+  });
+
+  test('transfer=true: инженер ровно на одной задаче', () => {
+    const s = addEngineerToTask(multiState(), 't2', 'e1', true);
+    const tasks = s.tasks.filter(t => (t.assignedEngineers || []).includes('e1'));
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].id).toBe('t2');
+  });
+
+  test('transfer=false (планирование): инженер остаётся на старых задачах', () => {
+    const s = addEngineerToTask(multiState(), 't2', 'e1', false);
+    expect(s.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
+    expect(s.tasks.find(t => t.id === 't3').assignedEngineers).toContain('e1');
+    expect(s.tasks.find(t => t.id === 't2').assignedEngineers).toContain('e1');
+  });
+
+  test('transfer=false: note содержит "Запланирован"', () => {
+    const s = addEngineerToTask(multiState(), 't2', 'e1', false);
+    const entry = s.history.find(h => h.engineerId === 'e1' && h.toTask === 't2');
+    expect(entry.note).toContain('Запланирован');
   });
 });
 

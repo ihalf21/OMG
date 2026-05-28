@@ -4,8 +4,10 @@ import { getMonthDays, todayStr, type MonthDay } from '../utils/dates';
 import { calcForecast, statusColor, getDerivedDeadline } from '../utils/forecast';
 import { isAvailableOn, isWorkingRole, leaveTypeOn } from '../domain/availability';
 import { computeInheritedTeam, computeDynamicStarts, getTaskChain, segmentByWeek, arrowAnchorOffset } from '../domain/gantt';
+import { getEngineerActiveTasks } from '../domain/task';
+import { formatDateShort } from '../utils/dates';
 import { genId } from '../utils/ids';
-import { Avatar, PageTopbar, useTooltip } from '../components/UI';
+import { Avatar, PageTopbar, useTooltip, useConfirm } from '../components/UI';
 import type { Engineer, ISODate, Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
@@ -23,12 +25,14 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
   const [freeModal, setFreeModal]     = useState<FreeModalState>(null);
   const [dragIdx, setDragIdx]         = useState<number | null>(null);
   const [dragOver, setDragOver]       = useState<number | null>(null);
+  const [dragChainIds, setDragChainIds] = useState<Set<string>>(new Set());
   const [dragEng, setDragEng]         = useState<DragEngState>(null);
   const [dragEngOver, setDragEngOver] = useState<string | null>(null);
   const ganttBodyRef = React.useRef<HTMLDivElement>(null);
   const weekRowRef   = React.useRef<HTMLDivElement>(null);
   const [weekRowH, setWeekRowH] = useState(0);
   const { show, move, hide, TooltipEl } = useTooltip();
+  const { confirm, ConfirmEl } = useConfirm();
 
   const [showDone, setShowDone]       = useState(false);
   const [hoveredCol, setHoveredCol]   = useState<number | null>(null);
@@ -142,7 +146,6 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
     const lastDay    = new Date(year, month+1, 0).getDate();
     const monthEnd   = `${year}-${String(month+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
     return allActiveTasks.filter(t => {
-      if (t.deadline && t.deadline >= monthStart && t.deadline <= monthEnd) return true;
       const effStart = dynamicStarts[t.id] || todayStr();
       if (effStart > monthEnd) return false;
       const fc = forecasts[t.id];
@@ -212,13 +215,16 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
 
   function BgCols() {
     return (
-      <div style={{ position:'absolute', inset:0, display:'flex', pointerEvents:'none', zIndex:0 }}>
-        {days.map((d,i) => (
+      <div style={{ position:'absolute', inset:0, pointerEvents:'none', zIndex:0 }}>
+        {days.map((d, i) => d.off ? (
           <div key={i} style={{
-            flex:1, height:'100%',
-            background: d.off ? 'var(--bg-secondary)' : 'transparent',
+            position:'absolute',
+            left: `${(i / DAYS * 100).toFixed(4)}%`,
+            width: `${(1 / DAYS * 100).toFixed(4)}%`,
+            top: 0, bottom: 0,
+            background: 'var(--bg-secondary)',
           }}/>
-        ))}
+        ) : null)}
       </div>
     );
   }
@@ -240,12 +246,35 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
   }
 
 
-  // Drag-and-drop: поменять задачи местами
+  // Drag-and-drop: перетаскивание задачи вместе со всей цепочкой зависимостей
   function handleDrop(fromIdx: number, toIdx: number) {
     if (fromIdx === toIdx) return;
-    const reordered = [...activeTasks];
-    const [moved] = reordered.splice(fromIdx, 1);
-    reordered.splice(toIdx, 0, moved);
+    const draggedTask = activeTasks[fromIdx];
+    if (!draggedTask) return;
+
+    // Получаем всю цепочку в порядке root→leaf, оставляем только активные
+    const chainOrdered = getChain(draggedTask.id)
+      .filter(t => activeTasks.some(a => a.id === t.id));
+    const chainIds = new Set(chainOrdered.map(t => t.id));
+
+    const toTask = activeTasks[toIdx];
+    // Если цель — часть той же цепочки, ничего не делаем
+    if (!toTask || chainIds.has(toTask.id)) {
+      setDragIdx(null); setDragOver(null); setDragChainIds(new Set());
+      return;
+    }
+
+    // Убираем всю цепочку из списка
+    const withoutChain = activeTasks.filter(t => !chainIds.has(t.id));
+
+    // Ищем позицию целевой задачи в урезанном списке и вставляем цепочку туда
+    const insertAt = withoutChain.findIndex(t => t.id === toTask.id);
+    const reordered = [
+      ...withoutChain.slice(0, insertAt),
+      ...chainOrdered,
+      ...withoutChain.slice(insertAt),
+    ];
+
     updateData(prev => ({
       ...prev,
       tasks: prev.tasks.map(t => {
@@ -253,13 +282,38 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
         return idx >= 0 ? { ...t, sortOrder: idx } : t;
       }),
     }));
-    setDragIdx(null);
-    setDragOver(null);
+    setDragIdx(null); setDragOver(null); setDragChainIds(new Set());
   }
 
-  // Перенос инженера с одной задачи на другую
-  function handleEngDrop(engId: string, fromTaskId: string, toTaskId: string) {
+  // Перенос инженера с одной задачи на другую (drag-and-drop)
+  async function handleEngDrop(engId: string, fromTaskId: string, toTaskId: string) {
     if (fromTaskId === toTaskId) { setDragEng(null); setDragEngOver(null); return; }
+
+    const toTask = data.tasks.find(t => t.id === toTaskId);
+    const newStart = toTask?.startDate || todayStr();
+    const newEnd   = toTask ? (forecasts[toTask.id]?.forecastDate || toTask.deadline || null) : null;
+
+    // Ищем конфликтующие по датам задачи инженера
+    const otherTasks  = getEngineerActiveTasks(data, engId, toTaskId);
+    const conflicting = otherTasks.filter(ct => {
+      const ctEnd = forecasts[ct.id]?.forecastDate || ct.deadline || null;
+      if (!ctEnd) return true;
+      if (!newEnd) return ctEnd >= newStart;
+      return ctEnd >= newStart && (ct.startDate || todayStr()) <= newEnd;
+    });
+
+    if (conflicting.length > 0) {
+      const ct = conflicting[0];
+      const ctEnd = forecasts[ct.id]?.forecastDate || ct.deadline || null;
+      const isOverdue = !!(ct.deadline && todayStr() > ct.deadline);
+      const msg = isOverdue
+        ? `«${ct.name}» вышла за рамки дедлайна. Инженер будет переведён — разрешите просроченную задачу вручную.`
+        : `Инженер уже задействован на «${ct.name}» (до ${formatDateShort(ctEnd)}). Снять и перевести?`;
+      const ok = await confirm('Конфликт планирования', msg, { confirmLabel: 'Перевести', danger: false });
+      if (!ok) { setDragEng(null); setDragEngOver(null); return; }
+    }
+
+    // Drag-and-drop — всегда явный перевод (снять со всех конфликтующих, добавить)
     updateData(prev => ({
       ...prev,
       tasks: prev.tasks.map(t => {
@@ -374,9 +428,15 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
             const segments = segmentByWeek(days);
 
             return (
+              // sticky-обёртка: шапка остаётся видимой при скролле вниз
+              <div ref={weekRowRef} style={{
+                position: 'sticky',
+                top: 0,
+                zIndex: 10,
+              }}>
               <>
                 {/* Строка номеров недель */}
-                <div ref={weekRowRef} style={{ display:'flex' }}>
+                <div style={{ display:'flex' }}>
                   <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0 }}/>
                   <div style={{ flex:1, display:'flex', borderBottom:'0.5px solid var(--border-light)' }}>
                     {segments.map((seg, si) => (
@@ -397,7 +457,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                 {/* Строка чисел */}
                 <div style={{ display:'flex' }} onMouseLeave={() => setHoveredCol(null)}>
                   <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0 }}/>
-                  <div style={{ flex:1, display:'flex', borderBottom:'0.5px solid var(--border-light)' }}>
+                  <div style={{ flex:1, display:'flex', borderBottom:'0.5px solid var(--border-light)', background:'var(--bg-primary)' }}>
                     {days.map((d,i) => {
                       const [yy, mm, dd] = d.str.split('-').map(Number);
                       const jsDay   = new Date(yy, mm-1, dd).getDay();
@@ -420,26 +480,9 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                   </div>
                 </div>
 
-                {/* Полоска сег./вых./праз. */}
-                <div style={{ display:'flex', marginBottom:10 }}>
-                  <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0 }}/>
-                  <div style={{ flex:1, display:'flex' }}>
-                    {days.map((d,i) => (
-                      <div key={i} style={{
-                        flex:1, height:13,
-                        background: d.today ? 'rgba(29,158,117,0.18)'
-                          : d.off ? 'var(--bg-secondary)'
-                          : 'transparent',
-                        borderRight: i<DAYS-1 ? `0.5px solid ${d.today?'rgba(29,158,117,0.25)':'var(--border-light)'}` : 'none',
-                        display:'flex', alignItems:'center', justifyContent:'center',
-                      }}>
-                        {d.today && <span style={{ fontSize:8, color:'var(--accent)', fontWeight:700 }}>●</span>}
-                        {!hideOff && !d.today && d.holiday && <span style={{ fontSize:7, color:'var(--text-tertiary)' }}>пр</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <div style={{ marginBottom:10 }}/>
               </>
+              </div>
             );
           })()}
 
@@ -502,16 +545,22 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
             const chainDlIdx = isParent && effectiveDls[task.id] ? dateToIdxSafe(effectiveDls[task.id], 'prev') : null;
 
             const isDepHovered = hoveredChainIds.has(task.id);
-            const isDragging  = dragIdx === rowIdx;
-            const isOver      = dragOver === rowIdx;
+            const isDragging  = dragChainIds.has(task.id);
+            const isOver      = dragOver === rowIdx && !dragChainIds.has(task.id);
             const isEngTarget = dragEng && dragEng.fromTaskId !== task.id && dragEngOver === task.id;
 
             return (
               <React.Fragment key={task.id}>
                 <div
                   draggable={!dragEng}
-                  onDragStart={() => { if (!dragEng) setDragIdx(rowIdx); }}
-                  onDragEnd={() => { setDragIdx(null); setDragOver(null); }}
+                  onDragStart={() => {
+                    if (!dragEng) {
+                      setDragIdx(rowIdx);
+                      const chain = getChain(task.id);
+                      setDragChainIds(new Set(chain.map(t => t.id)));
+                    }
+                  }}
+                  onDragEnd={() => { setDragIdx(null); setDragOver(null); setDragChainIds(new Set()); }}
                   onDragOver={e => {
                     e.preventDefault();
                     if (dragEng) { if (dragEng.fromTaskId !== task.id) setDragEngOver(task.id); }
@@ -525,7 +574,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                     display:'flex', alignItems:'center',
                     marginBottom: mode==='team' ? 3 : 9,
                     opacity: isDragging ? 0.4 : 1,
-                    borderTop: isEngTarget ? '2px solid var(--success)' : isOver && dragIdx !== rowIdx ? '2px solid var(--accent)' : '2px solid transparent',
+                    borderTop: isEngTarget ? '2px solid var(--success)' : isOver ? '2px solid var(--accent)' : '2px solid transparent',
                     transition: 'border-color 0.1s, background 0.15s',
                     cursor: dragEng ? 'default' : 'grab',
                     background: isEngTarget ? 'var(--success-bg)' : isDepHovered ? 'rgba(240,160,48,0.08)' : 'transparent',
@@ -589,6 +638,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                               );
                             })}
                             {assignedEngs.length > maxAvatars && <span style={{ fontSize:10, color:'rgba(255,255,255,0.85)', marginLeft:4, flexShrink:0 }}>+{assignedEngs.length-maxAvatars}</span>}
+                            {assignedEngs.length > 0 && <span style={{ fontSize:10, color:'rgba(255,255,255,0.75)', marginLeft:4, flexShrink:0 }}>({assignedEngs.length})</span>}
                           </div>
                         )}
                       </div>
@@ -691,12 +741,20 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
               const availableForDay = nonLeadEngs.filter(e => isAvailableOn(e, day.str));
               const ids = new Set<string>();
               activeTasks.forEach(task => {
-                const fc = forecasts[task.id];
-                const st = task.startDate || day.str;
-                const en = fc?.forecastDate || day.str;
-                if (st <= day.str && en >= day.str) {
-                  (inheritedEngIds[task.id] || task.assignedEngineers || []).forEach(id => ids.add(id));
-                }
+                const fc  = forecasts[task.id];
+                const noEst = !(task.estimateHours || 0);
+
+                // Эффективная дата старта: зависимые — из dynamicStarts
+                const effStart = task.dependsOn
+                  ? (dynamicStarts[task.id] ?? null)
+                  : (task.startDate ?? todayStr());
+                if (!effStart || effStart > day.str) return;
+
+                // Эффективная дата конца: прогноз → дедлайн → fallback для без-оценочных → пропуск
+                const endDate = fc?.forecastDate || task.deadline || (noEst ? noEstFallbackEnd : null);
+                if (!endDate || endDate < day.str) return;
+
+                (inheritedEngIds[task.id] || task.assignedEngineers || []).forEach(id => ids.add(id));
               });
               engagedPerDay.push(availableForDay.filter(e => ids.has(e.id)).length);
               freePerDay.push(availableForDay.filter(e => !ids.has(e.id)));
@@ -937,6 +995,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       )}
 
       {TooltipEl}
+      {ConfirmEl}
     </div>
   );
 }

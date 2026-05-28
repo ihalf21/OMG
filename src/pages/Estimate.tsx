@@ -1,6 +1,6 @@
 // src/pages/Estimate.tsx — Калькулятор трудозатрат (PERT) с шаблонами
 import React, { useState, useMemo } from 'react';
-import { PageTopbar, Card, BtnPrimary, BtnSecondary, BtnDanger } from '../components/UI';
+import { PageTopbar, Card, BtnPrimary, BtnSecondary, BtnDanger, Modal } from '../components/UI';
 import { genId } from '../utils/ids';
 import type { EstimateTemplate } from '../domain/types';
 import type { PageProps } from '../ui-types';
@@ -469,6 +469,7 @@ export default function Estimate({ data, updateData }: PageProps) {
   const [selectedTaskId, setSelectedTaskId] = useState('');
   const [activeTplId,    setActiveTplId] = useState('');
   const [showManager,    setShowManager] = useState(false);
+  const [showPertInfo,   setShowPertInfo] = useState(false);
   const [saved,          setSaved]       = useState(false);
   const [confirmSave,    setConfirmSave] = useState(false);
 
@@ -635,7 +636,21 @@ export default function Estimate({ data, updateData }: PageProps) {
             </div>
 
             {/* PERT */}
-            <div style={{ background:'var(--bg-primary)', border:'2px solid var(--accent)', borderRadius:12, padding:'18px 16px', textAlign:'center' }}>
+            <div style={{ background:'var(--bg-primary)', border:'2px solid var(--accent)', borderRadius:12, padding:'18px 16px', textAlign:'center', position:'relative' }}>
+              <button
+                onClick={() => setShowPertInfo(true)}
+                title="Как работает PERT?"
+                style={{
+                  position:'absolute', top:8, right:8,
+                  width:20, height:20, borderRadius:'50%',
+                  border:'1.5px solid var(--border-mid)',
+                  background:'var(--bg-secondary)',
+                  color:'var(--text-tertiary)',
+                  fontSize:11, fontWeight:700, lineHeight:1,
+                  cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+                  padding:0,
+                }}
+              >?</button>
               <div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:2 }}>
                 PERT-оценка &nbsp;·&nbsp; <span style={{ fontFamily:'monospace' }}>(O + 4M + P) / 6</span>
               </div>
@@ -763,6 +778,55 @@ export default function Estimate({ data, updateData }: PageProps) {
           updateTemplates={updateTemplates}
           onClose={() => setShowManager(false)}
         />
+      )}
+
+      {showPertInfo && (
+        <Modal title="Метод PERT: как считается оценка" onClose={() => setShowPertInfo(false)} width={540}>
+          <div style={{ fontSize:14, color:'var(--text-secondary)', lineHeight:1.7 }}>
+
+            <p style={{ marginTop:0 }}>
+              <strong>PERT</strong> (Program Evaluation and Review Technique) — метод взвешенной оценки, который учитывает неопределённость через три сценария.
+            </p>
+
+            <div style={{ background:'var(--bg-secondary)', borderRadius:8, padding:'12px 16px', marginBottom:16, fontFamily:'monospace', fontSize:13, textAlign:'center' }}>
+              E = (O + 4 × M + P) / 6
+            </div>
+
+            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:16 }}>
+              {[
+                { label:'O — Оптимистичный', color:'#22c55e', desc:'Лучший случай: всё идёт идеально, без задержек и неожиданностей.' },
+                { label:'M — Реалистичный', color:'var(--accent)', desc:'Наиболее вероятный исход при нормальном ходе работ.' },
+                { label:'P — Пессимистичный', color:'#f97316', desc:'Худший случай: задержки, ошибки, нестабильная среда.' },
+              ].map(({ label, color, desc }) => (
+                <div key={label} style={{ display:'flex', gap:10 }}>
+                  <div style={{ width:3, borderRadius:2, background:color, flexShrink:0 }}/>
+                  <div>
+                    <div style={{ fontWeight:600, color, fontSize:13 }}>{label}</div>
+                    <div style={{ fontSize:13, color:'var(--text-tertiary)' }}>{desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p>
+              Реалистичный сценарий имеет вес <strong>4</strong>, поэтому PERT-оценка близка к M, но сдвинута в сторону пессимиста пропорционально разбросу. Чем больше разница между P и M — тем выше PERT относительно реалиста.
+            </p>
+
+            <div style={{ background:'var(--bg-secondary)', borderRadius:8, padding:'12px 16px', marginBottom:16 }}>
+              <div style={{ fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:8 }}>Стандартное отклонение (σ)</div>
+              <div style={{ fontFamily:'monospace', fontSize:13, textAlign:'center', marginBottom:6 }}>σ = (P − O) / 6</div>
+              <div style={{ fontSize:13, color:'var(--text-tertiary)' }}>
+                Показывает «разброс» оценки. Используется для доверительных интервалов:<br/>
+                <strong>68%</strong> вероятность укладывания в E ± σ<br/>
+                <strong>95%</strong> вероятность укладывания в E ± 2σ
+              </div>
+            </div>
+
+            <p style={{ marginBottom:0, color:'var(--text-tertiary)', fontSize:13 }}>
+              В задачу сохраняется PERT-оценка (E), а не реалистичный сценарий — она точнее отражает риски и служит основой для планирования сроков.
+            </p>
+          </div>
+        </Modal>
       )}
     </div>
   );

@@ -3,26 +3,20 @@ import { calcForecast, statusColor, statusLabel, statusBadgeStyle, engineersNeed
 import { computeInheritedTeam, computeDynamicStarts } from '../domain/gantt';
 import { isAvailableToday, isWorkingRole, leaveTypeToday } from '../domain/availability';
 import { updateTaskProgress } from '../domain/task';
-import { formatDateShort } from '../utils/dates';
+import { formatDateShort, todayStr } from '../utils/dates';
 import { Avatar, ProgressBar, Card, SectionTitle, PageTopbar } from '../components/UI';
 import type { Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
-// Топологическая сортировка: родители перед детьми, цепочки идут подряд
-function sortByChain(tasks: Task[]): Task[] {
-  const ids = new Set(tasks.map(t => t.id));
-  const result: Task[] = [];
-  const visited = new Set<string>();
-  function visit(t: Task) {
-    if (visited.has(t.id)) return;
-    visited.add(t.id);
-    result.push(t);
-    const child = tasks.find(c => c.dependsOn === t.id);
-    if (child) visit(child);
-  }
-  tasks.filter(t => !t.dependsOn || !ids.has(t.dependsOn)).forEach(visit);
-  tasks.forEach(t => { if (!visited.has(t.id)) visit(t); });
-  return result;
+function byDeadline(
+  a: Task, b: Task,
+  dls: Record<string, string>,
+): number {
+  const da = dls[a.id], db = dls[b.id];
+  if (da && db) return da.localeCompare(db);
+  if (da) return -1;
+  if (db) return 1;
+  return 0;
 }
 
 export default function Dashboard({ data, updateData, navigate }: PageProps) {
@@ -43,12 +37,25 @@ export default function Dashboard({ data, updateData, navigate }: PageProps) {
     forecasts[t.id] = calcForecast(taskForFc, engineers, effectiveDls[t.id] || null, startOverride);
   });
 
-  const tasksWithDl  = sortByChain(activeTasks.filter(t =>  effectiveDls[t.id]));
-  const tasksNoDl    = sortByChain(activeTasks.filter(t => !effectiveDls[t.id]));
-  const unavailable  = engineers.filter(e => isWorkingRole(e) && !isAvailableToday(e));
+  const today = todayStr();
+  const isQueued = (t: Task) =>
+    !!(t.dependsOn && activeTasks.find(a => a.id === t.dependsOn))
+    || !!(t.startDate && t.startDate > today);
 
-  const atRisk  = tasksWithDl.filter(t => forecasts[t.id]?.deadlineStatus === 'overdue').length;
-  const onTrack = tasksWithDl.filter(t => forecasts[t.id]?.deadlineStatus === 'ok').length;
+  const sort = (arr: Task[]) => [...arr].sort((a, b) => byDeadline(a, b, effectiveDls));
+
+  // Приоритет 1: в работе, срыв сроков — по дедлайну
+  const g1 = sort(activeTasks.filter(t => !isQueued(t) && forecasts[t.id]?.deadlineStatus === 'overdue'));
+  // Приоритет 2: в работе, впритык или опережение — по дедлайну (без дедлайна в конце)
+  const g2 = sort(activeTasks.filter(t => !isQueued(t) && forecasts[t.id]?.deadlineStatus !== 'overdue'));
+  // Приоритет 3: в очереди с дедлайном — по дедлайну
+  const g3 = sort(activeTasks.filter(t =>  isQueued(t) && !!effectiveDls[t.id]));
+  // Приоритет 4: в очереди без дедлайна
+  const g4 =      activeTasks.filter(t =>  isQueued(t) && !effectiveDls[t.id]);
+
+  const unavailable = engineers.filter(e => isWorkingRole(e) && !isAvailableToday(e));
+  const atRisk  = g1.length;
+  const onTrack = activeTasks.filter(t => !isQueued(t) && forecasts[t.id]?.deadlineStatus === 'ok' && effectiveDls[t.id]).length;
 
   const [progressInputs, setProgressInputs] = useState<Record<string, string>>({});
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -90,35 +97,35 @@ export default function Dashboard({ data, updateData, navigate }: PageProps) {
           ))}
         </div>
 
-        {/* Tasks with deadline (own or derived) */}
-        <div style={{ marginBottom:20 }}>
-          <SectionTitle action="Все задачи →" onAction={()=>navigate('tasks')}>Задачи с дедлайном</SectionTitle>
-          {tasksWithDl.length===0&&<div style={{ fontSize:14, color:'var(--text-tertiary)', padding:'12px 0' }}>Нет задач с дедлайном</div>}
-          {tasksWithDl.map((task, idx, arr)=>{
-            const fc=forecasts[task.id];
-            const dl=effectiveDls[task.id];
-            const isDerived=!task.deadline || (!!effectiveDls[task.id] && effectiveDls[task.id]<task.deadline);
-            const isQueued=!!(task.dependsOn && activeTasks.find(t=>t.id===task.dependsOn));
-            const barColor=isQueued?'#A8A6A0':statusColor(fc?.deadlineStatus);
-            const bs=isQueued?{ bg:'var(--bg-secondary)', color:'var(--text-secondary)' }:statusBadgeStyle(fc?.deadlineStatus);
-            const assignedEngs=engineers.filter(e=>task.assignedEngineers?.includes(e.id));
-            const isChainParent = idx < arr.length - 1 && arr[idx + 1].dependsOn === task.id;
+        {/* Tasks — 4 priority groups */}
+        {(() => {
+          const allActive = [...g1, ...g2, ...g3, ...g4];
+
+          function TaskCard({ task, queued }: { task: Task; queued: boolean }) {
+            const fc  = forecasts[task.id];
+            const dl  = effectiveDls[task.id];
+            const isDerived = !task.deadline || (!!dl && dl < task.deadline);
+            const barColor  = queued ? '#A8A6A0' : statusColor(fc?.deadlineStatus);
+            const bs        = queued
+              ? { bg: 'var(--bg-secondary)', color: 'var(--text-secondary)' }
+              : statusBadgeStyle(fc?.deadlineStatus);
+            const assignedEngs = engineers.filter(e => task.assignedEngineers?.includes(e.id));
             return (
-              <div key={task.id} style={{ position:'relative', marginBottom:8 }}
-                onMouseEnter={()=>setHoveredId(task.id)}
-                onMouseLeave={()=>setHoveredId(null)}
+              <div style={{ position:'relative', marginBottom:8 }}
+                onMouseEnter={() => setHoveredId(task.id)}
+                onMouseLeave={() => setHoveredId(null)}
               >
-                <Card onClick={()=>navigate('task',task.id)} style={{ display:'flex', alignItems:'center', gap:16 }}>
+                <Card onClick={() => navigate('task', task.id)} style={{ display:'flex', alignItems:'center', gap:16 }}>
                   <div style={{ width:9, height:9, borderRadius:'50%', background:barColor, flexShrink:0 }}/>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:15, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{task.name}</div>
-                    <div style={{ fontSize:13, color:'var(--text-tertiary)', marginTop:3 }}>{task.direction||''} · старт {formatDateShort(task.startDate)}</div>
+                    <div style={{ fontSize:13, color:'var(--text-tertiary)', marginTop:3 }}>{task.direction||''}{task.direction&&' · '}старт {formatDateShort(task.startDate)}</div>
                   </div>
                   <div style={{ display:'flex', flexShrink:0 }}>
-                    {assignedEngs.slice(0,3).map((e,i)=><Avatar key={e.id} name={e.name} size={28} style={{ marginLeft:i>0?-7:0, border:'2px solid var(--bg-primary)' }}/>)}
-                    {assignedEngs.length>3&&<span style={{ fontSize:13, color:'var(--text-tertiary)', marginLeft:7 }}>+{assignedEngs.length-3}</span>}
+                    {assignedEngs.slice(0,3).map((e,i) => <Avatar key={e.id} name={e.name} size={28} style={{ marginLeft:i>0?-7:0, border:'2px solid var(--bg-primary)' }}/>)}
+                    {assignedEngs.length>3 && <span style={{ fontSize:13, color:'var(--text-tertiary)', marginLeft:7 }}>+{assignedEngs.length-3}</span>}
                   </div>
-                  {task.totalCases&&(
+                  {task.totalCases && (
                     <div style={{ width:150, flexShrink:0 }}>
                       <ProgressBar pct={fc?.progressPct||0} color={barColor} height={5}/>
                       <div style={{ fontSize:12, color:'var(--text-tertiary)', display:'flex', justifyContent:'space-between', marginTop:3 }}>
@@ -127,81 +134,75 @@ export default function Dashboard({ data, updateData, navigate }: PageProps) {
                     </div>
                   )}
                   <div style={{ flexShrink:0, textAlign:'right', minWidth:110 }}>
-                    {isDerived&&<div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:2 }}>расчётный дедлайн</div>}
-                    <div style={{ fontSize:13, color:'var(--text-secondary)', fontWeight:500 }}>до {formatDateShort(dl)}</div>
-                    <div style={{ marginTop:4, ...bs, fontSize:12, padding:'2px 8px', borderRadius:4, display:'inline-block', fontWeight:500 }}>{isQueued?'В очереди':statusLabel(fc?.deadlineStatus)}</div>
-                    {!isQueued && fc?.deadlineStatus === 'overdue' && (() => {
-                      const needed = engineersNeeded(task, engineers, isDerived ? dl : null);
-                      return needed && needed > 0 ? (
-                        <div style={{ marginTop:4, fontSize:11, color:'var(--red)', fontWeight:500 }}>
-                          +{needed} инж. чтобы уложиться
+                    {dl ? (
+                      <>
+                        {isDerived && <div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:2 }}>расчётный дедлайн</div>}
+                        <div style={{ fontSize:13, color:'var(--text-secondary)', fontWeight:500 }}>до {formatDateShort(dl)}</div>
+                        <div style={{ marginTop:4, ...bs, fontSize:12, padding:'2px 8px', borderRadius:4, display:'inline-block', fontWeight:500 }}>
+                          {queued ? 'В очереди' : statusLabel(fc?.deadlineStatus)}
                         </div>
-                      ) : null;
-                    })()}
+                        {!queued && fc?.deadlineStatus === 'overdue' && (() => {
+                          const needed = engineersNeeded(task, engineers, isDerived ? dl : null);
+                          return needed && needed > 0
+                            ? <div style={{ marginTop:4, fontSize:11, color:'var(--red)', fontWeight:500 }}>+{needed} инж. чтобы уложиться</div>
+                            : null;
+                        })()}
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize:12, color:'var(--text-tertiary)' }}>
+                          {fc?.forecastDate ? `расчёт: ${formatDateShort(fc.forecastDate)}` : 'без дедлайна'}
+                        </div>
+                        <div style={{ marginTop:4, ...bs, fontSize:12, padding:'2px 8px', borderRadius:4, display:'inline-block', fontWeight:500 }}>
+                          {queued ? 'В очереди' : statusLabel(fc?.deadlineStatus)}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </Card>
-                {isChainParent && (
-                  <div style={{
-                    position:'absolute', bottom:-12, left:'50%', transform:'translateX(-50%)',
-                    display:'flex', flexDirection:'column', alignItems:'center', gap:1,
-                    pointerEvents:'none', zIndex:2,
-                    opacity: hoveredId === task.id ? 1 : 0,
-                    transition:'opacity 0.15s',
-                  }}>
-                    <div style={{ width:2, height:8, background:'var(--amber)', borderRadius:1 }}/>
-                    <div style={{ width:0, height:0, borderLeft:'4px solid transparent', borderRight:'4px solid transparent', borderTop:'5px solid var(--amber)' }}/>
-                  </div>
-                )}
               </div>
             );
-          })}
-        </div>
+          }
 
-        {/* Tasks without deadline */}
-        {tasksNoDl.length>0&&(
-          <div style={{ marginBottom:20 }}>
-            <SectionTitle>Задачи без дедлайна</SectionTitle>
-            {tasksNoDl.map((task, idx, arr)=>{
-              const fc=forecasts[task.id];
-              const isQueued=!!(task.dependsOn && activeTasks.find(t=>t.id===task.dependsOn));
-              const isChainParent = idx < arr.length - 1 && arr[idx + 1].dependsOn === task.id;
-              return (
-                <div key={task.id} style={{ position:'relative', marginBottom:8 }}
-                  onMouseEnter={()=>setHoveredId(task.id)}
-                  onMouseLeave={()=>setHoveredId(null)}
-                >
-                  <Card onClick={()=>navigate('task',task.id)} style={{ display:'flex', alignItems:'center', gap:16 }}>
-                    <div style={{ width:9, height:9, borderRadius:'50%', background:'#A8A6A0', flexShrink:0 }}/>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:15, fontWeight:600 }}>{task.name}</div>
-                      <div style={{ fontSize:13, color:'var(--text-tertiary)', marginTop:3 }}>Расчёт: {fc?.forecastDate?formatDateShort(fc.forecastDate):'—'} · {task.assignedEngineers?.length||0} инж.</div>
-                    </div>
-                    <div style={{ fontSize:12, padding:'3px 9px', borderRadius:4, background:'var(--bg-secondary)', color:'var(--text-secondary)', fontWeight:500 }}>{isQueued?'В очереди':'В работе'}</div>
-                  </Card>
-                  {isChainParent && (
-                    <div style={{
-                      position:'absolute', bottom:-12, left:'50%', transform:'translateX(-50%)',
-                      display:'flex', flexDirection:'column', alignItems:'center', gap:1,
-                      pointerEvents:'none', zIndex:2,
-                      opacity: hoveredId === task.id ? 1 : 0,
-                      transition:'opacity 0.15s',
-                    }}>
-                      <div style={{ width:2, height:8, background:'var(--amber)', borderRadius:1 }}/>
-                      <div style={{ width:0, height:0, borderLeft:'4px solid transparent', borderRight:'4px solid transparent', borderTop:'5px solid var(--amber)' }}/>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+          function GroupLabel({ label, color }: { label: string; color?: string }) {
+            return (
+              <div style={{ display:'flex', alignItems:'center', gap:8, margin:'12px 0 6px' }}>
+                <span style={{ fontSize:12, fontWeight:600, color: color || 'var(--text-tertiary)', textTransform:'uppercase', letterSpacing:'0.05em' }}>{label}</span>
+                <div style={{ flex:1, height:'0.5px', background:'var(--border-light)' }}/>
+              </div>
+            );
+          }
+
+          return (
+            <div style={{ marginBottom:20 }}>
+              <SectionTitle action="Все задачи →" onAction={() => navigate('tasks')}>Задачи</SectionTitle>
+              {allActive.length === 0 && <div style={{ fontSize:14, color:'var(--text-tertiary)', padding:'12px 0' }}>Нет активных задач</div>}
+
+              {g1.length > 0 && <>
+                <GroupLabel label="Срыв сроков" color="var(--red)"/>
+                {g1.map(t => <TaskCard key={t.id} task={t} queued={false}/>)}
+              </>}
+
+              {g2.length > 0 && <>
+                <GroupLabel label="В работе"/>
+                {g2.map(t => <TaskCard key={t.id} task={t} queued={false}/>)}
+              </>}
+
+              {(g3.length > 0 || g4.length > 0) && <>
+                <GroupLabel label="В очереди"/>
+                {g3.map(t => <TaskCard key={t.id} task={t} queued={true}/>)}
+                {g4.map(t => <TaskCard key={t.id} task={t} queued={true}/>)}
+              </>}
+            </div>
+          );
+        })()}
 
         {/* Quick progress */}
-        {tasksWithDl.filter(t=>t.totalCases).length>0&&(
+        {activeTasks.filter(t=>t.totalCases).length>0&&(
           <div style={{ marginBottom:20 }}>
             <SectionTitle>Внести фактический прогресс</SectionTitle>
             <Card>
-              {tasksWithDl.filter(t=>t.totalCases).map((task,idx,arr)=>(
+              {activeTasks.filter(t=>t.totalCases).map((task,idx,arr)=>(
                 <div key={task.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:idx<arr.length-1?'0.5px solid var(--border-light)':'none' }}>
                   <div style={{ flex:1, fontSize:14, fontWeight:600 }}>{task.name}</div>
                   <div style={{ fontSize:13, color:'var(--text-tertiary)', whiteSpace:'nowrap' }}>план: {task.totalCases} · факт:</div>

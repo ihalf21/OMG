@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Avatar, RoleBadge, StatusBadge, StarRating, PageTopbar, BtnPrimary, BtnDanger, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
+import { Avatar, RoleBadge, StatusBadge, StarRating, PageTopbar, BtnPrimary, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
 import { REGULAR_TASKS } from '../domain/tasks';
 import { isAvailableToday, isWorkingRole } from '../domain/availability';
-import { addEngineer as addEngineerOp, deleteEngineer as deleteEngineerOp } from '../domain/engineer';
+import { addEngineer as addEngineerOp } from '../domain/engineer';
 import type { Engineer, EngineerRole, EngineerStatus, Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
@@ -24,7 +24,7 @@ export default function Team({ data, updateData, navigate }: PageProps) {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<NewEngineerForm>({ name:'', role:'engineer', regularTask:'' });
-  const [confirmDelete, setConfirmDelete] = useState<Engineer | null>(null);
+
 
   const isOnTask = (e: Engineer) => tasks.some(t => t.status === 'active' && t.assignedEngineers?.includes(e.id));
   const isAvail  = (e: Engineer) => isWorkingRole(e) && isAvailableToday(e);
@@ -102,11 +102,6 @@ export default function Team({ data, updateData, navigate }: PageProps) {
     }));
     setShowModal(false);
     setForm({ name:'', role:'engineer', regularTask:'' });
-  }
-
-  function deleteEngineer(engId: string) {
-    updateData(prev => deleteEngineerOp(prev, engId));
-    setConfirmDelete(null);
   }
 
   return (
@@ -203,9 +198,6 @@ export default function Team({ data, updateData, navigate }: PageProps) {
                     <td style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>
                       <div style={{ display:'flex', gap:6 }}>
                         <button onClick={e=>{e.stopPropagation();navigate('engineer',eng.id);}} style={{ padding:'5px 12px', border:'1.5px solid var(--border-mid)', borderRadius:6, background:'var(--bg-secondary)', fontSize:13, fontWeight:500, color:'var(--text-primary)', cursor:'pointer' }}>Открыть</button>
-                        {eng.role !== 'lead' && (
-                          <button onClick={e=>{e.stopPropagation();setConfirmDelete(eng);}} style={{ padding:'5px 10px', border:'1.5px solid var(--red)', borderRadius:6, background:'transparent', fontSize:13, color:'var(--red)', cursor:'pointer' }}>✕</button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -239,17 +231,7 @@ export default function Team({ data, updateData, navigate }: PageProps) {
         </Modal>
       )}
 
-      {confirmDelete && (
-        <Modal title="Удалить инженера?" onClose={()=>setConfirmDelete(null)} width={400}>
-          <p style={{ fontSize:14, color:'var(--text-secondary)', marginBottom:20 }}>
-            Инженер <strong>{confirmDelete.name}</strong> будет удалён из системы и снят со всех задач. Это действие нельзя отменить.
-          </p>
-          <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
-            <button onClick={()=>setConfirmDelete(null)} style={{ padding:'8px 18px', border:'1.5px solid var(--border-mid)', borderRadius:6, background:'var(--bg-secondary)', fontSize:14, cursor:'pointer' }}>Отмена</button>
-            <BtnDanger onClick={()=>deleteEngineer(confirmDelete.id)}>Удалить</BtnDanger>
-          </div>
-        </Modal>
-      )}
+
     </div>
   );
 }

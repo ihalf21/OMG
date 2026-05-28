@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Avatar, RoleBadge, StatusBadge, StarRating, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, Modal, ModalFooter, FormRow, Input, DateRangePicker, DatePicker, useConfirm } from '../components/UI';
+import { Avatar, RoleBadge, StatusBadge, StarRating, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, BtnDanger, Modal, ModalFooter, FormRow, Input, DateRangePicker, DatePicker, useConfirm } from '../components/UI';
 import { formatDate, formatDateShort, todayStr, nextWorkday } from '../utils/dates';
 import { REGULAR_TASKS } from '../domain/tasks';
 import {
@@ -8,6 +8,7 @@ import {
   setVacation as setVacationOp, cancelVacation as cancelVacationOp, endVacationEarly,
   setDayoff as setDayoffOp, cancelDayoff as cancelDayoffOp, endDayoffEarly,
   removeFromTask, switchToTask,
+  deleteEngineer as deleteEngineerOp,
 } from '../domain/engineer';
 import type { EngineerRole, ExperienceMap, HistoryType } from '../domain/types';
 import type { PageProps } from '../ui-types';
@@ -114,6 +115,17 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
     updateData(prev => removeFromTask(prev, engineerId));
   }
 
+  async function deleteEngineer() {
+    const ok = await confirm(
+      `Удалить ${eng!.name}?`,
+      'Инженер будет удалён из системы и снят со всех задач. Это действие нельзя отменить.',
+      { confirmLabel: 'Удалить', danger: true },
+    );
+    if (!ok) return;
+    updateData(prev => deleteEngineerOp(prev, engineerId));
+    onBack();
+  }
+
   function switchTask(toTaskId: string) {
     updateData(prev => switchToTask(prev, engineerId, toTaskId));
     setShowSwitchTask(false);
@@ -128,13 +140,17 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
       {ConfirmEl}
       <PageTopbar title={eng.name}>
         <BackBtn onClick={onBack} label="Команда"/>
-        {!editMode
-          ? <BtnSecondary onClick={startEdit}>✏️ Редактировать</BtnSecondary>
-          : <>
-              <BtnSecondary onClick={()=>setEditMode(false)}>Отмена</BtnSecondary>
-              <BtnPrimary onClick={saveEdit}>💾 Сохранить</BtnPrimary>
-            </>
-        }
+        {!editMode ? (
+          <>
+            <BtnSecondary onClick={startEdit}>✏️ Редактировать</BtnSecondary>
+            {eng.role !== 'lead' && <BtnDanger onClick={deleteEngineer}>Удалить</BtnDanger>}
+          </>
+        ) : (
+          <>
+            <BtnSecondary onClick={()=>setEditMode(false)}>Отмена</BtnSecondary>
+            <BtnPrimary onClick={saveEdit}>💾 Сохранить</BtnPrimary>
+          </>
+        )}
       </PageTopbar>
 
       <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>

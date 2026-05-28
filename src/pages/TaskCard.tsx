@@ -4,7 +4,7 @@ import { isAvailableToday, isWorkingRole } from '../domain/availability';
 import { REGULAR_TASKS } from '../domain/tasks';
 import {
   getEffectiveTeam,
-  addEngineerToTask, removeEngineerFromTask,
+  addEngineerToTask, removeEngineerFromTask, getEngineerActiveTasks,
   unlinkChild as unlinkChildOp,
   completeTask as completeTaskOp, reopenTask as reopenTaskOp, archiveTask as archiveTaskOp,
   updateTaskProgress,
@@ -131,9 +131,45 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   }
 
   function unlinkChild(childId: string) { updateData(prev => unlinkChildOp(prev, childId)); }
-  function addEngineer(engId: string)   {
+  async function addEngineer(engId: string) {
     if (!engineers.find(e => e.id === engId)) return;
-    updateData(prev => addEngineerToTask(prev, taskId, engId));
+
+    const newStart = task!.startDate || todayStr();
+    const newFc    = calcForecast(task!, engineers);
+    const newEnd   = newFc.forecastDate || task!.deadline || null;
+
+    // Ищем задачи инженера, чьи периоды пересекаются с новой
+    const otherTasks = getEngineerActiveTasks(data, engId, taskId);
+    const conflicting = otherTasks.filter(ct => {
+      const ctFc  = calcForecast(ct, engineers);
+      const ctEnd = ctFc.forecastDate || ct.deadline || null;
+      if (!ctEnd) return true;                          // задача без конца — всегда конфликт
+      if (!newEnd) return ctEnd >= newStart;            // новая без конца
+      return ctEnd >= newStart && (ct.startDate || todayStr()) <= newEnd;
+    });
+
+    if (conflicting.length === 0) {
+      // Периоды не пересекаются — планирование, оставляем на текущих задачах
+      updateData(prev => addEngineerToTask(prev, taskId, engId, false));
+      setShowAddEng(false);
+      return;
+    }
+
+    // Есть конфликт — нужно подтверждение и перевод
+    const ct       = conflicting[0];
+    const ctFc     = calcForecast(ct, engineers);
+    const ctEnd    = ctFc.forecastDate || ct.deadline || null;
+    const isOverdue = !!(ct.deadline && todayStr() > ct.deadline);
+
+    const title = isOverdue ? 'Задача инженера просрочена' : 'Конфликт планирования';
+    const msg   = isOverdue
+      ? `«${ct.name}» вышла за рамки дедлайна. Инженер будет переведён — разрешите просроченную задачу вручную.`
+      : `Инженер уже задействован на «${ct.name}» (до ${formatDateShort(ctEnd)}). Снять с этой задачи и назначить на текущую?`;
+
+    const ok = await confirm(title, msg, { confirmLabel: 'Перевести', danger: false });
+    if (!ok) { setShowAddEng(false); return; }
+
+    updateData(prev => addEngineerToTask(prev, taskId, engId, true)); // перевод со снятием
     setShowAddEng(false);
   }
   function removeEngineer(engId: string) { updateData(prev => removeEngineerFromTask(prev, taskId, engId)); }

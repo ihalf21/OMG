@@ -26,21 +26,55 @@ export function getEffectiveTeam(task: Task | undefined, allTasks: Task[], depth
 
 // ─── Назначение инженеров ─────────────────────────────────────────────────────
 
-export function addEngineerToTask(state: ProjectState, taskId: string, engineerId: string): ProjectState {
-  const prevTask = state.tasks.find(t =>
-    t.id !== taskId && t.status === 'active' && (t.assignedEngineers || []).includes(engineerId)
+// Возвращает активную задачу инженера, кроме указанной (для проверки конфликтов)
+export function getEngineerCurrentTask(
+  state: ProjectState,
+  engineerId: string,
+  excludeTaskId?: string,
+): Task | null {
+  return state.tasks.find(t =>
+    t.status === 'active' &&
+    t.id !== excludeTaskId &&
+    (t.assignedEngineers || []).includes(engineerId)
+  ) ?? null;
+}
+
+// Возвращает ВСЕ активные задачи инженера, кроме указанной
+export function getEngineerActiveTasks(
+  state: ProjectState,
+  engineerId: string,
+  excludeTaskId?: string,
+): Task[] {
+  return state.tasks.filter(t =>
+    t.status === 'active' &&
+    t.id !== excludeTaskId &&
+    (t.assignedEngineers || []).includes(engineerId)
   );
+}
+
+export function addEngineerToTask(
+  state: ProjectState,
+  taskId: string,
+  engineerId: string,
+  transfer = false,   // true = снять со всех активных задач; false = только добавить (планирование)
+): ProjectState {
+  const prevTask = transfer
+    ? state.tasks.find(t => t.id !== taskId && t.status === 'active' && (t.assignedEngineers || []).includes(engineerId))
+    : null;
   return {
     ...state,
     tasks: state.tasks.map(t => {
       if (t.id === taskId) return { ...t, assignedEngineers: [...(t.assignedEngineers || []), engineerId] };
-      if (prevTask && t.id === prevTask.id) return { ...t, assignedEngineers: (t.assignedEngineers || []).filter(id => id !== engineerId) };
+      if (transfer && t.status === 'active' && t.id !== taskId && (t.assignedEngineers || []).includes(engineerId))
+        return { ...t, assignedEngineers: (t.assignedEngineers || []).filter(id => id !== engineerId) };
       return t;
     }),
     history: appendHistory(state, {
       date: todayStr(), engineerId, type: 'switch',
       fromTask: prevTask?.id || null, toTask: taskId,
-      note: prevTask ? `Переключён с «${prevTask.name}»` : 'Добавлен на задачу',
+      note: transfer
+        ? (prevTask ? `Переключён с «${prevTask.name}»` : 'Добавлен на задачу')
+        : 'Запланирован на задачу',
     }),
   };
 }
