@@ -10,7 +10,8 @@ export type NavTarget =
   | 'team'
   | 'engineer'   // конкретный инженер — передаётся engineerId
   | 'gantt'
-  | 'estimate';
+  | 'estimate'
+  | 'reports';
 
 export type NavigateFn = (target: NavTarget, id?: string) => void;
 

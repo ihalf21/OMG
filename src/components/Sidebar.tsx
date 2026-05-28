@@ -55,6 +55,18 @@ function IconGantt({ active }: IconProps) {
   );
 }
 
+function IconReports({ active }: IconProps) {
+  const c = active ? 'var(--accent)' : 'var(--text-tertiary)';
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M3 3.5C3 2.67 3.67 2 4.5 2h6.17L14 5.83V14.5c0 .83-.67 1.5-1.5 1.5h-8C3.67 16 3 15.33 3 14.5v-11z" stroke={c} strokeWidth="1.5"/>
+      <path d="M10.5 2v4H14" stroke={c} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+      <line x1="5.5" y1="9" x2="10" y2="9" stroke={c} strokeWidth="1.3" strokeLinecap="round"/>
+      <line x1="5.5" y1="11.5" x2="10.5" y2="11.5" stroke={c} strokeWidth="1.3" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 function IconEstimate({ active }: IconProps) {
   const c = active ? '#1D9E75' : '#8C8B87';
   return (
@@ -78,6 +90,7 @@ const NAV: NavItem[] = [
   { id: 'estimate',  label: 'Оценка',    Icon: IconEstimate },
   { id: 'team',      label: 'Команда',   Icon: IconTeam },
   { id: 'gantt',     label: 'Диаграмма', Icon: IconGantt },
+  { id: 'reports',   label: 'Отчёты',    Icon: IconReports },
 ];
 
 type ProjectModalState = null | { mode: 'add' } | { mode: 'edit'; project: Project };
