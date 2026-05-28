@@ -64,3 +64,16 @@ Two independent Node.js processes:
 - **Proxy** — `package.json` has `"proxy": "http://localhost:3001"`; `.env` sets `HOST=0.0.0.0 PORT=4000`.
 - **Reports / PDF** — `src/pages/Reports.tsx` uses `html2canvas + jsPDF`. SVG `<marker>` is not supported by html2canvas — use inline `<polygon>` for arrowheads. `overflow: hidden` on the capture container clips SVG arrows; keep it absent.
 - **Russian holidays** — 2025 and 2026 calendars are hardcoded in `dates.ts`. When adding 2027+, extend `ALL_HOLIDAYS` there.
+
+## Coding conventions
+
+- **CSS variables only** — never use hardcoded hex/rgb colours in React inline styles or CSS. All colours live in `src/index.css` as `var(--...)`. The only exception is code that feeds `html2canvas` (PDF export in Reports), where CSS vars are not resolved.
+- **Styling** — all UI uses inline `style={{}}` objects; there is no CSS-modules or styled-components. New components follow the same pattern.
+- **No new pages without registering** — adding a page requires: (1) add `NavTarget` union member in `ui-types.ts`, (2) add `NavItem` entry in `Sidebar.tsx`, (3) add conditional render in `App.tsx`.
+- **Changelog** — after shipping a user-visible feature, add an entry to `src/changelog.json` (array prepend, version bump, `YYYY-MM-DD` date, Russian-language change descriptions).
+- **`npm install` peer-dep conflict** — TypeScript 6.0.3 conflicts with `react-scripts@5.0.1` peer expectation of `^3‖^4`. Always pass `--legacy-peer-deps` when installing new packages.
+
+## Workflow
+
+- **Language** — always respond in Russian. Code identifiers, comments in new code, and technical terms stay in English.
+- **Git push** — after every `git commit`, immediately run `git push` without asking for confirmation.
