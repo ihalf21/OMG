@@ -1,7 +1,7 @@
 // Тесты на domain/engineer.js — переходы состояния инженера.
 import {
   addEngineer, deleteEngineer, updateEngineerProfile,
-  setSickLeave, clearSickLeave,
+  setSickLeave, clearSickLeave, setSickReturn, cancelScheduledSickReturn,
   setVacation, cancelVacation, endVacationEarly,
   setDayoff, cancelDayoff, endDayoffEarly,
   removeFromTask, switchToTask,
@@ -116,6 +116,70 @@ describe('clearSickLeave', () => {
     const sick    = setSickLeave(baseState(), 'e1');
     const cleared = clearSickLeave(sick, 'e1');
     expect(cleared.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
+  });
+});
+
+describe('setSickReturn', () => {
+  const future = addWorkdays(todayStr(), 5);
+  const past   = subtractWorkdays(todayStr(), 3);
+
+  test('будущая дата — устанавливает sickReturnDate, статус остаётся sick', () => {
+    const sick = setSickLeave(baseState(), 'e1');
+    const s = setSickReturn(sick, 'e1', future);
+    expect(s.engineers.find(e => e.id === 'e1').status).toBe('sick');
+    expect(s.engineers.find(e => e.id === 'e1').sickReturnDate).toBe(future);
+  });
+
+  test('будущая дата — добавляет history entry с типом return и плановым note', () => {
+    const sick = setSickLeave(baseState(), 'e1');
+    const s = setSickReturn(sick, 'e1', future);
+    const entry = s.history.find(h => h.type === 'return');
+    expect(entry).toBeDefined();
+    expect(entry.note).toMatch(/Плановый/);
+  });
+
+  test('сегодняшняя дата — закрывает больничный (статус active)', () => {
+    const sick = setSickLeave(baseState(), 'e1');
+    const s = setSickReturn(sick, 'e1', todayStr());
+    expect(s.engineers.find(e => e.id === 'e1').status).toBe('active');
+    expect(s.engineers.find(e => e.id === 'e1').sickReturnDate).toBe(null);
+  });
+
+  test('прошлая дата — закрывает больничный задним числом', () => {
+    const sick = setSickLeave(baseState(), 'e1');
+    const s = setSickReturn(sick, 'e1', past);
+    expect(s.engineers.find(e => e.id === 'e1').status).toBe('active');
+    expect(s.engineers.find(e => e.id === 'e1').sickReturnDate).toBe(null);
+    const entry = s.history.find(h => h.type === 'return');
+    // Дата записи = прошлая дата
+    expect(entry.date).toBe(past);
+  });
+
+  test('прошлая дата — note содержит дату закрытия', () => {
+    const sick = setSickLeave(baseState(), 'e1');
+    const s = setSickReturn(sick, 'e1', past);
+    const entry = s.history.find(h => h.type === 'return');
+    expect(entry.note).toContain('больничного');
+    expect(entry.note).toMatch(/\d/); // дата есть в note
+  });
+
+  test('инженер остаётся на задаче при любом варианте', () => {
+    const sick = setSickLeave(baseState(), 'e1');
+    const sFuture = setSickReturn(sick, 'e1', future);
+    const sPast   = setSickReturn(sick, 'e1', past);
+    expect(sFuture.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
+    expect(sPast.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
+  });
+});
+
+describe('cancelScheduledSickReturn', () => {
+  test('очищает sickReturnDate, статус не трогает', () => {
+    const future = addWorkdays(todayStr(), 5);
+    const sick = setSickLeave(baseState(), 'e1');
+    const withReturn = setSickReturn(sick, 'e1', future);
+    const cancelled = cancelScheduledSickReturn(withReturn, 'e1');
+    expect(cancelled.engineers.find(e => e.id === 'e1').sickReturnDate).toBe(null);
+    expect(cancelled.engineers.find(e => e.id === 'e1').status).toBe('sick');
   });
 });
 

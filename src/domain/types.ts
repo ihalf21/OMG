@@ -21,6 +21,7 @@ export interface Engineer {
   vacationFrom: ISODate | null;
   vacationTo: ISODate | null;
   dayoffDate: ISODate | null;
+  sickReturnDate: ISODate | null;
   experience: ExperienceMap;
 }
 

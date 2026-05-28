@@ -61,6 +61,13 @@ describe('isAvailableOn', () => {
     expect(isAvailableOn(e, '2099-12-31')).toBe(false);
   });
 
+  test('больничный с плановым выходом — доступен начиная с даты возврата', () => {
+    const e = eng({ status: 'sick', sickReturnDate: '2026-06-10' });
+    expect(isAvailableOn(e, '2026-06-09')).toBe(false); // ещё на больничном
+    expect(isAvailableOn(e, '2026-06-10')).toBe(true);  // день выхода
+    expect(isAvailableOn(e, '2026-06-15')).toBe(true);  // после выхода
+  });
+
   test('отпуск в этот день — не доступен', () => {
     const e = eng({ status: 'vacation', vacationFrom: '2026-05-20', vacationTo: '2026-05-30' });
     expect(isAvailableOn(e, date)).toBe(false);
@@ -158,6 +165,13 @@ describe('leaveTypeOn', () => {
     expect(leaveTypeOn(e, '2020-01-01')).toBe('sick'); // прошлое
     expect(leaveTypeOn(e, todayStr())).toBe('sick');    // сегодня
     expect(leaveTypeOn(e, '2099-12-31')).toBe('sick'); // будущее
+  });
+
+  test('больничный с плановым выходом — sick до даты, null после', () => {
+    const e = eng({ status: 'sick', sickReturnDate: '2026-06-10' });
+    expect(leaveTypeOn(e, '2026-06-09')).toBe('sick');
+    expect(leaveTypeOn(e, '2026-06-10')).toBe(null); // вышел
+    expect(leaveTypeOn(e, '2026-06-15')).toBe(null);
   });
 });
 

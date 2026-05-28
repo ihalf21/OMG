@@ -20,7 +20,11 @@ export function roleCoeff(role: EngineerRole): number {
 // Доступен ли инженер на конкретную дату
 export function isAvailableOn(eng: Engineer, dateStr: ISODate): boolean {
   if (!isWorkingRole(eng)) return false;
-  if (eng.status === 'sick') return false;
+  if (eng.status === 'sick') {
+    // Если задан плановый выход — доступен начиная с этой даты
+    if (eng.sickReturnDate && dateStr >= eng.sickReturnDate) return true;
+    return false;
+  }
 
   // Дейоф — запланированный или активный
   if (eng.dayoffDate === dateStr) return false;
@@ -55,7 +59,10 @@ export function capacityToday(eng: Engineer): number {
 
 // Тип отсутствия на указанную дату — для UI бейджей и визуализации в Ганте.
 export function leaveTypeOn(eng: Engineer, dateStr: ISODate): LeaveType | null {
-  if (eng.status === 'sick') return 'sick';
+  if (eng.status === 'sick') {
+    if (eng.sickReturnDate && dateStr >= eng.sickReturnDate) return null;
+    return 'sick';
+  }
   if (eng.dayoffDate === dateStr || eng.status === 'dayoff') return 'dayoff';
   if (eng.vacationFrom && eng.vacationTo
       && dateStr >= eng.vacationFrom && dateStr <= eng.vacationTo) {

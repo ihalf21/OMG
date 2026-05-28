@@ -4,7 +4,7 @@ import { formatDate, formatDateShort, todayStr, nextWorkday } from '../utils/dat
 import { REGULAR_TASKS } from '../domain/tasks';
 import {
   updateEngineerProfile,
-  setSickLeave, clearSickLeave,
+  setSickLeave, clearSickLeave, setSickReturn as setSickReturnOp, cancelScheduledSickReturn as cancelSickReturnOp,
   setVacation as setVacationOp, cancelVacation as cancelVacationOp, endVacationEarly,
   setDayoff as setDayoffOp, cancelDayoff as cancelDayoffOp, endDayoffEarly,
   removeFromTask, switchToTask,
@@ -38,6 +38,8 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
   const [showDayoff, setShowDayoff]   = useState(false);
   const [dayoffDate, setDayoffDate]   = useState('');
   const [showSwitchTask, setShowSwitchTask] = useState(false);
+  const [showSickReturn, setShowSickReturn] = useState(false);
+  const [sickReturnDateInput, setSickReturnDateInput] = useState('');
   const { confirm, ConfirmEl } = useConfirm();
 
   if (!eng) return <div style={{ padding:24 }}>Инженер не найден</div>;
@@ -76,6 +78,17 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
 
   function openSick()  { updateData(prev => setSickLeave(prev, engineerId)); }
   function closeSick() { updateData(prev => clearSickLeave(prev, engineerId)); }
+
+  function handleSickReturn() {
+    if (!sickReturnDateInput) return;
+    updateData(prev => setSickReturnOp(prev, engineerId, sickReturnDateInput));
+    setShowSickReturn(false);
+    setSickReturnDateInput('');
+  }
+
+  function cancelSickReturn() {
+    updateData(prev => cancelSickReturnOp(prev, engineerId));
+  }
 
   async function addVacation() {
     if (!vacFrom || !vacTo || vacTo < vacFrom) return;
@@ -203,6 +216,19 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                 </span>
               </FieldRow>
 
+              {eng.status === 'sick' && eng.sickReturnDate && eng.sickReturnDate > todayStr() && (
+                <FieldRow label="Плановый выход">
+                  <span style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    {formatDateShort(eng.sickReturnDate)}
+                    <span
+                      onClick={cancelSickReturn}
+                      style={{ fontSize:11, color:'var(--text-tertiary)', cursor:'pointer', padding:'1px 5px', borderRadius:3, background:'var(--bg-secondary)' }}
+                      onMouseEnter={e => (e.currentTarget.style.color = 'var(--red)')}
+                      onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-tertiary)')}
+                    >× отменить</span>
+                  </span>
+                </FieldRow>
+              )}
               {eng.vacationFrom && (
                 <FieldRow label={eng.vacationFrom > todayStr() ? "Запланированный отпуск" : "Отпуск"}>
                   {formatDateShort(eng.vacationFrom)} — {formatDateShort(eng.vacationTo)}
@@ -221,7 +247,7 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                     {currentTask && <BtnSecondary onClick={()=>setShowSwitchTask(true)} style={{ fontSize:13, padding:'6px 12px' }}>⇄ Переключить задачу</BtnSecondary>}
                     {currentTask && <BtnSecondary onClick={returnHome} style={{ fontSize:13, padding:'6px 12px' }}>↩ Снять с задачи</BtnSecondary>}
                     {eng.status==='active'   && <BtnSecondary onClick={openSick} style={{ fontSize:13, padding:'6px 12px', color:'var(--red)', borderColor:'var(--red)' }}>🤒 Больничный</BtnSecondary>}
-                    {eng.status==='sick'     && <BtnSecondary onClick={closeSick} style={{ fontSize:13, padding:'6px 12px', color:'var(--success)', borderColor:'var(--success)' }}>✓ Закрыть больничный</BtnSecondary>}
+                    {eng.status==='sick'     && <BtnSecondary onClick={() => { setSickReturnDateInput(''); setShowSickReturn(true); }} style={{ fontSize:13, padding:'6px 12px', color:'var(--success)', borderColor:'var(--success)' }}>✓ Закрыть больничный</BtnSecondary>}
                     {eng.status==='active' && !eng.vacationFrom && <BtnSecondary onClick={()=>{ setVacFrom(''); setVacTo(''); setShowVacation(true); }} style={{ fontSize:13, padding:'6px 12px', color:'var(--amber)', borderColor:'var(--amber)' }}>✈️ Отпуск</BtnSecondary>}
                     {(eng.status==='active'||eng.status==='sick') && eng.vacationFrom && <BtnSecondary onClick={cancelVacation} style={{ fontSize:13, padding:'6px 12px', color:'var(--amber)', borderColor:'var(--amber)' }}>✖ Отменить отпуск</BtnSecondary>}
                     {eng.status==='vacation' && <BtnSecondary onClick={returnFromVacation} style={{ fontSize:13, padding:'6px 12px', color:'var(--success)', borderColor:'var(--success)' }}>✓ Вернуть из отпуска</BtnSecondary>}
@@ -247,12 +273,12 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                       <div style={{ position:'absolute', left:-20, top:4, width:9, height:9, borderRadius:'50%', background:dotColors[h.type]||'var(--accent)', border:'2px solid var(--bg-primary)' }}/>
                       <div style={{ fontSize:14, color:'var(--text-primary)' }}>
                         {h.type==='switch'   &&<>Переключён {fromTask?`с «${fromTask.name}» `:''}{toTask?`→ «${toTask.name}»`:''}</>}
-                        {h.type==='return'   &&<>Снят с задачи {fromTask?`«${fromTask.name}»`:''}</>}
+                        {h.type==='return'   &&(fromTask?<>Снят с задачи «{fromTask.name}»</>:<>{h.note||'Вышел на работу'}</>)}
                         {h.type==='sick'     &&<>Открыт больничный</>}
                         {h.type==='vacation' &&<>Отпуск</>}
                         {h.type==='dayoff'   &&<>Дейоф</>}
                       </div>
-                      {h.note&&<div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{h.note}</div>}
+                      {h.note && !(h.type==='return' && !h.fromTask) && <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{h.note}</div>}
                       <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{formatDate(h.date)}</div>
                     </div>
                   );
@@ -345,6 +371,40 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
             </div>
           )}
           <ModalFooter onCancel={()=>setShowDayoff(false)} onSave={addDayoff} saveLabel="Сохранить"/>
+        </Modal>
+      )}
+
+      {showSickReturn && (
+        <Modal title="Выход с больничного" onClose={() => { setShowSickReturn(false); setSickReturnDateInput(''); }} width={420}>
+          <div style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:16, lineHeight:1.6 }}>
+            Укажите дату выхода. Будущая дата учтётся в Ганте и прогнозах — инженер появится в расписании.
+          </div>
+          <BtnPrimary onClick={() => { closeSick(); setShowSickReturn(false); }} style={{ width:'100%', justifyContent:'center', marginBottom:16 }}>
+            Выйти сегодня
+          </BtnPrimary>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+            <div style={{ flex:1, height:1, background:'var(--border-light)' }}/>
+            <span style={{ fontSize:12, color:'var(--text-tertiary)', flexShrink:0 }}>или укажите другой день</span>
+            <div style={{ flex:1, height:1, background:'var(--border-light)' }}/>
+          </div>
+          <FormRow label="Дата выхода">
+            <DatePicker value={sickReturnDateInput} onChange={setSickReturnDateInput} placeholder="Выбрать дату" clearable/>
+          </FormRow>
+          {sickReturnDateInput && sickReturnDateInput < todayStr() && (
+            <div style={{ fontSize:12, color:'var(--amber)', marginTop:-6, marginBottom:10 }}>
+              Дата в прошлом — больничный закроется задним числом
+            </div>
+          )}
+          {sickReturnDateInput && sickReturnDateInput > todayStr() && (
+            <div style={{ fontSize:12, color:'var(--accent)', marginTop:-6, marginBottom:10 }}>
+              Плановый выход — инженер появится в планировании с {formatDateShort(sickReturnDateInput)}
+            </div>
+          )}
+          <ModalFooter
+            onCancel={() => { setShowSickReturn(false); setSickReturnDateInput(''); }}
+            onSave={handleSickReturn}
+            saveLabel={sickReturnDateInput && sickReturnDateInput > todayStr() ? 'Запланировать' : 'Сохранить'}
+          />
         </Modal>
       )}
 

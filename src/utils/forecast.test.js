@@ -335,6 +335,15 @@ describe('projectFinish', () => {
     const sim = projectFinish(t, [e], '2026-05-25', 8);
     expect(sim).toEqual({ forecastDate: null, daysLeft: null });
   });
+
+  test('больной с плановым выходом — работает начиная с даты возврата', () => {
+    // Инженер на больничном, выходит 27 мая. Задача старт 25 мая, 8 часов.
+    // 25 мая = больничный (нет работы), 26 мая = больничный, 27 мая = 8ч → готово
+    const e = eng({ id: 'e1', status: 'sick', sickReturnDate: '2026-05-27' });
+    const t = task({ assignedEngineers: ['e1'] });
+    const sim = projectFinish(t, [e], '2026-05-25', 8);
+    expect(sim.forecastDate).toBe('2026-05-27');
+  });
 });
 
 describe('calcForecast — задача без оценки', () => {

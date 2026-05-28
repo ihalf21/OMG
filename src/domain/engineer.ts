@@ -48,6 +48,7 @@ export function addEngineer(state: ProjectState, data: NewEngineerData): Project
     vacationFrom: null,
     vacationTo: null,
     dayoffDate: null,
+    sickReturnDate: null,
     experience: data.experience || {},
   };
   return { ...state, engineers: [...state.engineers, engineer] };
@@ -87,7 +88,7 @@ export function setSickLeave(state: ProjectState, engineerId: string): ProjectSt
   // Инженер остаётся на задаче — снимается только вручную через clearSickLeave + переназначение.
   return {
     ...state,
-    engineers: patchEngineer(state, engineerId, { status: 'sick' }),
+    engineers: patchEngineer(state, engineerId, { status: 'sick', sickReturnDate: null }),
     history: appendHistory(state, {
       date: todayStr(), engineerId, type: 'sick',
       fromTask: currentTask?.id || null, toTask: null, note: '',
@@ -98,11 +99,48 @@ export function setSickLeave(state: ProjectState, engineerId: string): ProjectSt
 export function clearSickLeave(state: ProjectState, engineerId: string): ProjectState {
   return {
     ...state,
-    engineers: patchEngineer(state, engineerId, { status: 'active' }),
+    engineers: patchEngineer(state, engineerId, { status: 'active', sickReturnDate: null }),
     history: appendHistory(state, {
       date: todayStr(), engineerId, type: 'return',
       fromTask: null, toTask: null, note: 'Выход с больничного',
     }),
+  };
+}
+
+/**
+ * Установить дату возврата с больничного.
+ * - Прошлая дата / сегодня → закрыть больничный (статус active, sickReturnDate = null).
+ * - Будущая дата → запланировать выход (статус остаётся sick, sickReturnDate задаётся).
+ *   isAvailableOn и leaveTypeOn учтут эту дату в расчётах Ганта и прогнозов.
+ */
+export function setSickReturn(state: ProjectState, engineerId: string, returnDate: ISODate): ProjectState {
+  const today = todayStr();
+  if (returnDate <= today) {
+    const suffix = returnDate < today ? ` (${formatDateShort(returnDate)})` : '';
+    return {
+      ...state,
+      engineers: patchEngineer(state, engineerId, { status: 'active', sickReturnDate: null }),
+      history: appendHistory(state, {
+        date: returnDate, engineerId, type: 'return',
+        fromTask: null, toTask: null, note: `Выход с больничного${suffix}`,
+      }),
+    };
+  }
+  return {
+    ...state,
+    engineers: patchEngineer(state, engineerId, { sickReturnDate: returnDate }),
+    history: appendHistory(state, {
+      date: today, engineerId, type: 'return',
+      fromTask: null, toTask: null, note: `Плановый выход: ${formatDateShort(returnDate)}`,
+    }),
+  };
+}
+
+/** Отменить запланированный выход с больничного (без закрытия больничного). */
+export function cancelScheduledSickReturn(state: ProjectState, engineerId: string): ProjectState {
+  return {
+    ...state,
+    engineers: patchEngineer(state, engineerId, { sickReturnDate: null }),
   };
 }
 
