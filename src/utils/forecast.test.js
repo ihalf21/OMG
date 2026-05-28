@@ -87,16 +87,21 @@ describe('currentCapacity', () => {
 });
 
 describe('nominalCapacity', () => {
-  test('игнорирует временные отсутствия (больничный, отпуск, дейоф)', () => {
+  test('исключает больных, но считает отпуск и дейоф', () => {
     const engs = [
-      eng({ id: 'e1', status: 'sick' }),
-      eng({ id: 'e2', dayoffDate: todayStr() }),
-      eng({ id: 'e3', status: 'vacation', vacationFrom: '2020-01-01', vacationTo: '2099-12-31' }),
+      eng({ id: 'e1', status: 'sick' }),                                              // исключён
+      eng({ id: 'e2', dayoffDate: todayStr() }),                                      // считается
+      eng({ id: 'e3', status: 'vacation', vacationFrom: '2020-01-01', vacationTo: '2099-12-31' }), // считается
     ];
     const t = task({ assignedEngineers: ['e1', 'e2', 'e3'] });
-    // Все трое имеют roleCoeff=1, но в дейофе/больничном/отпуске сейчас.
-    // nominalCapacity их всё равно считает — это «номинальная» мощность.
-    expect(nominalCapacity(t, engs)).toBe(3);
+    // больничный исключается (работа стоит), отпуск и дейоф — плановые, считаются
+    expect(nominalCapacity(t, engs)).toBe(2);
+  });
+
+  test('больной инженер даёт 0', () => {
+    const e = eng({ id: 'e1', status: 'sick' });
+    const t = task({ assignedEngineers: ['e1'] });
+    expect(nominalCapacity(t, [e])).toBe(0);
   });
   test('лиды всё равно 0', () => {
     const e = eng({ id: 'e1', role: 'lead' });
@@ -398,6 +403,46 @@ describe('calcForecast — startOverride для зависимых задач', 
     // Дедлайн через 30 дней, старт сегодня → должны укладываться
     const fc = calcForecast(t, [e], farFuture, null);
     expect(fc.deadlineStatus).toBe('ok');
+  });
+});
+
+describe('calcForecast — больной инженер остаётся на задаче', () => {
+  test('один больной на задаче → forecastDate null (работа стоит)', () => {
+    const e = eng({ id: 'e1', status: 'sick' });
+    const t = task({ estimateHours: 80, startDate: todayStr(), assignedEngineers: ['e1'] });
+    const fc = calcForecast(t, [e]);
+    expect(fc.forecastDate).toBe(null);
+    expect(fc.daysLeft).toBe(null);
+  });
+
+  test('больной + здоровый → прогноз строится по здоровому, capacity = 1', () => {
+    const sick    = eng({ id: 'e1', status: 'sick' });
+    const healthy = eng({ id: 'e2' });
+    const t = task({ estimateHours: 8, assignedEngineers: ['e1', 'e2'] });
+    const fc = calcForecast(t, [sick, healthy]);
+    expect(fc.forecastDate).not.toBe(null); // прогноз есть
+    expect(fc.capacity).toBe(1);             // только здоровый инженер
+  });
+
+  test('больной не увеличивает прогресс: remainingHours = estimateHours при capFull=0', () => {
+    const e = eng({ id: 'e1', status: 'sick' });
+    const t = task({
+      estimateHours: 80,
+      startDate: addWorkdays(todayStr(), -10), // задача "идёт" 10 дней
+      assignedEngineers: ['e1'],
+    });
+    const fc = calcForecast(t, [e]);
+    // nominalCapacity = 0 → usedHours = 0 → hoursLeft = 80 (прогресса нет)
+    expect(fc.hoursLeft).toBe(80);
+    expect(fc.progressPct).toBe(0);
+  });
+
+  test('больной на задаче с дедлайном в прошлом → deadlineStatus overdue (не null)', () => {
+    const e = eng({ id: 'e1', status: 'sick' });
+    const t = task({ estimateHours: 80, deadline: '2020-01-01', assignedEngineers: ['e1'] });
+    const fc = calcForecast(t, [e]);
+    // forecastDate = null → deadlineStatus = null (нет прогноза — нет статуса)
+    expect(fc.deadlineStatus).toBe(null);
   });
 });
 

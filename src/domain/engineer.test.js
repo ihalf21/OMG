@@ -77,6 +77,27 @@ describe('setSickLeave', () => {
     expect(s.history).toHaveLength(1);
     expect(s.history[0]).toMatchObject({ type: 'sick', engineerId: 'e1', fromTask: 't1' });
   });
+  test('инженер без текущей задачи — fromTask null в истории', () => {
+    const state = {
+      ...baseState(),
+      tasks: baseState().tasks.map(t =>
+        t.id === 't1' ? { ...t, assignedEngineers: [] } : t
+      ),
+    };
+    const s = setSickLeave(state, 'e1');
+    expect(s.history[0].fromTask).toBe(null);
+  });
+  test('другие инженеры на задаче не затронуты', () => {
+    // e1 и e2 оба на t1; e1 уходит на больничный — e2 остаётся
+    const state = {
+      ...baseState(),
+      tasks: [{ id: 't1', name: 'Задача 1', status: 'active', assignedEngineers: ['e1', 'e2'] }],
+    };
+    const s = setSickLeave(state, 'e1');
+    const assigned = s.tasks.find(t => t.id === 't1').assignedEngineers;
+    expect(assigned).toContain('e1');
+    expect(assigned).toContain('e2');
+  });
 });
 
 describe('clearSickLeave', () => {
@@ -89,6 +110,12 @@ describe('clearSickLeave', () => {
     const sick = setSickLeave(baseState(), 'e1');
     const cleared = clearSickLeave(sick, 'e1');
     expect(cleared.history.find(h => h.type === 'return' && h.note.includes('больничного'))).toBeDefined();
+  });
+  test('инженер остаётся на задаче после закрытия больничного', () => {
+    // setSickLeave не снимает с задачи, clearSickLeave тоже — инженер должен быть на месте
+    const sick    = setSickLeave(baseState(), 'e1');
+    const cleared = clearSickLeave(sick, 'e1');
+    expect(cleared.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
   });
 });
 

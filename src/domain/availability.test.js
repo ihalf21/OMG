@@ -55,6 +55,12 @@ describe('isAvailableOn', () => {
     expect(isAvailableOn(eng({ status: 'sick' }), date)).toBe(false);
   });
 
+  test('больничный — не доступен ни в прошлом, ни в будущем (нет даты возврата)', () => {
+    const e = eng({ status: 'sick' });
+    expect(isAvailableOn(e, '2020-01-01')).toBe(false);
+    expect(isAvailableOn(e, '2099-12-31')).toBe(false);
+  });
+
   test('отпуск в этот день — не доступен', () => {
     const e = eng({ status: 'vacation', vacationFrom: '2026-05-20', vacationTo: '2026-05-30' });
     expect(isAvailableOn(e, date)).toBe(false);
@@ -145,6 +151,13 @@ describe('leaveTypeOn', () => {
   test('sick важнее dayoff', () => {
     // больной с запланированным дейофом — sick (приоритет)
     expect(leaveTypeOn(eng({ status: 'sick', dayoffDate: date }), date)).toBe('sick');
+  });
+
+  test('больничный — sick для любой даты (нет границы возврата)', () => {
+    const e = eng({ status: 'sick' });
+    expect(leaveTypeOn(e, '2020-01-01')).toBe('sick'); // прошлое
+    expect(leaveTypeOn(e, todayStr())).toBe('sick');    // сегодня
+    expect(leaveTypeOn(e, '2099-12-31')).toBe('sick'); // будущее
   });
 });
 
