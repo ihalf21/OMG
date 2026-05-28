@@ -332,6 +332,75 @@ describe('projectFinish', () => {
   });
 });
 
+describe('calcForecast — задача без оценки', () => {
+  test('нет оценки + нет дедлайна + есть инженер → deadlineStatus ok', () => {
+    const e = eng({ id: 'e1' });
+    const t = task({ estimateHours: 0, assignedEngineers: ['e1'] });
+    expect(calcForecast(t, [e]).deadlineStatus).toBe('ok');
+  });
+
+  test('нет оценки + есть дедлайн + есть инженер → deadlineStatus null, forecastDate null', () => {
+    const e = eng({ id: 'e1' });
+    const t = task({ estimateHours: 0, deadline: '2099-12-31', assignedEngineers: ['e1'] });
+    const fc = calcForecast(t, [e]);
+    expect(fc.deadlineStatus).toBe(null);
+    expect(fc.forecastDate).toBe(null);
+  });
+
+  test('нет оценки → hoursLeft null', () => {
+    const e = eng({ id: 'e1' });
+    const t = task({ estimateHours: 0, assignedEngineers: ['e1'] });
+    expect(calcForecast(t, [e]).hoursLeft).toBe(null);
+  });
+
+  test('нет оценки + нет инженеров + нет дедлайна → deadlineStatus ok', () => {
+    const t = task({ estimateHours: 0 });
+    expect(calcForecast(t, []).deadlineStatus).toBe('ok');
+  });
+
+  test('нет оценки + нет инженеров + есть дедлайн → deadlineStatus null (прогноз недоступен)', () => {
+    const t = task({ estimateHours: 0, deadline: '2099-12-31' });
+    expect(calcForecast(t, []).deadlineStatus).toBe(null);
+  });
+});
+
+describe('calcForecast — startOverride для зависимых задач', () => {
+  test('startOverride в будущем сдвигает forecastDate вперёд', () => {
+    const e = eng({ id: 'e1' });
+    const future = addWorkdays(todayStr(), 10);
+    const t = task({ estimateHours: 8, assignedEngineers: ['e1'] });
+    const fcNow    = calcForecast(t, [e]);
+    const fcFuture = calcForecast(t, [e], null, future);
+    expect(fcFuture.forecastDate > fcNow.forecastDate).toBe(true);
+  });
+
+  test('startOverride в прошлом — baseDate не раньше сегодня', () => {
+    const e = eng({ id: 'e1' });
+    const t = task({ estimateHours: 8, assignedEngineers: ['e1'] });
+    const fc = calcForecast(t, [e], null, '2020-01-01');
+    expect(fc.forecastDate >= todayStr()).toBe(true);
+  });
+
+  test('зависимая задача со сброшенным startDate: прогноз строится от startOverride', () => {
+    const e = eng({ id: 'e1' });
+    const future = addWorkdays(todayStr(), 5);
+    // Имитируем как Tasks.tsx вызывает calcForecast для зависимой задачи:
+    // startDate = null (сброшен), startOverride = dynamicStart
+    const t = task({ estimateHours: 8, assignedEngineers: ['e1'], startDate: null });
+    const fc = calcForecast(t, [e], null, future);
+    expect(fc.forecastDate >= future).toBe(true);
+  });
+
+  test('deadlineOverride + startOverride: статус считается от правильного базиса', () => {
+    const e = eng({ id: 'e1' });
+    const farFuture = addWorkdays(todayStr(), 30);
+    const t = task({ estimateHours: 8, assignedEngineers: ['e1'] });
+    // Дедлайн через 30 дней, старт сегодня → должны укладываться
+    const fc = calcForecast(t, [e], farFuture, null);
+    expect(fc.deadlineStatus).toBe('ok');
+  });
+});
+
 describe('calcForecast — учёт запланированных отсутствий (через projectFinish)', () => {
   test('запланированный дейоф увеличивает forecastDate', () => {
     // Создаём 2 инженеров: e1 свободен, e2 с дейофом через 3 рабочих дня

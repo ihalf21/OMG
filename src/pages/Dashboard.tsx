@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { calcForecast, statusColor, statusLabel, statusBadgeStyle, engineersNeeded, computeEffectiveDls, type Forecast } from '../utils/forecast';
+import { computeInheritedTeam, computeDynamicStarts } from '../domain/gantt';
 import { isAvailableToday, isWorkingRole, leaveTypeToday } from '../domain/availability';
 import { updateTaskProgress } from '../domain/task';
 import { formatDateShort } from '../utils/dates';
@@ -26,13 +27,20 @@ function sortByChain(tasks: Task[]): Task[] {
 
 export default function Dashboard({ data, updateData, navigate }: PageProps) {
   const { engineers, tasks } = data;
-  const activeTasks  = tasks.filter(t => t.status === 'active');
-
-  const effectiveDls = computeEffectiveDls(activeTasks, engineers);
+  const activeTasks    = tasks.filter(t => t.status === 'active');
+  const inheritedEngIds = computeInheritedTeam(activeTasks);
+  const dynamicStarts   = computeDynamicStarts(activeTasks, engineers, inheritedEngIds);
+  const effectiveDls    = computeEffectiveDls(activeTasks, engineers, inheritedEngIds);
 
   const forecasts: Record<string, Forecast> = {};
   activeTasks.forEach(t => {
-    forecasts[t.id] = calcForecast(t, engineers, effectiveDls[t.id] || null);
+    const engIds   = inheritedEngIds[t.id] || t.assignedEngineers || [];
+    const dynStart = dynamicStarts[t.id];
+    const taskForFc = t.dependsOn
+      ? { ...t, assignedEngineers: engIds, startDate: null as null }
+      : { ...t, assignedEngineers: engIds };
+    const startOverride = t.dependsOn && dynStart ? dynStart : null;
+    forecasts[t.id] = calcForecast(taskForFc, engineers, effectiveDls[t.id] || null, startOverride);
   });
 
   const tasksWithDl  = sortByChain(activeTasks.filter(t =>  effectiveDls[t.id]));

@@ -295,8 +295,14 @@ export function getDerivedDeadline(task: Task, allTasks: Task[], engineers: Engi
 
 /**
  * Эффективные дедлайны для всех активных задач с учётом цепочки.
+ * inheritedEngIds — унаследованные команды из computeInheritedTeam (domain/gantt).
+ * Без него дочерние задачи без инженеров оцениваются с capacity=1 вместо команды родителя.
  */
-export function computeEffectiveDls(allActiveTasks: Task[], engineers: Engineer[]): Record<string, ISODate> {
+export function computeEffectiveDls(
+  allActiveTasks: Task[],
+  engineers: Engineer[],
+  inheritedEngIds: Record<string, string[]> = {},
+): Record<string, ISODate> {
   const result: Record<string, ISODate> = {};
 
   const leafIds = new Set(
@@ -329,14 +335,21 @@ export function computeEffectiveDls(allActiveTasks: Task[], engineers: Engineer[
     if (dl) result[t.id] = dl;
   });
 
-  // Шаг 2: для родительских задач вычитаем длины потомков назад
+  // Шаг 2: для родительских задач вычитаем длины потомков назад.
+  // Используем унаследованные команды: дочерние задачи без своих инженеров
+  // получают команду родителя — именно с такой мощностью они и будут работать.
   const tasksForDl: Task[] = allActiveTasks.map(t => ({
     ...t,
+    assignedEngineers: inheritedEngIds[t.id] ?? t.assignedEngineers ?? [],
     deadline: leafIds.has(t.id) ? (result[t.id] || null) : null,
   }));
   allActiveTasks.forEach(t => {
     if (leafIds.has(t.id)) return;
-    const derived = getDerivedDeadline({ ...t, deadline: null }, tasksForDl, engineers);
+    const derived = getDerivedDeadline(
+      { ...t, assignedEngineers: inheritedEngIds[t.id] ?? t.assignedEngineers ?? [], deadline: null },
+      tasksForDl,
+      engineers,
+    );
     if (derived) result[t.id] = derived;
   });
 

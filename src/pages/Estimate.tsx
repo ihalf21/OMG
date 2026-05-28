@@ -9,7 +9,7 @@ type Scenario = 'o' | 'm' | 'p';
 type ScenarioForm = Record<string, { o: string; m: string; p: string }>;
 interface CalcResult {
   stage1: number; tcActualize: number; tcNew: number; stage2: number;
-  stage3: number; envPrep: number; reporting: number; comms: number; stage4: number;
+  stage3: number; reporting: number; comms: number; stage4: number;
   defects: number; retests: number; stage5: number;
   subtotal: number; riskCoeff: number; withRisks: number; reserve: number; total: number;
 }
@@ -17,9 +17,9 @@ interface CalcResult {
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
 const PCT_KEYS = new Set([
-  'envPrepPct','reportingPct','commsPct',
+  'reportingPct','commsPct',
   'bugPct','retestPct',
-  'noveltyPct','envInstPct','inexperiencePct','parallelPct',
+  'envInstPct','inexperiencePct','parallelPct',
   'reservePct',
 ]);
 
@@ -50,7 +50,6 @@ const SECTIONS = [
   {
     id:'overhead', label:'Накладные расходы', subtitle:'% от времени прогона',
     params:[
-      { key:'envPrepPct',      label:'Подготовка среды и данных',    unit:'%', hint:'Обычно 10–20%' },
       { key:'reportingPct',    label:'Анализ результатов / отчёты',  unit:'%', hint:'Обычно 10–15%' },
       { key:'commsPct',        label:'Коммуникации (митинги, синки)', unit:'%', hint:'Обычно 8–15%' },
     ],
@@ -67,7 +66,6 @@ const SECTIONS = [
   {
     id:'risks', label:'Поправочные коэффициенты', subtitle:'прибавляются к итогу',
     params:[
-      { key:'noveltyPct',      label:'Новизна функционала',           unit:'%', hint:'Сколько нового кода в релизе' },
       { key:'envInstPct',      label:'Нестабильность тестовой среды', unit:'%', hint:'Падения, ожидания фиксов среды' },
       { key:'inexperiencePct', label:'Неопытность команды',           unit:'%', hint:'Если есть новички' },
       { key:'parallelPct',     label:'Параллельные активности',       unit:'%', hint:'Делят время с другими задачами' },
@@ -90,14 +88,12 @@ const DEFAULT_FORM = {
   tcNewTimeMin:    { o:'20',  m:'30',  p:'45'  },
   tcTotalCount:    { o:'200', m:'250', p:'320' },
   tcRunTimeMin:    { o:'8',   m:'12',  p:'18'  },
-  envPrepPct:      { o:'10',  m:'15',  p:'25'  },
   reportingPct:    { o:'10',  m:'12',  p:'15'  },
   commsPct:        { o:'8',   m:'12',  p:'15'  },
   bugPct:          { o:'5',   m:'10',  p:'18'  },
   defectTimeMin:   { o:'15',  m:'20',  p:'30'  },
   retestPct:       { o:'5',   m:'10',  p:'20'  },
   retestCoeff:     { o:'1.2', m:'1.3', p:'1.5' },
-  noveltyPct:      { o:'5',   m:'15',  p:'30'  },
   envInstPct:      { o:'5',   m:'15',  p:'25'  },
   inexperiencePct: { o:'0',   m:'10',  p:'30'  },
   parallelPct:     { o:'0',   m:'10',  p:'20'  },
@@ -124,19 +120,18 @@ function calcScenario(form: ScenarioForm, s: Scenario): CalcResult {
   const tcNew       = (v('tcNewCount')    * v('tcNewTimeMin'))    / 60;
   const stage2      = tcActualize + tcNew;
   const stage3      = (v('tcTotalCount') * v('tcRunTimeMin')) / 60;
-  const envPrep     = v('envPrepPct')   * stage3;
   const reporting   = v('reportingPct') * stage3;
   const comms       = v('commsPct')     * stage3;
-  const stage4      = envPrep + reporting + comms;
+  const stage4      = reporting + comms;
   const defects     = (v('tcTotalCount') * v('bugPct')    * v('defectTimeMin'))                    / 60;
   const retests     = (v('tcTotalCount') * v('retestPct') * v('tcRunTimeMin') * v('retestCoeff'))  / 60;
   const stage5      = defects + retests;
   const subtotal    = stage1 + stage2 + stage3 + stage4 + stage5;
-  const riskCoeff   = 1 + v('noveltyPct') + v('envInstPct') + v('inexperiencePct') + v('parallelPct');
+  const riskCoeff   = 1 + v('envInstPct') + v('inexperiencePct') + v('parallelPct');
   const withRisks   = subtotal * riskCoeff;
   const reserve     = withRisks * v('reservePct');
   const total       = withRisks + reserve;
-  return { stage1, tcActualize, tcNew, stage2, stage3, envPrep, reporting, comms, stage4, defects, retests, stage5, subtotal, riskCoeff, withRisks, reserve, total };
+  return { stage1, tcActualize, tcNew, stage2, stage3, reporting, comms, stage4, defects, retests, stage5, subtotal, riskCoeff, withRisks, reserve, total };
 }
 
 function fmtH(h: number): string {
@@ -493,12 +488,10 @@ export default function Estimate({ data, updateData }: PageProps) {
     setSaved(false);
     setConfirmSave(false);
     setActiveTplId('');
-    if (!id) { setForm(DEFAULT_FORM); return; }
+    if (!id) return;
     const task = allTasks.find(t => t.id === id);
     if (task?.estimateForm) {
       setForm({ ...DEFAULT_FORM, ...task.estimateForm });
-    } else {
-      setForm(DEFAULT_FORM);
     }
   }
 

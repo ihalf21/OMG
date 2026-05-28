@@ -127,6 +127,15 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
     return result;
   }, [allActiveTasks, dynamicStarts, effectiveDls, engineers, inheritedEngIds, tasks]);
 
+  // Конец следующего месяца от сегодня — фолбэк для задач без оценки и без дедлайна
+  const noEstFallbackEnd = useMemo<ISODate>(() => {
+    const d = new Date();
+    const nm = d.getMonth() === 11 ? 0 : d.getMonth() + 1;
+    const ny = d.getMonth() === 11 ? d.getFullYear() + 1 : d.getFullYear();
+    const last = new Date(ny, nm + 1, 0).getDate();
+    return `${ny}-${String(nm + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+  }, []);
+
   // Активные задачи, пересекающиеся с текущим месяцем (используем динамические даты)
   const activeTasks = useMemo<Task[]>(() => {
     const monthStart = `${year}-${String(month+1).padStart(2,'0')}-01`;
@@ -137,11 +146,12 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       const effStart = dynamicStarts[t.id] || todayStr();
       if (effStart > monthEnd) return false;
       const fc = forecasts[t.id];
-      const endDate = fc?.forecastDate || t.deadline || monthEnd;
+      const noEst = !(t.estimateHours || 0);
+      const endDate = fc?.forecastDate || t.deadline || (noEst ? noEstFallbackEnd : monthEnd);
       if (endDate < monthStart) return false;
       return true;
     });
-  }, [allActiveTasks, dynamicStarts, forecasts, year, month]);
+  }, [allActiveTasks, dynamicStarts, forecasts, year, month, noEstFallbackEnd]);
 
   // Завершённые задачи — фильтруем по completedDate в текущем месяце
   const doneTasks = useMemo<Task[]>(() => {
@@ -253,8 +263,8 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
     updateData(prev => ({
       ...prev,
       tasks: prev.tasks.map(t => {
-        if (t.id === fromTaskId) return { ...t, assignedEngineers: (t.assignedEngineers||[]).filter(id => id !== engId) };
-        if (t.id === toTaskId)   return { ...t, assignedEngineers: [...(t.assignedEngineers||[]), engId] };
+        if (t.id === toTaskId) return { ...t, assignedEngineers: [...(t.assignedEngineers||[]), engId] };
+        if ((t.assignedEngineers||[]).includes(engId)) return { ...t, assignedEngineers: (t.assignedEngineers||[]).filter(id => id !== engId) };
         return t;
       }),
       history: [...(prev.history||[]), { id:genId('h'), date:todayStr(), engineerId:engId, type:'switch', fromTask:fromTaskId, toTask:toTaskId, note:'' }],
@@ -436,14 +446,28 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
           {/* Task rows */}
           {activeTasks.map((task, rowIdx) => {
             const fc = forecasts[task.id];
-            const hasStart  = task.dependsOn ? false : !!task.startDate;
-            // Задача без даты: серая штриховка, стартует с сегодня визуально
-            const effectSt  = effectiveStart(task);
-            const barColor  = hasStart ? (statusColor(fc?.deadlineStatus) || '#A8A6A0') : '#A8A6A0';
-            const barBg     = hasStart ? barColor
-              : 'repeating-linear-gradient(45deg,#A8A6A0,#A8A6A0 4px,#C8C7C3 4px,#C8C7C3 8px)';
             // Эффективная команда: унаследованные + дополнительные на этой задаче
             const assignedEngs: Engineer[] = (inheritedEngIds[task.id] || task.assignedEngineers || []).map(id=>engineers.find(e=>e.id===id)).filter((e): e is Engineer => !!e);
+
+            const hasEngineers   = assignedEngs.length > 0;
+            const hasEstimate    = (task.estimateHours || 0) > 0;
+            // Дочерняя задача, родитель ещё не завершён — ждёт, показываем штриховкой
+            const isWaitingChild = !!task.dependsOn && allActiveTasks.some(t => t.id === task.dependsOn);
+            const effectSt       = effectiveStart(task);
+
+            let barColor: string;
+            let barBg: string;
+            if (isWaitingChild) {
+              barColor = '#A8A6A0';
+              barBg = 'repeating-linear-gradient(45deg,#A8A6A0,#A8A6A0 4px,#C8C7C3 4px,#C8C7C3 8px)';
+            } else if (!hasEngineers) {
+              barColor = '#A8A6A0';
+              barBg = '#A8A6A0';
+            } else {
+              const effectiveStatus = !hasEstimate ? 'ok' : fc?.deadlineStatus;
+              barColor = statusColor(effectiveStatus) || '#A8A6A0';
+              barBg = barColor;
+            }
 
             const barStartIdx   = dateToIdxSafe(effectSt, 'next') ?? 0;
             const barStart      = barStartIdx;
@@ -452,11 +476,22 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
             const monthLastDay  = new Date(year, month + 1, 0).getDate();
             const monthEndStr   = `${year}-${String(month+1).padStart(2,'0')}-${String(monthLastDay).padStart(2,'0')}`;
             const fcBeyondMonth = fc?.forecastDate && fc.forecastDate > monthEndStr;
-            const barEndIdx     = rawFcIdx !== null
-              ? Math.min(DAYS, rawFcIdx + 1)
-              : fcBeyondMonth
-              ? DAYS
-              : dlCapIdx !== null ? Math.min(DAYS, dlCapIdx + 1) : barStartIdx + 2;
+            let barEndIdx: number;
+            if (!hasEstimate) {
+              const noEstEnd = task.deadline || noEstFallbackEnd;
+              if (noEstEnd > monthEndStr) {
+                barEndIdx = DAYS;
+              } else {
+                const idx = dateToIdxSafe(noEstEnd, 'prev');
+                barEndIdx = idx !== null ? Math.min(DAYS, idx + 1) : DAYS;
+              }
+            } else {
+              barEndIdx = rawFcIdx !== null
+                ? Math.min(DAYS, rawFcIdx + 1)
+                : fcBeyondMonth
+                ? DAYS
+                : dlCapIdx !== null ? Math.min(DAYS, dlCapIdx + 1) : barStartIdx + 2;
+            }
             const barEnd      = barEndIdx;
             const colSpan    = barEnd - barStart;
             const maxAvatars = colSpan <= 1 ? 0 : colSpan === 2 ? 1 : colSpan === 3 ? 2 : colSpan <= 5 ? 4 : 6;
@@ -499,7 +534,13 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                 >
                   <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0, paddingRight:14, display:'flex', alignItems:'center', gap:8 }}>
                     <span style={{ color:'var(--text-tertiary)', fontSize:14, cursor:'grab', flexShrink:0 }}>⠿</span>
-                    <div style={{ minWidth:0 }}>
+                    <div style={{ minWidth:0 }}
+                      onMouseEnter={e => show(e, task.name, [
+                        [assignedEngs.length, 'инж.', task.direction].filter(Boolean).join(' · '),
+                        task.dependsOn ? '↳ зависит от другой задачи' : '',
+                      ].filter(Boolean))}
+                      onMouseLeave={hide}
+                    >
                       <div style={{ fontSize:14, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                         {task.name}
                       </div>
@@ -525,7 +566,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                           gap: colSpan <= 2 ? 3 : 5,
                           cursor:'pointer', zIndex:3, overflow:'hidden',
                           boxShadow:'0 1px 4px rgba(0,0,0,0.18)',
-                          opacity: hasStart ? 1 : 0.75,
+                          opacity: isWaitingChild ? 0.75 : 1,
                         }}
                       >
                         <span style={{ fontSize:12, fontWeight:700, color:'#fff', whiteSpace:'nowrap', flexShrink:0 }}>{fc?.progressPct||0}%</span>

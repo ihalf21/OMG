@@ -27,14 +27,20 @@ export function getEffectiveTeam(task: Task | undefined, allTasks: Task[], depth
 // ─── Назначение инженеров ─────────────────────────────────────────────────────
 
 export function addEngineerToTask(state: ProjectState, taskId: string, engineerId: string): ProjectState {
+  const prevTask = state.tasks.find(t =>
+    t.id !== taskId && t.status === 'active' && (t.assignedEngineers || []).includes(engineerId)
+  );
   return {
     ...state,
-    tasks: state.tasks.map(t => t.id === taskId
-      ? { ...t, assignedEngineers: [...(t.assignedEngineers || []), engineerId] }
-      : t),
+    tasks: state.tasks.map(t => {
+      if (t.id === taskId) return { ...t, assignedEngineers: [...(t.assignedEngineers || []), engineerId] };
+      if (prevTask && t.id === prevTask.id) return { ...t, assignedEngineers: (t.assignedEngineers || []).filter(id => id !== engineerId) };
+      return t;
+    }),
     history: appendHistory(state, {
       date: todayStr(), engineerId, type: 'switch',
-      fromTask: null, toTask: taskId, note: 'Добавлен на задачу',
+      fromTask: prevTask?.id || null, toTask: taskId,
+      note: prevTask ? `Переключён с «${prevTask.name}»` : 'Добавлен на задачу',
     }),
   };
 }

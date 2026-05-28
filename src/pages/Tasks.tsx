@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { calcForecast, statusColor, statusLabel, statusBadgeStyle, computeEffectiveDls, type Forecast } from '../utils/forecast';
+import { computeInheritedTeam, computeDynamicStarts } from '../domain/gantt';
 import { REGULAR_TASKS } from '../domain/tasks';
 import { genId } from '../utils/ids';
 import { formatDateShort, todayStr } from '../utils/dates';
@@ -56,10 +57,20 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
   const { widths: colWidths, startResize } = useResizableColumns('omg_tasks_cols', [280, 130, 110, 140, 110, 170]);
 
   const activeTasks = tasks.filter(t => t.status === 'active');
-  const effectiveDls = computeEffectiveDls(activeTasks, engineers);
+  const inheritedEngIds = computeInheritedTeam(activeTasks);
+  const dynamicStarts   = computeDynamicStarts(activeTasks, engineers, inheritedEngIds);
+  const effectiveDls    = computeEffectiveDls(activeTasks, engineers, inheritedEngIds);
 
   const forecasts: Record<string, Forecast> = {};
-  tasks.forEach(t => { forecasts[t.id] = calcForecast(t, engineers, effectiveDls[t.id] || null); });
+  tasks.forEach(t => {
+    const engIds = inheritedEngIds[t.id] || t.assignedEngineers || [];
+    const dynStart = dynamicStarts[t.id];
+    const taskForFc = t.dependsOn
+      ? { ...t, assignedEngineers: engIds, startDate: null as null }
+      : { ...t, assignedEngineers: engIds };
+    const startOverride = t.dependsOn && dynStart ? dynStart : null;
+    forecasts[t.id] = calcForecast(taskForFc, engineers, effectiveDls[t.id] || null, startOverride);
+  });
 
   const archivedTasks = tasks.filter(t => t.status === 'archived')
     .sort((a,b) => (b.archivedDate||'').localeCompare(a.archivedDate||''));
@@ -171,7 +182,8 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
             <tbody>
               {filtered.map(task => {
                 const fc = forecasts[task.id];
-                const isQueued = !!(task.dependsOn && tasks.find(t => t.id === task.dependsOn)?.status === 'active');
+                const isQueued = !!(task.dependsOn && tasks.find(t => t.id === task.dependsOn)?.status === 'active')
+                  || !!(task.startDate && task.startDate > todayStr());
                 const barColor = isQueued ? 'var(--text-tertiary)' : statusColor(fc?.deadlineStatus);
                 const bs = isQueued
                   ? { bg: 'var(--bg-secondary)', color: 'var(--text-secondary)' }
