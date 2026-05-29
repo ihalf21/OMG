@@ -397,7 +397,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                       >
                         <span>↗</span>
                         <span style={{ maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                          {(() => { try { return new URL(task.link).hostname; } catch { return task.link; } })()}
+                          {(() => { try { const p = new URL(task.link).pathname.split('/').filter(Boolean); return p[p.length - 1] || new URL(task.link).hostname; } catch { return task.link; } })()}
                         </span>
                       </a>
                     </FieldRow>
