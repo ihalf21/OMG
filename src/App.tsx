@@ -98,8 +98,9 @@ export default function App() {
   const [loading, setLoading]   = useState(true);
   const [serverOk, setServerOk] = useState(true);
   const [page, setPage]         = useState<NavTarget>('dashboard');
-  const [selectedTaskId, setSelectedTaskId]         = useState<string | null>(null);
-  const [selectedEngineerId, setSelectedEngineerId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId]               = useState<string | null>(null);
+  const [selectedEngineerId, setSelectedEngineerId]       = useState<string | null>(null);
+  const [selectedEstimateTaskId, setSelectedEstimateTaskId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('omg_theme') as Theme) || 'light');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -156,6 +157,7 @@ export default function App() {
     setPage(target);
     if (target === 'task'     && id) setSelectedTaskId(id);
     if (target === 'engineer' && id) setSelectedEngineerId(id);
+    if (target === 'estimate')       setSelectedEstimateTaskId(id || null);
   }
 
   // ── Управление проектами ──────────────────────────────────────────────────
@@ -237,7 +239,7 @@ export default function App() {
         {page==='absences'  && <Absences  {...ctx}/>}
         {page==='engineer'  && <EngineerCard {...ctx} engineerId={selectedEngineerId!} onBack={()=>navigate('team')}/>}
         {page==='gantt'     && <Gantt     {...ctx}/>}
-        {page==='estimate'  && <Estimate  {...ctx}/>}
+        {page==='estimate'  && <Estimate  {...ctx} initialTaskId={selectedEstimateTaskId || undefined}/>}
         {page==='reports'   && <Reports   {...ctx}/>}
         {page==='notes'     && <Notes/>}
         </div>

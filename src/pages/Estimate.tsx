@@ -455,7 +455,9 @@ function TemplateManager({ templates, updateTemplates, onClose }: TemplateManage
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
-export default function Estimate({ data, updateData }: PageProps) {
+interface EstimateProps extends PageProps { initialTaskId?: string; }
+
+export default function Estimate({ data, updateData, initialTaskId }: EstimateProps) {
   const allTasks  = data.tasks || [];
   const templates: EstimateTemplate[] = data.estimateTemplates || [];
 
@@ -465,8 +467,14 @@ export default function Estimate({ data, updateData }: PageProps) {
   const withEstimate  = displayTasks.filter(t =>  t.estimateForm);
   const withoutEst    = displayTasks.filter(t => !t.estimateForm);
 
-  const [form,           setForm]        = useState<ScenarioForm>(DEFAULT_FORM);
-  const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [form, setForm] = useState<ScenarioForm>(() => {
+    if (initialTaskId) {
+      const t = allTasks.find(t => t.id === initialTaskId);
+      if (t?.estimateForm) return { ...DEFAULT_FORM, ...(t.estimateForm as ScenarioForm) };
+    }
+    return DEFAULT_FORM;
+  });
+  const [selectedTaskId, setSelectedTaskId] = useState(initialTaskId || '');
   const [activeTplId,    setActiveTplId] = useState('');
   const [showManager,    setShowManager] = useState(false);
   const [showPertInfo,   setShowPertInfo] = useState(false);

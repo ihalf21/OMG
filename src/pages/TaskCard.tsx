@@ -419,7 +419,16 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                   </FieldRow>
                   <FieldRow label="Дата старта">{formatDate(task.startDate)}</FieldRow>
                   <FieldRow label="Дедлайн">{task.deadline?<span style={{ color:'var(--red)', fontWeight:600 }}>{formatDate(task.deadline)}</span>:'—'}</FieldRow>
-                  <FieldRow label="Итоговая оценка"><strong>{fmtHours(task.estimateHours)}</strong></FieldRow>
+                  <FieldRow label="Итоговая оценка">
+                    {task.estimateForm
+                      ? <strong
+                          onClick={() => navigate('estimate', task.id)}
+                          style={{ color:'var(--accent)', cursor:'pointer', textDecoration:'underline dotted' }}
+                          title="Открыть в калькуляторе"
+                        >{fmtHours(task.estimateHours)}</strong>
+                      : <strong>{fmtHours(task.estimateHours)}</strong>
+                    }
+                  </FieldRow>
                   {/* Разбивка по этапам */}
                   {(([['hoursAnalysis','Анализ'],['hoursActualize','Актуализация'],['hoursDevelopment','Разработка'],['hoursTesting','Тестирование']]) as const).map(([k,l]) => {
                     const v = task[k];
