@@ -8,7 +8,7 @@ import type { PageProps } from '../ui-types';
 
 type RoleFilter = 'all' | EngineerRole;
 type StatusFilter = 'all' | EngineerStatus | 'switched' | 'free' | 'unavail';
-type SortCol = 'name' | 'role' | 'status' | 'task';
+type SortCol = 'name' | 'role' | 'status' | 'task' | 'group';
 type SortDir = 'asc' | 'desc';
 
 interface NewEngineerForm {
@@ -37,7 +37,7 @@ export default function Team({ data, updateData, navigate }: PageProps) {
   };
 
   const { widths: colWidths, startResize } = useResizableColumns('omg_team_cols', [200, 130, 110, 210, 110, 110]);
-  const [sortBy, setSortBy] = useState<SortCol>('name');
+  const [sortBy, setSortBy] = useState<SortCol>('group');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   function toggleSort(col: SortCol) {
@@ -52,8 +52,10 @@ export default function Team({ data, updateData, navigate }: PageProps) {
 
   const ROLE_ORDER: Record<EngineerRole, number> = { lead:0, responsible:1, engineer:2, intern:3 };
   const STATUS_ORDER: Record<EngineerStatus, number> = { active:0, dayoff:1, sick:2, vacation:3 };
+  const TASK_ORDER: Record<string, number> = Object.fromEntries(REGULAR_TASKS.map((t, i) => [t, i]));
 
   const filteredAndSorted = engineers.filter(e => {
+    if (e.role === 'lead') return false;
     if (filterRole !== 'all' && e.role !== filterRole) return false;
     if (filterStatus === 'switched') {
       if (!isAvail(e) || !isOnTask(e)) return false;
@@ -65,6 +67,12 @@ export default function Team({ data, updateData, navigate }: PageProps) {
     if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   }).sort((a, b) => {
+    if (sortBy === 'group') {
+      const ta = TASK_ORDER[a.regularTask ?? ''] ?? 99;
+      const tb = TASK_ORDER[b.regularTask ?? ''] ?? 99;
+      if (ta !== tb) return ta - tb;
+      return (ROLE_ORDER[a.role] ?? 9) - (ROLE_ORDER[b.role] ?? 9);
+    }
     let va: string | number = '';
     let vb: string | number = '';
     if (sortBy === 'name')   { va = a.name; vb = b.name; }
@@ -188,8 +196,8 @@ export default function Team({ data, updateData, navigate }: PageProps) {
                     <td onClick={()=>navigate('engineer',eng.id)} style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}><RoleBadge role={eng.role}/></td>
                     <td onClick={()=>navigate('engineer',eng.id)} style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}><StatusBadge status={eng.status}/></td>
                     <td onClick={()=>navigate('engineer',eng.id)} style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>
-                      {eng.role==='lead' ? <span style={{ fontSize:13, color:'var(--text-tertiary)', fontStyle:'italic' }}>не учитывается</span>
-                        : eng.status!=='active' ? <div><div style={{ fontSize:13, color:'var(--text-tertiary)' }}>—</div><div style={{ fontSize:12, color:'var(--text-tertiary)' }}>рег.: {eng.regularTask||'—'}</div></div>
+                      {eng.status!=='active'
+                        ? <div><div style={{ fontSize:13, color:'var(--text-tertiary)' }}>—</div><div style={{ fontSize:12, color:'var(--text-tertiary)' }}>рег.: {eng.regularTask||'—'}</div></div>
                         : <div><div style={{ fontSize:14, color:'var(--text-primary)', fontWeight:500 }}>{currentTask?.name||'—'}</div><div style={{ fontSize:12, color:'var(--text-tertiary)' }}>рег.: {eng.regularTask||'—'}</div></div>
                       }
                     </td>
