@@ -10,6 +10,7 @@ export type NavTarget =
   | 'team'
   | 'engineer'   // конкретный инженер — передаётся engineerId
   | 'gantt'
+  | 'absences'
   | 'estimate'
   | 'reports';
 

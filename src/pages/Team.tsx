@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Avatar, RoleBadge, StatusBadge, StarRating, PageTopbar, BtnPrimary, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
+import { Avatar, RoleBadge, StatusBadge, StarRating, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
 import { REGULAR_TASKS } from '../domain/tasks';
 import { isAvailableToday, isWorkingRole } from '../domain/availability';
 import { addEngineer as addEngineerOp } from '../domain/engineer';
@@ -107,6 +107,7 @@ export default function Team({ data, updateData, navigate }: PageProps) {
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
       <PageTopbar title="Команда">
+        <BtnSecondary onClick={() => navigate('absences')}>График отсутствий</BtnSecondary>
         <BtnPrimary onClick={() => setShowModal(true)}>+ Добавить инженера</BtnPrimary>
       </PageTopbar>
 

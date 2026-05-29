@@ -12,6 +12,7 @@ import EngineerCard from './pages/EngineerCard';
 import Gantt from './pages/Gantt';
 import Estimate from './pages/Estimate';
 import Reports from './pages/Reports';
+import Absences from './pages/Absences';
 import type { Engineer, HistoryEntry, Project, ProjectState, Task, Workspace } from './domain/types';
 import type { NavTarget } from './ui-types';
 
@@ -232,6 +233,7 @@ export default function App() {
         {page==='tasks'     && <Tasks     {...ctx}/>}
         {page==='task'      && <TaskCard  {...ctx} taskId={selectedTaskId!}     onBack={()=>navigate('tasks')}/>}
         {page==='team'      && <Team      {...ctx}/>}
+        {page==='absences'  && <Absences  {...ctx}/>}
         {page==='engineer'  && <EngineerCard {...ctx} engineerId={selectedEngineerId!} onBack={()=>navigate('team')}/>}
         {page==='gantt'     && <Gantt     {...ctx}/>}
         {page==='estimate'  && <Estimate  {...ctx}/>}
