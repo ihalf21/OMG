@@ -13,6 +13,7 @@ import Gantt from './pages/Gantt';
 import Estimate from './pages/Estimate';
 import Reports from './pages/Reports';
 import Absences from './pages/Absences';
+import Notes from './pages/Notes';
 import type { Engineer, HistoryEntry, Project, ProjectState, Task, Workspace } from './domain/types';
 import type { NavTarget } from './ui-types';
 
@@ -238,6 +239,7 @@ export default function App() {
         {page==='gantt'     && <Gantt     {...ctx}/>}
         {page==='estimate'  && <Estimate  {...ctx}/>}
         {page==='reports'   && <Reports   {...ctx}/>}
+        {page==='notes'     && <Notes/>}
         </div>
         </div>
       </div>

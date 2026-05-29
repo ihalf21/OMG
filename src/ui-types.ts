@@ -12,7 +12,8 @@ export type NavTarget =
   | 'gantt'
   | 'absences'
   | 'estimate'
-  | 'reports';
+  | 'reports'
+  | 'notes';
 
 export type NavigateFn = (target: NavTarget, id?: string) => void;
 

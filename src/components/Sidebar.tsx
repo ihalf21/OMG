@@ -67,6 +67,19 @@ function IconReports({ active }: IconProps) {
   );
 }
 
+function IconNotes({ active }: IconProps) {
+  const c = active ? 'var(--accent)' : 'var(--text-tertiary)';
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M3 2.5C3 1.67 3.67 1 4.5 1h6.17L14 4.83V15.5c0 .83-.67 1.5-1.5 1.5h-8C3.67 17 3 16.33 3 15.5v-13z" stroke={c} strokeWidth="1.5"/>
+      <path d="M10.5 1v4H14" stroke={c} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+      <line x1="5.5" y1="8"  x2="12.5" y2="8"  stroke={c} strokeWidth="1.3" strokeLinecap="round"/>
+      <line x1="5.5" y1="11" x2="12.5" y2="11" stroke={c} strokeWidth="1.3" strokeLinecap="round"/>
+      <line x1="5.5" y1="14" x2="9"    y2="14" stroke={c} strokeWidth="1.3" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 function IconAbsences({ active }: IconProps) {
   const c = active ? 'var(--accent)' : 'var(--text-tertiary)';
   return (
@@ -280,6 +293,30 @@ export default function Sidebar({
             );
           })}
         </nav>
+
+        {/* Notes (временный раздел) */}
+        <div style={{ borderTop: '0.5px solid var(--border-light)' }}>
+          {(() => {
+            const isActive = active === 'notes';
+            return (
+              <div onClick={() => onNavigate('notes')} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 20px', fontSize: 14,
+                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                fontWeight: isActive ? 600 : 400,
+                background: isActive ? 'var(--bg-secondary)' : 'transparent',
+                borderLeft: `2.5px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                cursor: 'pointer', userSelect: 'none', transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--bg-secondary)'; }}
+              onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                <IconNotes active={isActive}/>
+                Заметки
+              </div>
+            );
+          })()}
+        </div>
 
         {/* Version history */}
         <div style={{ borderTop: '0.5px solid var(--border-light)', padding: '12px 20px' }}>
