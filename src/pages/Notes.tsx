@@ -5,7 +5,7 @@ import { useNotes, PRIORITY_ORDER, PRIORITY_LABEL, PRIORITY_COLOR, PRIORITY_BG, 
 const PRIORITIES: NotePriority[] = ['high', 'medium', 'low'];
 
 export default function Notes() {
-  const { notes, addNote, archive } = useNotes();
+  const { notes, addNote, archive, deleteNote } = useNotes();
 
   const [showModal, setShowModal]     = useState(false);
   const [formTitle, setFormTitle]     = useState('');
@@ -38,7 +38,7 @@ export default function Notes() {
     setShowModal(false);
   }
 
-  function NoteCard({ note, showActions }: { note: typeof activeNotes[0]; showActions: boolean }) {
+  function NoteCard({ note, showActions, onDelete }: { note: typeof activeNotes[0]; showActions: boolean; onDelete?: () => void }) {
     const isExpanded = expanded.has(note.id);
     return (
       <div style={{
@@ -80,20 +80,30 @@ export default function Notes() {
         )}
 
         {/* Кнопки действий */}
-        {showActions && (
+        {(showActions || onDelete) && (
           <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderTop: '0.5px solid var(--border-light)' }}>
-            <button
-              onClick={() => archive(note.id, 'done')}
-              style={{ flex: 1, padding: '7px 12px', borderRadius: 6, border: '1.5px solid var(--success)', background: 'var(--success-bg)', color: 'var(--success)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--success)'; e.currentTarget.style.color = '#fff'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'var(--success-bg)'; e.currentTarget.style.color = 'var(--success)'; }}
-            >✓ Сделано</button>
-            <button
-              onClick={() => archive(note.id, 'nope')}
-              style={{ flex: 1, padding: '7px 12px', borderRadius: 6, border: '1.5px solid var(--red)', background: 'var(--red-bg)', color: 'var(--red)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--red)'; e.currentTarget.style.color = '#fff'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'var(--red-bg)'; e.currentTarget.style.color = 'var(--red)'; }}
-            >✕ Нахер</button>
+            {showActions && <>
+              <button
+                onClick={() => archive(note.id, 'done')}
+                style={{ flex: 1, padding: '7px 12px', borderRadius: 6, border: '1.5px solid var(--success)', background: 'var(--success-bg)', color: 'var(--success)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--success)'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--success-bg)'; e.currentTarget.style.color = 'var(--success)'; }}
+              >✓ Сделано</button>
+              <button
+                onClick={() => archive(note.id, 'nope')}
+                style={{ flex: 1, padding: '7px 12px', borderRadius: 6, border: '1.5px solid var(--red)', background: 'var(--red-bg)', color: 'var(--red)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--red)'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--red-bg)'; e.currentTarget.style.color = 'var(--red)'; }}
+              >✕ Нахер</button>
+            </>}
+            {onDelete && (
+              <button
+                onClick={onDelete}
+                style={{ padding: '7px 14px', borderRadius: 6, border: '1.5px solid var(--border-mid)', background: 'var(--bg-secondary)', color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--red)'; e.currentTarget.style.color = 'var(--red)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; e.currentTarget.style.color = 'var(--text-tertiary)'; }}
+              >🗑 Удалить</button>
+            )}
           </div>
         )}
       </div>
@@ -154,7 +164,7 @@ export default function Notes() {
                   <div style={{ fontSize: 13, color: 'var(--text-tertiary)', padding: '12px 0' }}>Пусто</div>
                 )}
                 {archivedNotes.map(note => (
-                  <NoteCard key={note.id} note={note} showActions={false}/>
+                  <NoteCard key={note.id} note={note} showActions={false} onDelete={() => deleteNote(note.id)}/>
                 ))}
               </div>
             )}

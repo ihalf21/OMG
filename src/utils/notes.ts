@@ -44,5 +44,11 @@ export function useNotes() {
     setNotes(updated);
   }
 
-  return { notes, addNote, archive };
+  function deleteNote(id: string): void {
+    const updated = notes.filter(n => n.id !== id);
+    save(updated);
+    setNotes(updated);
+  }
+
+  return { notes, addNote, archive, deleteNote };
 }
