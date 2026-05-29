@@ -24,6 +24,7 @@ input[type=number] { -moz-appearance: textfield; }
   --amber-bg:       #FAF0DC;
   --blue:           #2E7AD4;
   --blue-bg:        #DCEcFA;
+  --violet:         #7C4DFF;
   --shadow-sm:      0 1px 3px rgba(0,0,0,0.08);
   --shadow-md:      0 4px 12px rgba(0,0,0,0.12);
   --font:           -apple-system, 'Segoe UI', sans-serif;
@@ -51,6 +52,7 @@ input[type=number] { -moz-appearance: textfield; }
   --amber-bg:       #3A2A10;
   --blue:           #5A9FE8;
   --blue-bg:        #152A40;
+  --violet:         #A78BFA;
   --shadow-sm:      0 1px 3px rgba(0,0,0,0.3);
   --shadow-md:      0 4px 16px rgba(0,0,0,0.5);
 }

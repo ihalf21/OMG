@@ -12,7 +12,7 @@ import {
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
 import { genId } from '../utils/ids';
 import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm } from '../components/UI';
-import type { Task, ExtraWorkEntry } from '../domain/types';
+import type { Task, ExtraWorkEntry, HistoryType } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
 interface Props extends PageProps {
@@ -539,6 +539,9 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                 <Card>
                   <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', marginBottom:14, textTransform:'uppercase', letterSpacing:'0.05em' }}>История изменений</div>
                   {(() => {
+                    const dotColors: Record<HistoryType, string> = {
+                      switch: 'var(--blue)', return: 'var(--success)', sick: 'var(--red)', vacation: 'var(--amber)', dayoff: 'var(--blue)',
+                    };
                     type TLItem =
                       | { kind: 'history'; date: string; key: string }
                       | { kind: 'extra';   date: string; key: string };
@@ -561,7 +564,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                             return (
                               <div key={h.id} style={{ position:'relative', paddingBottom: isLast ? 0 : 14 }}>
                                 {!isLast && <div style={{ position:'absolute', left:-16, top:8, bottom:-6, width:1, background:'var(--border-light)' }}/>}
-                                <div style={{ position:'absolute', left:-20, top:4, width:9, height:9, borderRadius:'50%', background:h.type==='switch'?'var(--blue)':'var(--accent)', border:'2px solid var(--bg-primary)' }}/>
+                                <div style={{ position:'absolute', left:-20, top:4, width:9, height:9, borderRadius:'50%', background:dotColors[h.type]||'var(--accent)', border:'2px solid var(--bg-primary)' }}/>
                                 <div style={{ fontSize:14 }}>
                                   <strong>{eng?.name||'—'}</strong>
                                   {h.type==='switch'&&<> переключён {ft?`с «${ft.name}»`:''}</>}
@@ -576,7 +579,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                           return (
                             <div key={ew.id} style={{ position:'relative', paddingBottom: isLast ? 0 : 14 }}>
                               {!isLast && <div style={{ position:'absolute', left:-16, top:8, bottom:-6, width:1, background:'var(--border-light)' }}/>}
-                              <div style={{ position:'absolute', left:-20, top:4, width:9, height:9, borderRadius:'50%', background:'var(--amber)', border:'2px solid var(--bg-primary)' }}/>
+                              <div style={{ position:'absolute', left:-20, top:4, width:9, height:9, borderRadius:'50%', background:'var(--violet)', border:'2px solid var(--bg-primary)' }}/>
                               <div style={{ fontSize:14, fontWeight:500 }}>{ew.title}</div>
                               {ew.note && <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{ew.note}</div>}
                               <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{formatDate(ew.date)}</div>
