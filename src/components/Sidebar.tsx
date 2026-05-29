@@ -95,7 +95,7 @@ function IconAbsences({ active }: IconProps) {
 }
 
 function IconEstimate({ active }: IconProps) {
-  const c = active ? '#1D9E75' : '#8C8B87';
+  const c = active ? 'var(--accent)' : 'var(--text-tertiary)';
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
       <rect x="2" y="2" width="14" height="14" rx="2" stroke={c} strokeWidth="1.5"/>
