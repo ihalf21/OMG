@@ -20,9 +20,10 @@ interface NewTaskForm {
   hoursActualize: string;
   hoursDevelopment: string;
   hoursTesting: string;
+  link: string;
 }
 
-const emptyForm = (): NewTaskForm => ({ name:'', direction:'', startDate: todayStr(), deadline:'', totalCases:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'' });
+const emptyForm = (): NewTaskForm => ({ name:'', direction:'', startDate: todayStr(), deadline:'', totalCases:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'', link:'' });
 
 type StatusFilter = 'all' | 'active' | 'done';
 
@@ -133,6 +134,7 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
       completedDate: null,
       completedWithChildId: null,
       archivedDate: null,
+      link: form.link || undefined,
     };
     updateData(prev => ({
       ...prev,
@@ -267,6 +269,9 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
           </FormRow>
           <FormRow label="Дедлайн (опционально)">
             <DatePicker value={form.deadline} onChange={v => setForm(f=>({...f, deadline:v}))} placeholder="Без дедлайна"/>
+          </FormRow>
+          <FormRow label="Ссылка" hint="Необязательно">
+            <Input value={form.link} onChange={e=>setForm(f=>({...f, link:e.target.value}))} placeholder="https://..."/>
           </FormRow>
           <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:4, padding:'8px 12px', background:'var(--bg-secondary)', borderRadius:6 }}>
             💡 Оценку трудозатрат можно добавить в разделе <strong>Оценка</strong> после создания задачи

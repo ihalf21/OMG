@@ -32,6 +32,7 @@ interface EditForm {
   hoursTesting: string | number;
   dependsOn: string;
   newChildId: string;
+  link: string;
 }
 
 type CompleteMode = 'today' | 'custom';
@@ -85,6 +86,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
       hoursTesting:     task!.hoursTesting     || '',
       dependsOn:  task!.dependsOn || '',
       newChildId: '',
+      link: task!.link || '',
     });
     setEditMode(true);
   }
@@ -118,6 +120,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
           deadline: editForm.deadline || null,
           totalCases: editForm.totalCases ? parseInt(String(editForm.totalCases)) : null,
           dependsOn: effectiveDependsOn,
+          link: editForm.link || undefined,
         };
         if (editForm.newChildId && t.id === editForm.newChildId) {
           return { ...t, dependsOn: taskId, startDate: null };
@@ -265,6 +268,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
               {editMode && editForm ? (
                 <>
                   <FormRow label="Название"><Input value={editForm.name} onChange={e=>setEditForm(f=>f?{...f, name:e.target.value}:f)}/></FormRow>
+                  <FormRow label="Ссылка"><Input value={editForm.link} onChange={e=>setEditForm(f=>f?{...f, link:e.target.value}:f)} placeholder="https://..."/></FormRow>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                     <FormRow label="Направление">
                       <Select value={editForm.direction||''} onChange={e=>setEditForm(f=>f?{...f, direction:e.target.value}:f)}>
@@ -383,6 +387,21 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
               ) : (
                 <>
                   <FieldRow label="Направление"><span style={{ fontSize:13, fontWeight:500, color:'var(--accent)' }}>{task.direction||'—'}</span></FieldRow>
+                  {task.link && (
+                    <FieldRow label="Ссылка">
+                      <a
+                        href={task.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:12, fontWeight:500, color:'var(--accent)', background:'var(--accent-bg)', border:'1.5px solid var(--accent)', borderRadius:6, padding:'4px 10px', textDecoration:'none', cursor:'pointer' }}
+                      >
+                        <span>↗</span>
+                        <span style={{ maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {(() => { try { return new URL(task.link).hostname; } catch { return task.link; } })()}
+                        </span>
+                      </a>
+                    </FieldRow>
+                  )}
                   <FieldRow label="Статус">
                     <span style={{ fontSize:12, padding:'3px 9px', borderRadius:4, fontWeight:500, ...bs }}>
                       {task.status==='done'?'Завершена':statusLabel(fc?.deadlineStatus)}

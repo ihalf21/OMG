@@ -51,6 +51,7 @@ export interface Task {
   hoursTesting?: number;
   // Произвольная форма из калькулятора оценки
   estimateForm?: Record<string, unknown>;
+  link?: string;
 }
 
 // Тип записи в истории занятости.
