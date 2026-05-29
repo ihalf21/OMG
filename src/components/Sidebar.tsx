@@ -221,8 +221,8 @@ export default function Sidebar({
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '7px 12px 7px 16px', cursor: 'pointer',
-                  background: isActive ? 'var(--bg-secondary)' : isHovered ? 'var(--bg-secondary)' : 'transparent',
-                  borderLeft: `2.5px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                  background: isActive ? 'var(--bg-secondary)' : isHovered ? 'rgba(240,160,48,0.08)' : 'transparent',
+                  borderLeft: `2.5px solid ${isActive || isHovered ? 'var(--accent)' : 'transparent'}`,
                   transition: 'background 0.12s',
                 }}
               >
@@ -284,8 +284,8 @@ export default function Sidebar({
                 borderLeft: `2.5px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
                 cursor: 'pointer', userSelect: 'none', transition: 'background 0.12s',
               }}
-              onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--bg-secondary)'; }}
-              onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              onMouseEnter={e => { if (!isActive) { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(240,160,48,0.08)'; el.style.borderLeftColor = 'var(--accent)'; } }}
+              onMouseLeave={e => { if (!isActive) { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.borderLeftColor = 'transparent'; } }}
               >
                 <Icon active={isActive} />
                 {label}
@@ -308,8 +308,8 @@ export default function Sidebar({
                 borderLeft: `2.5px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
                 cursor: 'pointer', userSelect: 'none', transition: 'background 0.12s',
               }}
-              onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--bg-secondary)'; }}
-              onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              onMouseEnter={e => { if (!isActive) { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(240,160,48,0.08)'; el.style.borderLeftColor = 'var(--accent)'; } }}
+              onMouseLeave={e => { if (!isActive) { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.borderLeftColor = 'transparent'; } }}
               >
                 <IconNotes active={isActive}/>
                 Заметки
