@@ -9,9 +9,6 @@ export type EngineerStatus = 'active' | 'vacation' | 'sick' | 'dayoff';
 // ISO date в формате YYYY-MM-DD (брендированный для безопасности — обычная строка тоже принимается).
 export type ISODate = string;
 
-// Матрица опыта по регулярным задачам (0-5 звёзд).
-export type ExperienceMap = Record<string, number>;
-
 export interface Engineer {
   id: string;
   name: string;
@@ -22,7 +19,6 @@ export interface Engineer {
   vacationTo: ISODate | null;
   dayoffDate: ISODate | null;
   sickReturnDate: ISODate | null;
-  experience: ExperienceMap;
 }
 
 // Статус задачи.

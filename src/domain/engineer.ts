@@ -4,7 +4,7 @@
 import { todayStr, formatDateShort } from '../utils/dates';
 import { genId } from '../utils/ids';
 import type {
-  Engineer, EngineerRole, ExperienceMap, HistoryEntry, ISODate,
+  Engineer, EngineerRole, HistoryEntry, ISODate,
   ProjectState, Task,
 } from './types';
 
@@ -35,7 +35,6 @@ export interface NewEngineerData {
   name: string;
   role?: EngineerRole;
   regularTask?: string | null;
-  experience?: ExperienceMap;
 }
 
 export function addEngineer(state: ProjectState, data: NewEngineerData): ProjectState {
@@ -49,7 +48,6 @@ export function addEngineer(state: ProjectState, data: NewEngineerData): Project
     vacationTo: null,
     dayoffDate: null,
     sickReturnDate: null,
-    experience: data.experience || {},
   };
   return { ...state, engineers: [...state.engineers, engineer] };
 }
@@ -66,12 +64,10 @@ export interface EngineerProfileUpdate {
   name?: string;
   role?: EngineerRole;
   regularTask?: string | null;
-  experience?: ExperienceMap;
 }
 
 export function updateEngineerProfile(state: ProjectState, engineerId: string, updates: EngineerProfileUpdate): ProjectState {
-  // Профиль: имя, роль, регулярная задача, experience. НЕ статусы.
-  const allowed: (keyof EngineerProfileUpdate)[] = ['name', 'role', 'regularTask', 'experience'];
+  const allowed: (keyof EngineerProfileUpdate)[] = ['name', 'role', 'regularTask'];
   const patch: Partial<Engineer> = {};
   for (const key of allowed) {
     if (key in updates) {

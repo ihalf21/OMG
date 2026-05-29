@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Avatar, RoleBadge, StatusBadge, StarRating, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, BtnDanger, Modal, ModalFooter, FormRow, Input, DateRangePicker, DatePicker, useConfirm } from '../components/UI';
+import { Avatar, RoleBadge, StatusBadge, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, BtnDanger, Modal, ModalFooter, FormRow, Input, DateRangePicker, DatePicker, useConfirm } from '../components/UI';
 import { formatDate, formatDateShort, todayStr, nextWorkday } from '../utils/dates';
 import { REGULAR_TASKS } from '../domain/tasks';
 import {
@@ -10,7 +10,7 @@ import {
   removeFromTask, switchToTask,
   deleteEngineer as deleteEngineerOp,
 } from '../domain/engineer';
-import type { EngineerRole, ExperienceMap, HistoryType } from '../domain/types';
+import type { EngineerRole, HistoryType } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
 interface Props extends PageProps {
@@ -22,7 +22,6 @@ interface EditForm {
   name: string;
   role: EngineerRole;
   regularTask: string;
-  experience: ExperienceMap;
 }
 
 const selectStyle: React.CSSProperties = { fontSize:13, border:'1.5px solid var(--border-mid)', borderRadius:4, padding:'4px 8px', background:'var(--bg-secondary)', color:'var(--text-primary)', width:'100%' };
@@ -50,14 +49,11 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
   const engHistory  = history.filter(h => h.engineerId === eng.id).sort((a,b) => b.date.localeCompare(a.date));
   const switchCount = history.filter(h => h.engineerId === eng.id && h.type === 'switch').length;
 
-  const experience: ExperienceMap = editMode ? (editForm?.experience || {}) : (eng.experience || {});
-
   function startEdit() {
     setEditForm({
       name: eng!.name,
       role: eng!.role,
       regularTask: eng!.regularTask || '',
-      experience: { ...(eng!.experience || {}) },
     });
     setEditMode(true);
   }
@@ -68,14 +64,8 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
       name: editForm.name,
       role: editForm.role,
       regularTask: editForm.regularTask || null,
-      experience: editForm.experience,
     }));
     setEditMode(false);
-  }
-
-  function updateExp(taskName: string, stars: number) {
-    if (!editMode) return;
-    setEditForm(f => f ? ({ ...f, experience: { ...f.experience, [taskName]: stars } }) : f);
   }
 
   function openSick()  { updateData(prev => setSickLeave(prev, engineerId)); }
@@ -298,26 +288,6 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
 
           {/* RIGHT */}
           <div>
-            {(editMode && editForm ? editForm.role : eng.role) !== 'lead' && (
-              <Card style={{ marginBottom:14 }}>
-                <div style={{ fontSize:13, fontWeight:600, color:'var(--text-tertiary)', marginBottom:4, textTransform:'uppercase', letterSpacing:'0.05em' }}>Матрица опыта</div>
-                {!editMode && <div style={{ fontSize:12, color:'var(--text-tertiary)', marginBottom:12 }}>Нажмите «Редактировать» для изменения</div>}
-                {editMode  && <div style={{ fontSize:12, color:'var(--accent)', marginBottom:12, fontWeight:500 }}>✏️ Кликайте по звёздам</div>}
-                {REGULAR_TASKS.map(taskName => {
-                  const val = experience[taskName] || 0;
-                  return (
-                    <div key={taskName} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 0', borderBottom:'0.5px solid var(--border-light)', gap:8 }}>
-                      <div style={{ flex:1, fontSize:14, color:'var(--text-primary)', fontWeight: eng.regularTask===taskName ? 600 : 400 }}>
-                        {taskName}
-                        {eng.regularTask===taskName && <span style={{ fontSize:11, marginLeft:6, color:'var(--accent)' }}>● основная</span>}
-                      </div>
-                      <StarRating value={val} max={5} readonly={!editMode} onChange={stars=>updateExp(taskName, stars)}/>
-                    </div>
-                  );
-                })}
-              </Card>
-            )}
-
             <Card>
               <div style={{ fontSize:13, fontWeight:600, color:'var(--text-tertiary)', marginBottom:14, textTransform:'uppercase', letterSpacing:'0.05em' }}>Статистика</div>
               <FieldRow label="Переключений">{switchCount}</FieldRow>

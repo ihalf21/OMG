@@ -64,18 +64,13 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   const assignedEngs = engineers.filter(e => task.assignedEngineers?.includes(e.id));
   const taskHistory  = history.filter(h => h.fromTask===taskId||h.toTask===taskId).sort((a,b)=>b.date.localeCompare(a.date));
   const available    = engineers.filter(e => isWorkingRole(e) && !task.assignedEngineers?.includes(e.id) && isAvailableToday(e));
-  const recommended = available
-    .map(e => {
-      const matchesDirection = !!(task.direction && e.regularTask === task.direction);
-      const exp = task.direction ? ((e.experience || {})[task.direction] || 0) : 0;
-      return { eng: e, matchesDirection, exp };
+  const recommended = [...available]
+    .sort((a, b) => {
+      const aM = !!(task.direction && a.regularTask === task.direction);
+      const bM = !!(task.direction && b.regularTask === task.direction);
+      return (bM ? 1 : 0) - (aM ? 1 : 0);
     })
-    .sort((a,b) => {
-      if (a.matchesDirection !== b.matchesDirection) return (b.matchesDirection ? 1 : 0) - (a.matchesDirection ? 1 : 0);
-      return b.exp - a.exp;
-    })
-    .slice(0, 4)
-    .map(x => x.eng);
+    .slice(0, 4);
 
   function startEdit() {
     setEditForm({
@@ -655,8 +650,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                   {task.direction ? <>По направлению <strong style={{ color:'var(--accent)' }}>{task.direction}</strong></> : 'Доступные инженеры'}
                 </div>
                 {recommended.map(eng => {
-                  const matchDir  = !!(task.direction && eng.regularTask === task.direction);
-                  const expStars  = task.direction ? ((eng.experience||{})[task.direction] || 0) : 0;
+                  const matchDir = !!(task.direction && eng.regularTask === task.direction);
                   return (
                     <div key={eng.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:'0.5px solid var(--border-light)' }}>
                       <Avatar name={eng.name} size={30}/>
@@ -667,7 +661,6 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                         <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:1, display:'flex', alignItems:'center', gap:4 }}>
                           {matchDir && <span style={{ fontSize:10, padding:'1px 5px', borderRadius:3, background:'var(--accent-bg)', color:'var(--accent)', fontWeight:600, flexShrink:0 }}>осн.</span>}
                           <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{eng.regularTask || '—'}</span>
-                          {expStars > 0 && <span style={{ flexShrink:0, marginLeft:2 }}>{'★'.repeat(expStars)}{'☆'.repeat(5-expStars)}</span>}
                         </div>
                       </div>
                       <button onClick={()=>addEngineer(eng.id)} style={{ flexShrink:0, fontSize:12, color:'var(--accent)', border:'1.5px solid var(--accent)', padding:'5px 10px', borderRadius:4, background:'transparent', cursor:'pointer', fontWeight:500, whiteSpace:'nowrap' }}>Добавить ↗</button>

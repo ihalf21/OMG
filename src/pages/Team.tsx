@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Avatar, RoleBadge, StatusBadge, StarRating, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
+import { Avatar, RoleBadge, StatusBadge, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
 import { REGULAR_TASKS } from '../domain/tasks';
 import { isAvailableToday, isWorkingRole } from '../domain/availability';
 import { addEngineer as addEngineerOp } from '../domain/engineer';
@@ -36,7 +36,7 @@ export default function Team({ data, updateData, navigate }: PageProps) {
     free:        engineers.filter(e => isAvail(e) && !isOnTask(e)).length,
   };
 
-  const { widths: colWidths, startResize } = useResizableColumns('omg_team_cols', [200, 130, 110, 210, 110, 110]);
+  const { widths: colWidths, startResize } = useResizableColumns('omg_team_cols', [200, 130, 110, 210, 110]);
   const [sortBy, setSortBy] = useState<SortCol>('group');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
@@ -165,14 +165,13 @@ export default function Team({ data, updateData, navigate }: PageProps) {
                   { label:'Роль',          col: 'role' as SortCol | null },
                   { label:'Статус',        col: 'status' as SortCol | null },
                   { label:'Текущая задача',col: 'task' as SortCol | null },
-                  { label:'Опыт (avg)',    col: null },
                   { label:'',              col: null },
                 ]).map((h, i) => (
                   <th key={i}
                     onClick={h.col ? () => toggleSort(h.col!) : undefined}
                     style={{ fontSize:13, color:'var(--text-tertiary)', fontWeight:600, textAlign:'left', padding:'10px 14px', borderBottom:'1px solid var(--border-light)', cursor:h.col?'pointer':'default', userSelect:'none', whiteSpace:'nowrap', position:'relative', width:colWidths[i] }}>
                     {h.label}{h.col && <SortIcon col={h.col}/>}
-                    {i < 5 && <ResizeHandle onMouseDown={e => startResize(i, e)}/>}
+                    {i < 4 && <ResizeHandle onMouseDown={e => startResize(i, e)}/>}
                   </th>
                 ))}
               </tr>
@@ -180,8 +179,6 @@ export default function Team({ data, updateData, navigate }: PageProps) {
             <tbody>
               {filteredAndSorted.map(eng => {
                 const currentTask = getCurrentTask(eng);
-                const expVals = Object.values(eng.experience || {});
-                const avgExp = expVals.length > 0 ? Math.round(expVals.reduce((a,b)=>a+b,0)/expVals.length) : 0;
                 return (
                   <tr key={eng.id} style={{ cursor:'pointer' }}
                     onMouseEnter={e=>Array.from(e.currentTarget.cells).forEach(td=>(td as HTMLElement).style.background='var(--bg-secondary)')}
@@ -200,9 +197,6 @@ export default function Team({ data, updateData, navigate }: PageProps) {
                         ? <div><div style={{ fontSize:13, color:'var(--text-tertiary)' }}>—</div><div style={{ fontSize:12, color:'var(--text-tertiary)' }}>рег.: {eng.regularTask||'—'}</div></div>
                         : <div><div style={{ fontSize:14, color:'var(--text-primary)', fontWeight:500 }}>{currentTask?.name||'—'}</div><div style={{ fontSize:12, color:'var(--text-tertiary)' }}>рег.: {eng.regularTask||'—'}</div></div>
                       }
-                    </td>
-                    <td onClick={()=>navigate('engineer',eng.id)} style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>
-                      <StarRating value={avgExp} max={5} readonly/>
                     </td>
                     <td style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>
                       <div style={{ display:'flex', gap:6 }}>

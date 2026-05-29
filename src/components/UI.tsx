@@ -48,41 +48,6 @@ export function TypeBadge({ type }: { type: 'regular' | string }) {
     : <Badge bg="var(--blue-bg)" color="var(--blue)">Нерегулярная</Badge>;
 }
 
-// ─── Stars ────────────────────────────────────────────────────────────────────
-
-interface StarRatingProps {
-  value?: number;
-  max?: number;
-  onChange?: (value: number) => void;
-  readonly?: boolean;
-}
-
-export function StarRating({ value = 0, max = 5, onChange, readonly = true }: StarRatingProps) {
-  return (
-    <div style={{ display:'flex', gap:3 }}>
-      {Array.from({ length: max }, (_, i) => {
-        const filled = i < value;
-        return (
-          <span
-            key={i}
-            onClick={() => !readonly && onChange && onChange(i + 1 === value ? i : i + 1)}
-            style={{
-              fontSize: 16,
-              color: filled ? '#F0A030' : 'var(--border-mid)',
-              cursor: readonly ? 'default' : 'pointer',
-              transition: 'color 0.15s, transform 0.1s',
-              display: 'inline-block',
-              lineHeight: 1,
-            }}
-            onMouseEnter={e => { if (!readonly) (e.currentTarget as HTMLElement).style.transform = 'scale(1.2)'; }}
-            onMouseLeave={e => { if (!readonly) (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
-          >★</span>
-        );
-      })}
-    </div>
-  );
-}
-
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
 interface AvatarProps {
@@ -750,27 +715,40 @@ interface TooltipState {
   visible: boolean;
   x: number;
   y: number;
+  flip: boolean; // true = открывается вверх (курсор у нижнего края)
   title: string;
   rows: React.ReactNode[];
 }
 
+function tooltipPos(clientX: number, clientY: number) {
+  return { x: clientX + 14, y: clientY, flip: clientY > window.innerHeight - 200 };
+}
+
 export function useTooltip() {
-  const [tooltip, setTooltip] = React.useState<TooltipState>({ visible:false, x:0, y:0, title:'', rows:[] });
+  const [tooltip, setTooltip] = React.useState<TooltipState>({ visible:false, x:0, y:0, flip:false, title:'', rows:[] });
 
   const show = React.useCallback((e: { clientX: number; clientY: number }, title: string, rows: React.ReactNode[]) => {
-    setTooltip({ visible:true, x:e.clientX+14, y:e.clientY-10, title, rows });
+    const pos = tooltipPos(e.clientX, e.clientY);
+    setTooltip({ visible:true, ...pos, title, rows });
   }, []);
 
   const move = React.useCallback((e: { clientX: number; clientY: number }) => {
-    setTooltip(t => t.visible ? { ...t, x:e.clientX+14, y:e.clientY-10 } : t);
+    setTooltip(t => {
+      if (!t.visible) return t;
+      return { ...t, ...tooltipPos(e.clientX, e.clientY) };
+    });
   }, []);
 
   const hide = React.useCallback(() => {
     setTooltip(t => ({ ...t, visible:false }));
   }, []);
 
+  const posStyle = tooltip.flip
+    ? { left: tooltip.x, bottom: window.innerHeight - tooltip.y + 10, top: 'auto' as const }
+    : { left: tooltip.x, top: tooltip.y - 10 };
+
   const TooltipEl = (
-    <div className={`omg-tooltip${tooltip.visible?' visible':''}`} style={{ left:tooltip.x, top:tooltip.y }}>
+    <div className={`omg-tooltip${tooltip.visible?' visible':''}`} style={posStyle}>
       {tooltip.title && <div className="omg-tooltip-title">{tooltip.title}</div>}
       {tooltip.rows.map((r,i) => <div key={i} className="omg-tooltip-row">{r}</div>)}
     </div>
