@@ -42,6 +42,14 @@ function fmtRange(start: ISODate, end: ISODate): string {
 }
 
 const TYPE_LABEL: Record<string, string> = { vacation: 'Отпуск', sick: 'Больничный', dayoff: 'Дейоф' };
+const TYPE_SHORT: Record<string, string> = { vacation: 'Отп',    sick: 'Больн',      dayoff: 'Дейоф' };
+// Минимальный colSpan для показа полного названия (в рабочих днях)
+const FULL_SPAN:  Record<string, number> = { vacation: 4,        sick: 6,            dayoff: 4 };
+
+function barLabel(type: 'vacation' | 'sick' | 'dayoff', colSpan: number): string | null {
+  if (colSpan < 2) return null;
+  return colSpan >= FULL_SPAN[type] ? TYPE_LABEL[type] : TYPE_SHORT[type];
+}
 
 export default function Absences({ data, navigate }: PageProps) {
   const { engineers, history } = data;
@@ -256,12 +264,11 @@ export default function Absences({ data, navigate }: PageProps) {
                     const colSpan = barEnd - si;
                     const barH    = period.type === 'dayoff' ? 18 : 30;
                     const barTop  = (44 - barH) / 2;
-                    const label   = TYPE_LABEL[period.type];
                     return (
                       <div
                         key={pi}
                         onClick={() => navigate('engineer', eng.id)}
-                        onMouseEnter={e => show(e, eng.name, [label, fmtRange(period.start, period.end), eng.regularTask || ''].filter(Boolean))}
+                        onMouseEnter={e => show(e, eng.name, [TYPE_LABEL[period.type], fmtRange(period.start, period.end), eng.regularTask || ''].filter(Boolean))}
                         onMouseLeave={hide}
                         style={{
                           position: 'absolute',
@@ -275,9 +282,9 @@ export default function Absences({ data, navigate }: PageProps) {
                           boxShadow: '0 1px 4px rgba(0,0,0,0.18)',
                         }}
                       >
-                        {colSpan >= 2 && (
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
-                            {colSpan <= 3 ? label.charAt(0) : colSpan <= 6 ? label.slice(0, 3) : label}
+                        {barLabel(period.type, colSpan) && (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
+                            {barLabel(period.type, colSpan)}
                           </span>
                         )}
                       </div>
