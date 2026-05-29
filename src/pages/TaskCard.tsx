@@ -10,8 +10,9 @@ import {
   updateTaskProgress,
 } from '../domain/task';
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
+import { genId } from '../utils/ids';
 import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm } from '../components/UI';
-import type { Task } from '../domain/types';
+import type { Task, ExtraWorkEntry } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
 interface Props extends PageProps {
@@ -49,6 +50,8 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   const [completeCustomDate, setCompleteCustomDate] = useState('');
   const { confirm, ConfirmEl } = useConfirm();
   const progressInputRef = useRef<HTMLInputElement>(null);
+  const [showExtraForm, setShowExtraForm] = useState(false);
+  const [extraForm, setExtraForm] = useState({ title: '', date: todayStr(), note: '' });
 
   if (!task) return <div style={{ padding:24 }}>Задача не найдена</div>;
 
@@ -204,6 +207,18 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
 
   function reopenTask() {
     updateData(prev => reopenTaskOp(prev, taskId));
+  }
+
+  function addExtraWork() {
+    if (!extraForm.title.trim()) return;
+    const entry: ExtraWorkEntry = { id: genId('ew'), date: extraForm.date, title: extraForm.title.trim(), note: extraForm.note.trim() || undefined };
+    updateData(prev => ({ ...prev, tasks: prev.tasks.map(t => t.id === taskId ? { ...t, extraWork: [...(t.extraWork || []), entry] } : t) }));
+    setShowExtraForm(false);
+    setExtraForm({ title: '', date: todayStr(), note: '' });
+  }
+
+  function removeExtraWork(ewId: string) {
+    updateData(prev => ({ ...prev, tasks: prev.tasks.map(t => t.id === taskId ? { ...t, extraWork: (t.extraWork || []).filter(e => e.id !== ewId) } : t) }));
   }
 
   async function archiveTask() {
@@ -483,29 +498,94 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                   </div>
                 </Card>
 
+                <Card style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', marginBottom:14, textTransform:'uppercase', letterSpacing:'0.05em' }}>Дополнительная нагрузка</div>
+                  {(task.extraWork || []).length === 0 && !showExtraForm && (
+                    <div style={{ fontSize:13, color:'var(--text-tertiary)', marginBottom:10 }}>Нет записей</div>
+                  )}
+                  {(task.extraWork || []).sort((a,b) => b.date.localeCompare(a.date)).map(ew => (
+                    <div key={ew.id} style={{ display:'flex', gap:10, padding:'8px 0', borderBottom:'0.5px solid var(--border-light)', alignItems:'flex-start' }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:14, fontWeight:500, color:'var(--text-primary)' }}>{ew.title}</div>
+                        {ew.note && <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{ew.note}</div>}
+                        <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{formatDate(ew.date)}</div>
+                      </div>
+                      <button onClick={() => removeExtraWork(ew.id)} style={{ fontSize:16, lineHeight:1, color:'var(--text-tertiary)', border:'none', background:'transparent', cursor:'pointer', padding:'2px 4px', flexShrink:0 }}>×</button>
+                    </div>
+                  ))}
+                  {showExtraForm ? (
+                    <div style={{ marginTop:8, padding:'12px', background:'var(--bg-secondary)', borderRadius:8 }}>
+                      <FormRow label="Описание">
+                        <Input value={extraForm.title} onChange={e => setExtraForm(f=>({...f, title:e.target.value}))} placeholder="напр. Повторный ретест"/>
+                      </FormRow>
+                      <FormRow label="Дата">
+                        <DatePicker value={extraForm.date} onChange={v => setExtraForm(f=>({...f, date:v}))} clearable={false}/>
+                      </FormRow>
+                      <FormRow label="Комментарий">
+                        <Input value={extraForm.note} onChange={e => setExtraForm(f=>({...f, note:e.target.value}))} placeholder="необязательно"/>
+                      </FormRow>
+                      <div style={{ display:'flex', gap:8, marginTop:8 }}>
+                        <BtnSecondary onClick={() => setShowExtraForm(false)}>Отмена</BtnSecondary>
+                        <BtnPrimary onClick={addExtraWork}>Добавить</BtnPrimary>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop:(task.extraWork||[]).length > 0 ? 10 : 0 }}>
+                      <BtnSecondary onClick={() => { setExtraForm({ title:'', date:todayStr(), note:'' }); setShowExtraForm(true); }} style={{ width:'100%', justifyContent:'center', fontSize:13 }}>+ Добавить</BtnSecondary>
+                    </div>
+                  )}
+                </Card>
+
                 <Card>
                   <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', marginBottom:14, textTransform:'uppercase', letterSpacing:'0.05em' }}>История изменений</div>
-                  {taskHistory.length===0 && <div style={{ fontSize:14, color:'var(--text-tertiary)' }}>Нет событий</div>}
-                  <div style={{ paddingLeft:20 }}>
-                    {taskHistory.map((h,i) => {
-                      const eng=engineers.find(e=>e.id===h.engineerId);
-                      const ft=tasks.find(t=>t.id===h.fromTask);
-                      const tt=tasks.find(t=>t.id===h.toTask);
-                      return (
-                        <div key={h.id} style={{ position:'relative', paddingBottom:i<taskHistory.length-1?14:0 }}>
-                          {i<taskHistory.length-1&&<div style={{ position:'absolute', left:-16, top:8, bottom:-6, width:1, background:'var(--border-light)' }}/>}
-                          <div style={{ position:'absolute', left:-20, top:4, width:9, height:9, borderRadius:'50%', background:h.type==='switch'?'var(--blue)':'var(--accent)', border:'2px solid var(--bg-primary)' }}/>
-                          <div style={{ fontSize:14 }}>
-                            <strong>{eng?.name||'—'}</strong>
-                            {h.type==='switch'&&<> переключён {ft?`с «${ft.name}»`:''}</>}
-                            {h.type==='return'&&<> возвращён {tt?`на «${tt.name}»`:'на домашнюю'}</>}
-                          </div>
-                          {h.note&&<div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{h.note}</div>}
-                          <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{formatDate(h.date)}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {(() => {
+                    type TLItem =
+                      | { kind: 'history'; date: string; key: string }
+                      | { kind: 'extra';   date: string; key: string };
+                    const timeline: TLItem[] = [
+                      ...taskHistory.map(h => ({ kind: 'history' as const, date: h.date, key: h.id })),
+                      ...(task.extraWork || []).map(e => ({ kind: 'extra' as const, date: e.date, key: e.id })),
+                    ].sort((a, b) => b.date.localeCompare(a.date));
+
+                    if (timeline.length === 0) return <div style={{ fontSize:14, color:'var(--text-tertiary)' }}>Нет событий</div>;
+
+                    return (
+                      <div style={{ paddingLeft:20 }}>
+                        {timeline.map((item, i) => {
+                          const isLast = i === timeline.length - 1;
+                          if (item.kind === 'history') {
+                            const h = taskHistory.find(x => x.id === item.key)!;
+                            const eng = engineers.find(e => e.id === h.engineerId);
+                            const ft  = tasks.find(t => t.id === h.fromTask);
+                            const tt  = tasks.find(t => t.id === h.toTask);
+                            return (
+                              <div key={h.id} style={{ position:'relative', paddingBottom: isLast ? 0 : 14 }}>
+                                {!isLast && <div style={{ position:'absolute', left:-16, top:8, bottom:-6, width:1, background:'var(--border-light)' }}/>}
+                                <div style={{ position:'absolute', left:-20, top:4, width:9, height:9, borderRadius:'50%', background:h.type==='switch'?'var(--blue)':'var(--accent)', border:'2px solid var(--bg-primary)' }}/>
+                                <div style={{ fontSize:14 }}>
+                                  <strong>{eng?.name||'—'}</strong>
+                                  {h.type==='switch'&&<> переключён {ft?`с «${ft.name}»`:''}</>}
+                                  {h.type==='return'&&<> возвращён {tt?`на «${tt.name}»`:'на домашнюю'}</>}
+                                </div>
+                                {h.note && <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{h.note}</div>}
+                                <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{formatDate(h.date)}</div>
+                              </div>
+                            );
+                          }
+                          const ew = (task.extraWork || []).find(x => x.id === item.key)!;
+                          return (
+                            <div key={ew.id} style={{ position:'relative', paddingBottom: isLast ? 0 : 14 }}>
+                              {!isLast && <div style={{ position:'absolute', left:-16, top:8, bottom:-6, width:1, background:'var(--border-light)' }}/>}
+                              <div style={{ position:'absolute', left:-20, top:4, width:9, height:9, borderRadius:'50%', background:'var(--amber)', border:'2px solid var(--bg-primary)' }}/>
+                              <div style={{ fontSize:14, fontWeight:500 }}>{ew.title}</div>
+                              {ew.note && <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{ew.note}</div>}
+                              <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{formatDate(ew.date)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </Card>
               </>
             )}

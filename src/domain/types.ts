@@ -52,6 +52,14 @@ export interface Task {
   // Произвольная форма из калькулятора оценки
   estimateForm?: Record<string, unknown>;
   link?: string;
+  extraWork?: ExtraWorkEntry[];
+}
+
+export interface ExtraWorkEntry {
+  id: string;
+  date: ISODate;
+  title: string;
+  note?: string;
 }
 
 // Тип записи в истории занятости.
