@@ -83,7 +83,7 @@ export default function Dashboard({ data, updateData, navigate }: PageProps) {
             const staffingNote = planned != null ? (() => {
               const headcount = (data.leadIncluded ?? false) ? engineers.length : total;
               const diff = headcount - planned;
-              if (diff === 0) return { text: `план ${planned} — норма`, color: 'var(--success)' };
+              if (diff === 0) return null;
               if (diff < 0)   return { text: `план ${planned} · недобор ${-diff}`, color: 'var(--red)' };
               return                  { text: `план ${planned} · перебор ${diff}`, color: 'var(--amber)' };
             })() : null;
