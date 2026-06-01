@@ -78,21 +78,32 @@ export default function Dashboard({ data, updateData, navigate }: PageProps) {
             const total     = engineers.filter(isWorkingRole).length;
             const available = engineers.filter(e => isWorkingRole(e) && isAvailableToday(e)).length;
             const unav      = total - available;
+
+            const planned = data.plannedEngineers ?? null;
+            const staffingNote = planned != null ? (() => {
+              const headcount = (data.leadIncluded ?? false) ? engineers.length : total;
+              const diff = headcount - planned;
+              if (diff === 0) return { text: `план ${planned} — норма`, color: 'var(--success)' };
+              if (diff < 0)   return { text: `план ${planned} · недобор ${-diff}`, color: 'var(--red)' };
+              return                  { text: `план ${planned} · перебор ${diff}`, color: 'var(--amber)' };
+            })() : null;
+
             return [
               { label:'Инженеров в команде',
                 value: `${available}/${total}`,
                 sub: unav > 0 ? `${unav} недоступн${unav===1?'ый':'ых'}` : 'все доступны',
                 subColor: unav>0?'var(--amber)':'var(--success)',
-                valueColor:'var(--text-primary)' },
-              { label:'Активных задач', value:tasks.filter(t=>t.status==='active').length, sub:`${activeTasks.filter(t=>t.deadline).length} с жёстким дедлайном`, subColor:'var(--text-tertiary)', valueColor:'var(--text-primary)' },
-              { label:'Под угрозой', value:atRisk, sub:'требуют внимания', subColor:atRisk>0?'var(--red)':'var(--text-tertiary)', valueColor:atRisk>0?'var(--red)':'var(--text-primary)' },
-              { label:'С опережением', value:onTrack, sub:'идут по плану', subColor:'var(--success)', valueColor:'var(--success)' },
+                valueColor:'var(--text-primary)', note: staffingNote },
+              { label:'Активных задач', value:tasks.filter(t=>t.status==='active').length, sub:`${activeTasks.filter(t=>t.deadline).length} с жёстким дедлайном`, subColor:'var(--text-tertiary)', valueColor:'var(--text-primary)', note: null },
+              { label:'Под угрозой', value:atRisk, sub:'требуют внимания', subColor:atRisk>0?'var(--red)':'var(--text-tertiary)', valueColor:atRisk>0?'var(--red)':'var(--text-primary)', note: null },
+              { label:'С опережением', value:onTrack, sub:'идут по плану', subColor:'var(--success)', valueColor:'var(--success)', note: null },
             ];
           })().map((m,i)=>(
             <div key={i} style={{ background:'var(--bg-primary)', border:'0.5px solid var(--border-light)', borderRadius:10, padding:'16px 18px', boxShadow:'var(--shadow-sm)' }}>
               <div style={{ fontSize:13, color:'var(--text-tertiary)', marginBottom:8, fontWeight:500 }}>{m.label}</div>
               <div style={{ fontSize:26, fontWeight:700, color:m.valueColor }}>{m.value}</div>
               <div style={{ fontSize:13, color:m.subColor, marginTop:4 }}>{m.sub}</div>
+              {m.note && <div style={{ fontSize:12, color:m.note.color, marginTop:4, fontWeight:600 }}>{m.note.text}</div>}
             </div>
           ))}
         </div>

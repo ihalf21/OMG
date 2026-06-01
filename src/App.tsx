@@ -196,6 +196,7 @@ export default function App() {
     jiraUrl: string;
     directions: string[];
     plannedEngineers: number | null;
+    leadIncluded: boolean;
   }) {
     setData(prev => prev ? ({
       ...prev,
@@ -206,6 +207,7 @@ export default function App() {
         jiraUrl: patch.jiraUrl || undefined,
         directions: patch.directions,
         plannedEngineers: patch.plannedEngineers,
+        leadIncluded: patch.leadIncluded,
       } : p),
     }) : prev);
   }

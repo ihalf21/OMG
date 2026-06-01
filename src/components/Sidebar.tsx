@@ -137,6 +137,7 @@ interface SidebarProps {
     jiraUrl: string;
     directions: string[];
     plannedEngineers: number | null;
+    leadIncluded: boolean;
   }) => void;
   onArchiveProject: (id: string) => void;
   onRestoreProject: (id: string) => void;
@@ -164,6 +165,7 @@ export default function Sidebar({
   const [projectJiraUrl, setProjectJiraUrl] = useState('');
   const [projectDirections, setProjectDirections] = useState<string[]>([]);
   const [projectPlannedEngineers, setProjectPlannedEngineers] = useState('');
+  const [projectLeadIncluded, setProjectLeadIncluded] = useState(false);
   const [newDirection, setNewDirection] = useState('');
   const [addTab, setAddTab] = useState<'new' | 'archive'>('new');
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -185,6 +187,7 @@ export default function Sidebar({
     setProjectJiraUrl(project.jiraUrl || '');
     setProjectDirections(project.directions || []);
     setProjectPlannedEngineers(project.plannedEngineers != null ? String(project.plannedEngineers) : '');
+    setProjectLeadIncluded(project.leadIncluded ?? false);
     setNewDirection('');
     setConfirmArchive(false);
     setProjectModal({ mode: 'edit', project });
@@ -213,6 +216,7 @@ export default function Sidebar({
         jiraUrl: projectJiraUrl.trim(),
         directions: projectDirections,
         plannedEngineers: projectPlannedEngineers.trim() ? (parseInt(projectPlannedEngineers.trim()) || null) : null,
+        leadIncluded: projectLeadIncluded,
       });
     }
     closeModal();
@@ -596,6 +600,18 @@ export default function Sidebar({
                 onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
                 onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
               />
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginTop: 8,
+                fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={projectLeadIncluded}
+                  onChange={e => setProjectLeadIncluded(e.target.checked)}
+                  style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: 'pointer', flexShrink: 0 }}
+                />
+                Лид включён
+              </label>
             </div>
           </div>
 

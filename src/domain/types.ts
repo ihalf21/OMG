@@ -90,6 +90,7 @@ export interface Project {
   jiraUrl?: string;
   directions?: string[];
   plannedEngineers?: number | null;
+  leadIncluded?: boolean;
   engineers: Engineer[];
   tasks: Task[];
   history: HistoryEntry[];
