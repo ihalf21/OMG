@@ -340,10 +340,8 @@ export function engineersNeeded(task: Task, engineers: Engineer[], deadlineOverr
   if (fc.deadlineStatus !== 'overdue') return 0;
 
   const totalHours = task.estimateHours || 0;
-  const cap = currentCapacity(task, engineers);
-
-  const daysToDeadline = workdaysBetween(todayStr(), effectiveDl);
-  if (daysToDeadline <= 0) return null;
+  const today = todayStr();
+  if (effectiveDl < today) return null;
 
   let remainingHours = totalHours;
   if (task.totalCases && task.totalCases > 0 && (task.doneCases || 0) > 0) {
@@ -356,9 +354,28 @@ export function engineersNeeded(task: Task, engineers: Engineer[], deadlineOverr
     remainingHours = Math.max(0, totalHours - usedHours);
   }
 
-  const neededCap = remainingHours / (daysToDeadline * HOURS_PER_DAY);
-  const extraCap  = neededCap - cap;
-  return extraCap > 0 ? Math.ceil(extraCap) : 0;
+  // Посуточный подсчёт реально доступных часов — учитывает отпуска/больничные
+  const assignedEngs = (task.assignedEngineers || [])
+    .map(id => engineers.find(e => e.id === id))
+    .filter((e): e is Engineer => !!e);
+
+  let availableHours = 0;
+  let workdaysCount = 0;
+  let cursor = today;
+  while (cursor <= effectiveDl) {
+    if (isWorkday(cursor)) {
+      workdaysCount++;
+      availableHours += assignedEngs.reduce((sum, eng) => sum + capacityOn(eng, cursor), 0) * HOURS_PER_DAY;
+    }
+    cursor = addCalendarDay(cursor);
+  }
+
+  if (availableHours >= remainingHours || workdaysCount === 0) return 0;
+
+  // Дефицит часов → сколько полноценных инженеров нужно добавить
+  const shortfall = remainingHours - availableHours;
+  const hoursPerEng = workdaysCount * HOURS_PER_DAY;
+  return Math.ceil(shortfall / hoursPerEng);
 }
 
 /**
