@@ -18,12 +18,13 @@ export function currentCapacity(task: Task, engineers: Engineer[]): number {
   }, 0);
 }
 
-// Номинальная мощность команды — игнорирует временные отсутствия.
-// Используется при elapsed-based прогрессе.
+// Номинальная мощность команды — игнорирует плановые отсутствия (отпуск, дейоф),
+// но учитывает больничный: пока инженер болеет, его прошлая production неизвестна.
 export function nominalCapacity(task: Task, engineers: Engineer[]): number {
   return (task.assignedEngineers || []).reduce((sum, id) => {
     const eng = engineers.find(e => e.id === id);
     if (!eng) return sum;
+    if (eng.status === 'sick') return sum; // больничный = работа стоит, исключаем
     return sum + roleCoeff(eng.role);
   }, 0);
 }
@@ -192,6 +193,103 @@ export function statusBadgeStyle(status: DeadlineStatus | null | undefined): Bad
     case 'overdue': return { bg: 'var(--red-bg)',       color: 'var(--red)' };
     default:        return { bg: 'var(--bg-secondary)', color: 'var(--text-secondary)' };
   }
+}
+
+// ─── Phase-aware progress (requires estimateForm from calculator) ────────────
+
+const ESTIMATE_PCT_KEYS = new Set([
+  'reportingPct', 'commsPct', 'bugPct', 'retestPct',
+  'envInstPct', 'inexperiencePct', 'parallelPct', 'reservePct',
+]);
+
+function readEstimateM(form: Record<string, unknown>): {
+  stage1: number; stage2: number; stage3: number;
+  restHours: number; total: number; tcTotalCount: number;
+} | null {
+  const val = (key: string): number => {
+    const rec = form[key] as { m?: string } | undefined;
+    const raw = parseFloat(rec?.m ?? '') || 0;
+    return ESTIMATE_PCT_KEYS.has(key) ? raw / 100 : raw;
+  };
+  const stage1      = (val('tasksCount') * val('analysisTimeMin')) / 60;
+  const stage2      = (val('tcUpdateCount') * val('tcUpdateTimeMin') + val('tcNewCount') * val('tcNewTimeMin')) / 60;
+  const tcTotalCount = val('tcTotalCount');
+  const stage3      = (tcTotalCount * val('tcRunTimeMin')) / 60;
+  const stage4      = (val('reportingPct') + val('commsPct')) * stage3;
+  const stage5      = (tcTotalCount * val('bugPct') * val('defectTimeMin') + tcTotalCount * val('retestPct') * val('tcRunTimeMin') * val('retestCoeff')) / 60;
+  const subtotal    = stage1 + stage2 + stage3 + stage4 + stage5;
+  const riskCoeff   = 1 + val('envInstPct') + val('inexperiencePct') + val('parallelPct');
+  const total       = subtotal * riskCoeff * (1 + val('reservePct'));
+  if (total <= 0) return null;
+  return { stage1, stage2, stage3, restHours: total - stage1 - stage2 - stage3, total, tcTotalCount };
+}
+
+export type EstimatePhase = 'analysis' | 'tc_writing' | 'test_run' | 'defects';
+
+export interface PhaseInfo {
+  phase: EstimatePhase;
+  phaseName: string;
+  phasePct: number;
+  overallPct: number;
+  expectedTests: number | null;
+  totalTests: number | null;
+  phases: Array<{ id: EstimatePhase; label: string; widthPct: number }>;
+}
+
+/**
+ * Текущий этап работы над задачей на основе оценки из калькулятора.
+ * Возвращает null если задача не оценивалась в калькуляторе или ещё не стартовала.
+ */
+export function calcPhaseInfo(task: Task, engineers: Engineer[]): PhaseInfo | null {
+  if (!task.estimateForm || !task.estimateHours || !task.startDate) return null;
+  const est = readEstimateM(task.estimateForm as Record<string, unknown>);
+  if (!est) return null;
+
+  const { stage1, stage2, stage3, restHours, total, tcTotalCount } = est;
+  const totalHours = task.estimateHours;
+
+  const phases: PhaseInfo['phases'] = [
+    { id: 'analysis',   label: 'Анализ',      widthPct: (stage1    / total) * 100 },
+    { id: 'tc_writing', label: 'Написание ТК', widthPct: (stage2    / total) * 100 },
+    { id: 'test_run',   label: 'Прогон ТК',   widthPct: (stage3    / total) * 100 },
+    { id: 'defects',    label: 'Дефекты',      widthPct: (restHours / total) * 100 },
+  ];
+
+  const bound1 = (stage1                     / total) * totalHours;
+  const bound2 = ((stage1 + stage2)          / total) * totalHours;
+  const bound3 = ((stage1 + stage2 + stage3) / total) * totalHours;
+
+  const capFull   = nominalCapacity(task, engineers);
+  const usedHours = workdaysElapsed(task.startDate) * capFull * HOURS_PER_DAY;
+  const overallPct = Math.min(100, totalHours > 0 ? Math.round((usedHours / totalHours) * 100) : 0);
+
+  const totalTests: number | null = tcTotalCount > 0 ? Math.round(tcTotalCount) : null;
+
+  function pct(used: number, from: number, to: number) {
+    const dur = to - from;
+    return dur > 0 ? Math.min(100, Math.round(((used - from) / dur) * 100)) : 100;
+  }
+
+  if (usedHours < bound1) {
+    return { phase:'analysis', phaseName:'Анализ задач',
+      phasePct: bound1 > 0 ? Math.round((usedHours / bound1) * 100) : 0,
+      overallPct, expectedTests:null, totalTests, phases };
+  }
+  if (usedHours < bound2) {
+    return { phase:'tc_writing', phaseName:'Написание ТК',
+      phasePct: pct(usedHours, bound1, bound2), overallPct, expectedTests:null, totalTests, phases };
+  }
+  if (usedHours < bound3 || bound3 <= bound2) {
+    const dur = bound3 - bound2;
+    const inPhase = Math.max(0, Math.min(usedHours - bound2, dur));
+    const expectedTests = (totalTests && dur > 0)
+      ? Math.min(totalTests, Math.round((inPhase / dur) * totalTests))
+      : null;
+    return { phase:'test_run', phaseName:'Прогон ТК',
+      phasePct: pct(usedHours, bound2, bound3), overallPct, expectedTests, totalTests, phases };
+  }
+  return { phase:'defects', phaseName:'Дефекты и ретесты',
+    phasePct: pct(usedHours, bound3, totalHours), overallPct, expectedTests:null, totalTests, phases };
 }
 
 export function fmtHours(h: number | null | undefined): string {

@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { calcForecast, statusColor, statusLabel, statusBadgeStyle, fmtHours, getDerivedDeadline } from '../utils/forecast';
+import React, { useState } from 'react';
+import { calcForecast, calcPhaseInfo, statusColor, statusLabel, statusBadgeStyle, fmtHours, getDerivedDeadline } from '../utils/forecast';
 import { isAvailableToday, isWorkingRole } from '../domain/availability';
 import { REGULAR_TASKS } from '../domain/tasks';
 import {
@@ -7,7 +7,6 @@ import {
   addEngineerToTask, removeEngineerFromTask, getEngineerActiveTasks,
   unlinkChild as unlinkChildOp,
   completeTask as completeTaskOp, reopenTask as reopenTaskOp, archiveTask as archiveTaskOp,
-  updateTaskProgress,
 } from '../domain/task';
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
 import { genId } from '../utils/ids';
@@ -26,11 +25,6 @@ interface EditForm {
   estimateHours: string | number;
   startDate: string;
   deadline: string;
-  totalCases: string | number;
-  hoursAnalysis: string | number;
-  hoursActualize: string | number;
-  hoursDevelopment: string | number;
-  hoursTesting: string | number;
   dependsOn: string;
   newChildId: string;
   link: string;
@@ -49,7 +43,6 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   const [completeDateMode, setCompleteDateMode] = useState<CompleteMode>('today');
   const [completeCustomDate, setCompleteCustomDate] = useState('');
   const { confirm, ConfirmEl } = useConfirm();
-  const progressInputRef = useRef<HTMLInputElement>(null);
   const [showExtraForm, setShowExtraForm] = useState(false);
   const [extraForm, setExtraForm] = useState({ title: '', date: todayStr(), note: '' });
 
@@ -77,11 +70,6 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
       name: task!.name, direction: task!.direction || '',
       estimateHours: task!.estimateHours || '',
       startDate: task!.startDate || '', deadline: task!.deadline || '',
-      totalCases: task!.totalCases || '',
-      hoursAnalysis:    task!.hoursAnalysis    || '',
-      hoursActualize:   task!.hoursActualize   || '',
-      hoursDevelopment: task!.hoursDevelopment || '',
-      hoursTesting:     task!.hoursTesting     || '',
       dependsOn:  task!.dependsOn || '',
       newChildId: '',
       link: task!.link || '',
@@ -91,32 +79,20 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
 
   function saveEdit() {
     if (!editForm) return;
-    const breakdown = {
-      hoursAnalysis:    Math.max(0, parseInt(String(editForm.hoursAnalysis))    || 0),
-      hoursActualize:   Math.max(0, parseInt(String(editForm.hoursActualize))   || 0),
-      hoursDevelopment: Math.max(0, parseInt(String(editForm.hoursDevelopment)) || 0),
-      hoursTesting:     Math.max(0, parseInt(String(editForm.hoursTesting))     || 0),
-    };
-    const totalFromBreakdown = Object.values(breakdown).reduce((s,v) => s+v, 0);
-
     updateData(prev => {
       let effectiveDependsOn: string | null = editForm.dependsOn || null;
       if (editForm.newChildId && !effectiveDependsOn) {
         const selectedChild = prev.tasks.find(t => t.id === editForm.newChildId);
-        if (selectedChild?.dependsOn) {
-          effectiveDependsOn = selectedChild.dependsOn;
-        }
+        if (selectedChild?.dependsOn) effectiveDependsOn = selectedChild.dependsOn;
       }
 
       const newTasks: Task[] = prev.tasks.map(t => {
         if (t.id === taskId) return {
           ...t,
           name: editForm.name, direction: editForm.direction || null,
-          estimateHours: totalFromBreakdown > 0 ? totalFromBreakdown : (parseInt(String(editForm.estimateHours)) > 0 ? parseInt(String(editForm.estimateHours)) : null),
-          ...breakdown,
+          estimateHours: parseInt(String(editForm.estimateHours)) > 0 ? parseInt(String(editForm.estimateHours)) : null,
           startDate: effectiveDependsOn ? null : (editForm.startDate || null),
           deadline: editForm.deadline || null,
-          totalCases: editForm.totalCases ? parseInt(String(editForm.totalCases)) : null,
           dependsOn: effectiveDependsOn,
           link: editForm.link || undefined,
         };
@@ -186,6 +162,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   function removeEngineer(engId: string) { updateData(prev => removeEngineerFromTask(prev, taskId, engId)); }
 
   const totalCount = assignedEngs.length;
+  const phaseInfo  = calcPhaseInfo(task, engineers);
 
   const parentTask      = task.dependsOn ? tasks.find(t => t.id === task.dependsOn) : null;
   const inheritedEngIds = parentTask ? getEffectiveTeam(parentTask, tasks) : [];
@@ -315,10 +292,6 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                       <DatePicker value={editForm.deadline} onChange={v => setEditForm(f=>f?{...f, deadline:v}:f)} placeholder="Без дедлайна"/>
                     </FormRow>
                   </div>
-                  <FormRow label="Кейсов всего" hint="Оставьте пустым для авто-расчёта прогресса">
-                    <Input type="number" value={editForm.totalCases} onChange={e=>setEditForm(f=>f?{...f, totalCases:e.target.value}:f)} placeholder="например, 500"/>
-                  </FormRow>
-
                   {/* Зависимости */}
                   <div style={{ borderTop:'0.5px solid var(--border-light)', paddingTop:12, marginTop:8 }}>
                     <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', marginBottom:10, textTransform:'uppercase', letterSpacing:'0.04em' }}>Зависимость</div>
@@ -385,24 +358,6 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                     </div>
                   </div>
 
-                  <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', margin:'12px 0 6px', textTransform:'uppercase', letterSpacing:'0.04em' }}>Оценка по этапам (чч)</div>
-                  {([
-                    ['hoursAnalysis',    'Анализ'],
-                    ['hoursActualize',   'Актуализация'],
-                    ['hoursDevelopment', 'Разработка'],
-                    ['hoursTesting',     'Тестирование'],
-                  ] as const).map(([k, l]) => (
-                    <div key={k} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
-                      <span style={{ flex:1, fontSize:13, color:'var(--text-primary)' }}>{l}</span>
-                      <Input type="number" value={editForm[k]||''} onChange={e=>setEditForm(f=>f?{...f, [k]:e.target.value}:f)} placeholder="—" style={{ width:80, textAlign:'center' }}/>
-                      <span style={{ fontSize:12, color:'var(--text-tertiary)' }}>чч</span>
-                    </div>
-                  ))}
-                  {(() => {
-                    const keys = ['hoursAnalysis','hoursActualize','hoursDevelopment','hoursTesting'] as const;
-                    const total = keys.reduce((s,k)=>s+(parseInt(String(editForm[k]))||0),0);
-                    return total > 0 ? <div style={{ fontSize:13, color:'var(--text-secondary)', textAlign:'right', marginBottom:4 }}>Итого: <strong style={{ color:'var(--text-primary)' }}>{total} чч</strong></div> : null;
-                  })()}
                 </>
               ) : (
                 <>
@@ -439,12 +394,6 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                       : <strong>{fmtHours(task.estimateHours)}</strong>
                     }
                   </FieldRow>
-                  {/* Разбивка по этапам */}
-                  {(([['hoursAnalysis','Анализ'],['hoursActualize','Актуализация'],['hoursDevelopment','Разработка'],['hoursTesting','Тестирование']]) as const).map(([k,l]) => {
-                    const v = task[k];
-                    return v && v > 0 ? <FieldRow key={k} label={`  · ${l}`}><span style={{ color:'var(--text-secondary)' }}>{fmtHours(v)}</span></FieldRow> : null;
-                  })}
-                  <FieldRow label="Кейсов всего">{task.totalCases||'—'}</FieldRow>
                   {task.dependsOn && (() => {
                     const parent = tasks.find(t=>t.id===task.dependsOn);
                     return parent ? (
@@ -473,31 +422,53 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                 <Card style={{ marginBottom:14 }}>
                   <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', marginBottom:14, textTransform:'uppercase', letterSpacing:'0.05em' }}>Прогресс</div>
 
-                  <ProgressBar pct={fc?.progressPct||0} color={barColor} height={7}/>
-                  <div style={{ fontSize:12, color:'var(--text-tertiary)', display:'flex', justifyContent:'space-between', marginTop:5 }}>
-                    <span>{task.totalCases?`${task.doneCases} / ${task.totalCases} кейсов`:'Автоматический расчёт'}</span>
-                    <span style={{ fontWeight:600 }}>{fc?.progressPct||0}%</span>
+                  <ProgressBar pct={phaseInfo ? phaseInfo.overallPct : (fc?.progressPct||0)} color={barColor} height={7}/>
+                  <div style={{ fontSize:12, color:'var(--text-tertiary)', display:'flex', justifyContent:'space-between', marginTop:5, marginBottom: phaseInfo ? 14 : 0 }}>
+                    <span>Автоматический расчёт</span>
+                    <span style={{ fontWeight:600 }}>{phaseInfo ? phaseInfo.overallPct : (fc?.progressPct||0)}%</span>
                   </div>
 
-                  {/* Ручной ввод прогресса по кейсам */}
-                  {task.totalCases && task.totalCases > 0 && (
-                    <div style={{ marginTop:12, display:'flex', alignItems:'center', gap:10 }}>
-                      <span style={{ fontSize:13, color:'var(--text-secondary)', flex:1 }}>Внести факт:</span>
-                      <input type="number" defaultValue={task.doneCases}
-                        ref={progressInputRef}
-                        style={{ width:80, padding:'5px 8px', border:'1.5px solid var(--border-mid)', borderRadius:6, fontSize:13, background:'var(--bg-secondary)', color:'var(--text-primary)', textAlign:'center' }}
-                      />
-                      <span style={{ fontSize:12, color:'var(--text-tertiary)' }}>из {task.totalCases}</span>
-                      <button onClick={() => {
-                        const val = parseInt(progressInputRef.current?.value || '');
-                        if (!isNaN(val)) updateData(prev => updateTaskProgress(prev, taskId, val));
-                      }} style={{ padding:'5px 12px', background:'var(--accent)', color:'#fff', border:'none', borderRadius:6, fontSize:12, fontWeight:500, cursor:'pointer' }}>
-                        Сохранить
-                      </button>
-                    </div>
-                  )}
+                  {/* Фазы (только если оценка из калькулятора) */}
+                  {phaseInfo && (() => {
+                    const PHASE_ORDER = ['analysis','tc_writing','test_run','defects'] as const;
+                    const curIdx = PHASE_ORDER.indexOf(phaseInfo.phase);
+                    return (
+                      <>
+                        <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:12 }}>
+                          {phaseInfo.phases.map((ph, i) => {
+                            const isPast    = i < curIdx;
+                            const isCurrent = ph.id === phaseInfo.phase;
+                            return (
+                              <div key={ph.id} style={{
+                                padding:'4px 10px', borderRadius:6, fontSize:12, fontWeight: isCurrent ? 700 : 500,
+                                background: isPast ? 'var(--success-bg)' : isCurrent ? 'var(--accent-bg)' : 'var(--bg-secondary)',
+                                color: isPast ? 'var(--success)' : isCurrent ? 'var(--accent)' : 'var(--text-tertiary)',
+                                border: `1px solid ${isPast ? 'transparent' : isCurrent ? 'var(--accent)' : 'var(--border-light)'}`,
+                                display:'flex', alignItems:'center', gap:4,
+                              }}>
+                                {isPast && '✓ '}{isCurrent && '▶ '}
+                                {ph.label}
+                                {isCurrent && ` · ${phaseInfo.phasePct}%`}
+                              </div>
+                            );
+                          })}
+                        </div>
 
-                  <div style={{ marginTop:12, background:'var(--bg-secondary)', borderRadius:8, padding:'12px 14px' }}>
+                        {phaseInfo.phase === 'test_run' && phaseInfo.expectedTests !== null && (
+                          <div style={{ padding:'12px 14px', background:'var(--accent-bg)', borderRadius:8, border:'1px solid var(--accent)', marginBottom:12 }}>
+                            <div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:4, textTransform:'uppercase', letterSpacing:'0.04em' }}>По оценке к данному моменту</div>
+                            <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                              <span style={{ fontSize:24, fontWeight:700, color:'var(--accent)' }}>{phaseInfo.expectedTests}</span>
+                              <span style={{ fontSize:14, color:'var(--text-secondary)' }}>/ {phaseInfo.totalTests} ТК</span>
+                            </div>
+                            <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:4 }}>Сравни с TMS — если факт меньше, прогноз по срокам оптимистичный</div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+
+                  <div style={{ marginTop: phaseInfo ? 0 : 12, background:'var(--bg-secondary)', borderRadius:8, padding:'12px 14px' }}>
                     {([
                       ['Осталось работы', fmtHours(fc?.hoursLeft), false],
                       ['Рабочих дней до конца', fc?.daysLeft??'—', false],
