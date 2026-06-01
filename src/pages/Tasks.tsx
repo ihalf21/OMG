@@ -136,10 +136,41 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
       archivedDate: null,
       link: form.link || undefined,
     };
-    updateData(prev => ({
-      ...prev,
-      tasks: [...prev.tasks, { ...newTask, sortOrder: prev.tasks.length }],
-    }));
+    updateData(prev => {
+      const parentId = newTask.dependsOn;
+
+      if (!parentId) {
+        return {
+          ...prev,
+          tasks: [...prev.tasks, { ...newTask, sortOrder: prev.tasks.length }],
+        };
+      }
+
+      // Если у выбранного родителя A уже есть дочерняя задача B — перевязываем B на новую C
+      const existingChild = prev.tasks.find(t =>
+        t.status === 'active' && t.dependsOn === parentId
+      );
+
+      const parentTask = prev.tasks.find(t => t.id === parentId);
+      const parentSortOrder = parentTask?.sortOrder ?? (prev.tasks.length - 1);
+
+      // Сдвигаем sortOrder всех задач после родителя, чтобы вставить C на нужную позицию
+      const updatedTasks = prev.tasks.map(t => {
+        let result = t;
+        if (existingChild && t.id === existingChild.id) {
+          result = { ...result, dependsOn: newTask.id };
+        }
+        if ((t.sortOrder ?? 999) > parentSortOrder) {
+          result = { ...result, sortOrder: (t.sortOrder ?? 999) + 1 };
+        }
+        return result;
+      });
+
+      return {
+        ...prev,
+        tasks: [...updatedTasks, { ...newTask, sortOrder: parentSortOrder + 1 }],
+      };
+    });
     setShowModal(false);
     setForm(emptyForm());
   }
