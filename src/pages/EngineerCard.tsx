@@ -10,7 +10,7 @@ import {
   removeFromTask, switchToTask,
   deleteEngineer as deleteEngineerOp,
 } from '../domain/engineer';
-import type { EngineerRole, HistoryType } from '../domain/types';
+import type { EngineerRole, HistoryType, HistoryEntry } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
 interface Props extends PageProps {
@@ -42,12 +42,65 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
   const [showSickReturn, setShowSickReturn] = useState(false);
   const [sickReturnDateInput, setSickReturnDateInput] = useState('');
   const { confirm, ConfirmEl } = useConfirm();
+  const [deleteDialog, setDeleteDialog] = useState<{
+    entry: HistoryEntry;
+    related: HistoryEntry | null;
+    deleteRelated: boolean;
+  } | null>(null);
 
   if (!eng) return <div style={{ padding:24 }}>Инженер не найден</div>;
 
   const currentTask = tasks.find(t => t.assignedEngineers?.includes(eng.id) && t.status === 'active');
   const engHistory  = history.filter(h => h.engineerId === eng.id).sort((a,b) => b.date.localeCompare(a.date));
   const switchCount = history.filter(h => h.engineerId === eng.id && h.type === 'switch').length;
+
+  function findRelated(h: HistoryEntry): HistoryEntry | null {
+    const sorted = history
+      .filter(x => x.engineerId === h.engineerId)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const idx = sorted.findIndex(x => x.id === h.id);
+    if (idx < 0) return null;
+
+    if (h.type === 'sick' || h.type === 'vacation') {
+      // Ищем следующий return без fromTask (конец периода)
+      for (let i = idx + 1; i < sorted.length; i++) {
+        if (sorted[i].type === 'return' && !sorted[i].fromTask) return sorted[i];
+        if (sorted[i].type === 'sick' || sorted[i].type === 'vacation') break;
+      }
+    }
+    if (h.type === 'return' && !h.fromTask) {
+      // Ищем предыдущий sick/vacation (начало периода)
+      for (let i = idx - 1; i >= 0; i--) {
+        if (sorted[i].type === 'sick' || sorted[i].type === 'vacation') return sorted[i];
+        if (sorted[i].type === 'return' && !sorted[i].fromTask) break;
+      }
+    }
+    return null;
+  }
+
+  function openDeleteDialog(h: HistoryEntry) {
+    const related = findRelated(h);
+    setDeleteDialog({ entry: h, related, deleteRelated: !!related });
+  }
+
+  function confirmDelete() {
+    if (!deleteDialog) return;
+    const ids = new Set([deleteDialog.entry.id]);
+    if (deleteDialog.deleteRelated && deleteDialog.related) ids.add(deleteDialog.related.id);
+    updateData(prev => ({ ...prev, history: prev.history.filter(x => !ids.has(x.id)) }));
+    setDeleteDialog(null);
+  }
+
+  function historyLabel(h: HistoryEntry): string {
+    const ft = tasks.find(t => t.id === h.fromTask);
+    const tt = tasks.find(t => t.id === h.toTask);
+    if (h.type === 'switch')   return `Переключён${ft ? ` с «${ft.name}»` : ''}${tt ? ` → «${tt.name}»` : ''}`;
+    if (h.type === 'return')   return ft ? `Снят с задачи «${ft.name}»` : (h.note || 'Вышел на работу');
+    if (h.type === 'sick')     return 'Открыт больничный';
+    if (h.type === 'vacation') return 'Отпуск';
+    if (h.type === 'dayoff')   return 'Дейоф';
+    return h.type;
+  }
 
   function startEdit() {
     setEditForm({
@@ -150,6 +203,46 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
       {ConfirmEl}
+
+      {deleteDialog && (
+        <Modal title="Удалить запись из истории?" onClose={() => setDeleteDialog(null)} width={440}>
+          <div style={{ padding:'12px 14px', background:'var(--bg-secondary)', borderRadius:8, marginBottom:16 }}>
+            <div style={{ fontSize:14, fontWeight:500, color:'var(--text-primary)' }}>
+              {historyLabel(deleteDialog.entry)}
+            </div>
+            <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:4 }}>
+              {formatDate(deleteDialog.entry.date)}
+              {deleteDialog.entry.note && ` · ${deleteDialog.entry.note}`}
+            </div>
+          </div>
+
+          {deleteDialog.related && (
+            <label style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer', padding:'10px 14px', borderRadius:8, border:`1.5px solid ${deleteDialog.deleteRelated ? 'var(--red)' : 'var(--border-mid)'}`, background: deleteDialog.deleteRelated ? 'var(--red-bg)' : 'var(--bg-secondary)', marginBottom:16, transition:'all 0.15s' }}>
+              <input
+                type="checkbox"
+                checked={deleteDialog.deleteRelated}
+                onChange={e => setDeleteDialog(d => d ? { ...d, deleteRelated: e.target.checked } : d)}
+                style={{ marginTop:2, cursor:'pointer', accentColor:'var(--red)', flexShrink:0 }}
+              />
+              <div>
+                <div style={{ fontSize:13, fontWeight:500, color: deleteDialog.deleteRelated ? 'var(--red)' : 'var(--text-primary)' }}>
+                  Также удалить связанное событие
+                </div>
+                <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:3 }}>
+                  {historyLabel(deleteDialog.related)} · {formatDate(deleteDialog.related.date)}
+                </div>
+              </div>
+            </label>
+          )}
+
+          <ModalFooter
+            onCancel={() => setDeleteDialog(null)}
+            onSave={confirmDelete}
+            saveLabel={`Удалить ${deleteDialog.related && deleteDialog.deleteRelated ? '2 записи' : '1 запись'}`}
+          />
+        </Modal>
+      )}
+
       <PageTopbar title={eng.name}>
         <BackBtn onClick={onBack} label="Команда"/>
         {!editMode ? (
@@ -281,7 +374,7 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                           <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{formatDate(h.date)}</div>
                         </div>
                         <button
-                          onClick={() => updateData(prev => ({ ...prev, history: prev.history.filter(x => x.id !== h.id) }))}
+                          onClick={() => openDeleteDialog(h)}
                           title="Удалить запись"
                           style={{ flexShrink:0, fontSize:14, lineHeight:1, color:'var(--text-tertiary)', border:'none', background:'transparent', cursor:'pointer', padding:'2px 4px', borderRadius:4, opacity:0.5 }}
                           onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity='1'; (e.currentTarget as HTMLButtonElement).style.color='var(--red)'; }}
