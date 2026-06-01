@@ -270,15 +270,24 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                     <div key={h.id} style={{ position:'relative', paddingBottom:i<engHistory.length-1?16:0 }}>
                       {i<engHistory.length-1&&<div style={{ position:'absolute', left:-16, top:8, bottom:-8, width:1, background:'var(--border-light)' }}/>}
                       <div style={{ position:'absolute', left:-20, top:4, width:9, height:9, borderRadius:'50%', background:dotColors[h.type]||'var(--accent)', border:'2px solid var(--bg-primary)' }}/>
-                      <div style={{ fontSize:14, color:'var(--text-primary)' }}>
-                        {h.type==='switch'   &&<>Переключён {fromTask?`с «${fromTask.name}» `:''}{toTask?`→ «${toTask.name}»`:''}</>}
-                        {h.type==='return'   &&(fromTask?<>Снят с задачи «{fromTask.name}»</>:<>{h.note||'Вышел на работу'}</>)}
-                        {h.type==='sick'     &&<>Открыт больничный</>}
-                        {h.type==='vacation' &&<>Отпуск</>}
-                        {h.type==='dayoff'   &&<>Дейоф</>}
+                      <div style={{ fontSize:14, color:'var(--text-primary)', display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
+                        <div>
+                          {h.type==='switch'   &&<>Переключён {fromTask?`с «${fromTask.name}» `:''}{toTask?`→ «${toTask.name}»`:''}</>}
+                          {h.type==='return'   &&(fromTask?<>Снят с задачи «{fromTask.name}»</>:<>{h.note||'Вышел на работу'}</>)}
+                          {h.type==='sick'     &&<>Открыт больничный</>}
+                          {h.type==='vacation' &&<>Отпуск</>}
+                          {h.type==='dayoff'   &&<>Дейоф</>}
+                          {h.note && !(h.type==='return' && !h.fromTask) && <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{h.note}</div>}
+                          <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{formatDate(h.date)}</div>
+                        </div>
+                        <button
+                          onClick={() => updateData(prev => ({ ...prev, history: prev.history.filter(x => x.id !== h.id) }))}
+                          title="Удалить запись"
+                          style={{ flexShrink:0, fontSize:14, lineHeight:1, color:'var(--text-tertiary)', border:'none', background:'transparent', cursor:'pointer', padding:'2px 4px', borderRadius:4, opacity:0.5 }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity='1'; (e.currentTarget as HTMLButtonElement).style.color='var(--red)'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity='0.5'; (e.currentTarget as HTMLButtonElement).style.color='var(--text-tertiary)'; }}
+                        >×</button>
                       </div>
-                      {h.note && !(h.type==='return' && !h.fromTask) && <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{h.note}</div>}
-                      <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{formatDate(h.date)}</div>
                     </div>
                   );
                 })}
