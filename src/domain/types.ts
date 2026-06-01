@@ -90,6 +90,8 @@ export interface Project {
   tasks: Task[];
   history: HistoryEntry[];
   estimateTemplates?: EstimateTemplate[];
+  archived?: boolean;
+  archivedAt?: ISODate | null;
 }
 
 // Корневое состояние воркспейса — список проектов и текущий выбранный.

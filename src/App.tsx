@@ -184,6 +184,43 @@ export default function App() {
     }) : prev);
   }
 
+  function archiveProject(id: string) {
+    const isCurrentProject = data?.currentProjectId === id;
+    setData(prev => {
+      if (!prev) return prev;
+      const activeOthers = prev.projects.filter(p => !p.archived && p.id !== id);
+      const newCurrentId = prev.currentProjectId === id && activeOthers.length > 0
+        ? activeOthers[0].id
+        : prev.currentProjectId;
+      return {
+        ...prev,
+        currentProjectId: newCurrentId,
+        projects: prev.projects.map(p => p.id === id
+          ? { ...p, archived: true, archivedAt: todayStr() }
+          : p
+        ),
+      };
+    });
+    if (isCurrentProject) setPage('dashboard');
+  }
+
+  function restoreProject(id: string) {
+    setData(prev => prev ? ({
+      ...prev,
+      projects: prev.projects.map(p => p.id === id
+        ? { ...p, archived: false, archivedAt: null }
+        : p
+      ),
+    }) : prev);
+  }
+
+  function deleteProject(id: string) {
+    setData(prev => prev ? ({
+      ...prev,
+      projects: prev.projects.filter(p => p.id !== id),
+    }) : prev);
+  }
+
   // ── Экран загрузки ────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -212,7 +249,9 @@ export default function App() {
 
   if (!data) return null;
 
-  const currentProject = data.projects.find(p => p.id === data.currentProjectId) ?? data.projects[0];
+  const currentProject = data.projects.find(p => p.id === data.currentProjectId && !p.archived)
+    ?? data.projects.find(p => !p.archived)
+    ?? data.projects[0];
   if (!currentProject) return null;
 
   const ctx = { data: currentProject, updateData: updateProjectData, navigate };
@@ -222,11 +261,15 @@ export default function App() {
       <Sidebar
         activePage={page}
         onNavigate={p => navigate(p)}
-        projects={data.projects}
+        projects={data.projects.filter(p => !p.archived)}
+        archivedProjects={data.projects.filter(p => p.archived)}
         currentProjectId={data.currentProjectId}
         onSelectProject={selectProject}
         onAddProject={addProject}
         onEditProject={editProject}
+        onArchiveProject={archiveProject}
+        onRestoreProject={restoreProject}
+        onDeleteProject={deleteProject}
       />
       <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         <Topbar theme={theme} onToggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')}/>

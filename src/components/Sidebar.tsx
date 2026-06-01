@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, ModalFooter } from './UI';
+import { Modal, ModalFooter, BtnSecondary, BtnDanger } from './UI';
 import CHANGELOG from '../changelog.json';
 import type { Project } from '../domain/types';
 import type { NavTarget } from '../ui-types';
@@ -127,37 +127,55 @@ interface SidebarProps {
   activePage: NavTarget;
   onNavigate: (target: NavTarget) => void;
   projects?: Project[];
+  archivedProjects?: Project[];
   currentProjectId: string;
   onSelectProject: (id: string) => void;
   onAddProject: (name: string) => void;
   onEditProject: (id: string, name: string) => void;
+  onArchiveProject: (id: string) => void;
+  onRestoreProject: (id: string) => void;
+  onDeleteProject: (id: string) => void;
 }
 
 export default function Sidebar({
   activePage,
   onNavigate,
   projects = [],
+  archivedProjects = [],
   currentProjectId,
   onSelectProject,
   onAddProject,
   onEditProject,
+  onArchiveProject,
+  onRestoreProject,
+  onDeleteProject,
 }: SidebarProps) {
   const [showChangelog, setShowChangelog] = useState(false);
   const [hoveredProject, setHoveredProject] = useState<string | null>(null);
   const [projectModal, setProjectModal] = useState<ProjectModalState>(null);
   const [projectName, setProjectName] = useState('');
+  const [addTab, setAddTab] = useState<'new' | 'archive'>('new');
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const active: NavTarget = activePage === 'task' ? 'tasks' : activePage === 'engineer' ? 'team' : activePage;
   const currentVersion = CHANGELOG[0].version;
 
   function openAdd() {
     setProjectName('');
+    setAddTab('new');
+    setConfirmDeleteId(null);
     setProjectModal({ mode: 'add' });
   }
 
   function openEdit(project: Project) {
     setProjectName(project.name);
+    setConfirmArchive(false);
     setProjectModal({ mode: 'edit', project });
+  }
+
+  function closeModal() {
+    setProjectModal(null);
   }
 
   function handleProjectSave() {
@@ -168,7 +186,7 @@ export default function Sidebar({
     } else {
       onEditProject(projectModal.project.id, name);
     }
-    setProjectModal(null);
+    closeModal();
   }
 
   return (
@@ -360,13 +378,142 @@ export default function Sidebar({
         </Modal>
       )}
 
-      {/* Project add/edit modal */}
-      {projectModal && (
-        <Modal
-          title={projectModal.mode === 'add' ? 'Новый проект' : 'Переименовать проект'}
-          onClose={() => setProjectModal(null)}
-          width={380}
-        >
+      {/* Project add modal (с вкладкой Архив) */}
+      {projectModal?.mode === 'add' && (
+        <Modal title="Проекты" onClose={closeModal} width={460}>
+          {/* Tab bar */}
+          <div style={{ display: 'flex', marginBottom: 20, borderBottom: '1.5px solid var(--border-light)' }}>
+            {(['new', 'archive'] as const).map(tab => {
+              const isActive = addTab === tab;
+              const label = tab === 'new'
+                ? 'Новый проект'
+                : `Архив${archivedProjects.length > 0 ? ` (${archivedProjects.length})` : ''}`;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => { setAddTab(tab); setConfirmDeleteId(null); }}
+                  style={{
+                    padding: '8px 16px',
+                    background: 'none', border: 'none',
+                    borderBottom: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                    marginBottom: '-1.5px',
+                    color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                    fontWeight: isActive ? 600 : 400,
+                    fontSize: 14, cursor: 'pointer',
+                    transition: 'color 0.15s',
+                  }}
+                >{label}</button>
+              );
+            })}
+          </div>
+
+          {/* Вкладка: Новый проект */}
+          {addTab === 'new' && (
+            <>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 500 }}>
+                  Название проекта
+                </div>
+                <input
+                  value={projectName}
+                  onChange={e => setProjectName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleProjectSave(); if (e.key === 'Escape') closeModal(); }}
+                  placeholder="Например: Релиз 4.5"
+                  autoFocus
+                  style={{
+                    width: '100%', padding: '9px 11px', boxSizing: 'border-box',
+                    border: '1.5px solid var(--border-mid)', borderRadius: 6,
+                    fontSize: 14, background: 'var(--bg-secondary)', color: 'var(--text-primary)',
+                    outline: 'none', transition: 'border-color 0.15s',
+                  }}
+                  onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                  onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
+                />
+              </div>
+              <ModalFooter onCancel={closeModal} onSave={handleProjectSave} saveLabel="Создать" />
+            </>
+          )}
+
+          {/* Вкладка: Архив */}
+          {addTab === 'archive' && (
+            archivedProjects.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-tertiary)', fontSize: 14 }}>
+                Архив пуст
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {archivedProjects.map(p => (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '10px 12px',
+                      background: 'var(--bg-secondary)',
+                      borderRadius: 8,
+                      border: '0.5px solid var(--border-light)',
+                      minHeight: 44,
+                    }}
+                  >
+                    {confirmDeleteId === p.id ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', flexWrap: 'wrap' }}>
+                        <span style={{ flex: 1, fontSize: 13, color: 'var(--red)', fontWeight: 500, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          Удалить «{p.name}» навсегда?
+                        </span>
+                        <BtnSecondary
+                          onClick={() => setConfirmDeleteId(null)}
+                          style={{ padding: '5px 11px', fontSize: 13 }}
+                        >Отмена</BtnSecondary>
+                        <BtnDanger
+                          onClick={() => { onDeleteProject(p.id); setConfirmDeleteId(null); }}
+                          style={{ padding: '5px 11px', fontSize: 13 }}
+                        >Удалить</BtnDanger>
+                      </div>
+                    ) : (
+                      <>
+                        <span style={{
+                          flex: 1, fontSize: 14, color: 'var(--text-primary)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{p.name}</span>
+                        <button
+                          onClick={() => { onRestoreProject(p.id); onSelectProject(p.id); closeModal(); }}
+                          title="Восстановить проект"
+                          style={{
+                            padding: '5px 10px', fontSize: 13, whiteSpace: 'nowrap',
+                            background: 'transparent',
+                            border: '1.5px solid var(--border-mid)',
+                            borderRadius: 5, cursor: 'pointer',
+                            color: 'var(--text-secondary)',
+                            display: 'flex', alignItems: 'center', gap: 4,
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                        >↩ Восстановить</button>
+                        <button
+                          onClick={() => setConfirmDeleteId(p.id)}
+                          title="Удалить навсегда"
+                          style={{
+                            padding: '5px 8px', fontSize: 16, lineHeight: 1,
+                            background: 'transparent', border: 'none',
+                            borderRadius: 5, cursor: 'pointer',
+                            color: 'var(--text-tertiary)',
+                            display: 'flex', alignItems: 'center',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = 'var(--red-bg)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-tertiary)'; e.currentTarget.style.background = 'transparent'; }}
+                        >×</button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+        </Modal>
+      )}
+
+      {/* Project edit modal */}
+      {projectModal?.mode === 'edit' && (
+        <Modal title="Редактировать проект" onClose={closeModal} width={400}>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 500 }}>
               Название проекта
@@ -374,7 +521,7 @@ export default function Sidebar({
             <input
               value={projectName}
               onChange={e => setProjectName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleProjectSave(); if (e.key === 'Escape') setProjectModal(null); }}
+              onKeyDown={e => { if (e.key === 'Enter') handleProjectSave(); if (e.key === 'Escape') closeModal(); }}
               placeholder="Например: Релиз 4.5"
               autoFocus
               style={{
@@ -387,11 +534,52 @@ export default function Sidebar({
               onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
             />
           </div>
-          <ModalFooter
-            onCancel={() => setProjectModal(null)}
-            onSave={handleProjectSave}
-            saveLabel={projectModal.mode === 'add' ? 'Создать' : 'Сохранить'}
-          />
+          <ModalFooter onCancel={closeModal} onSave={handleProjectSave} saveLabel="Сохранить" />
+
+          {/* Архивирование */}
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '0.5px solid var(--border-light)' }}>
+            {confirmArchive ? (
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.5 }}>
+                  Проект будет перемещён в архив. Все данные сохранятся, восстановить его можно через вкладку «Архив» при добавлении проекта.
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <BtnSecondary onClick={() => setConfirmArchive(false)} style={{ padding: '6px 13px', fontSize: 13 }}>
+                    Отмена
+                  </BtnSecondary>
+                  <BtnDanger
+                    onClick={() => { onArchiveProject(projectModal.project.id); closeModal(); }}
+                    style={{ padding: '6px 13px', fontSize: 13 }}
+                  >
+                    Архивировать
+                  </BtnDanger>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
+                  {projects.length <= 1
+                    ? 'Единственный проект — нельзя архивировать'
+                    : 'Переместить проект в архив'}
+                </span>
+                <button
+                  onClick={() => setConfirmArchive(true)}
+                  disabled={projects.length <= 1}
+                  style={{
+                    padding: '6px 12px', fontSize: 13, whiteSpace: 'nowrap',
+                    background: 'transparent',
+                    color: projects.length <= 1 ? 'var(--text-tertiary)' : 'var(--red)',
+                    border: `1.5px solid ${projects.length <= 1 ? 'var(--border-mid)' : 'var(--red)'}`,
+                    borderRadius: 5,
+                    cursor: projects.length <= 1 ? 'default' : 'pointer',
+                    opacity: projects.length <= 1 ? 0.5 : 1,
+                  }}
+                  onMouseEnter={e => { if (projects.length > 1) e.currentTarget.style.background = 'var(--red-bg)'; }}
+                  onMouseLeave={e => { if (projects.length > 1) e.currentTarget.style.background = 'transparent'; }}
+                >В архив</button>
+              </div>
+            )}
+          </div>
         </Modal>
       )}
     </>
