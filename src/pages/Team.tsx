@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Avatar, RoleBadge, StatusBadge, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
 import { REGULAR_TASKS } from '../domain/tasks';
-import { isAvailableToday, isWorkingRole } from '../domain/availability';
+import { isAvailableToday, isWorkingRole, effectiveStatus } from '../domain/availability';
 import { addEngineer as addEngineerOp } from '../domain/engineer';
 import type { Engineer, EngineerRole, EngineerStatus, Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
@@ -63,7 +63,7 @@ export default function Team({ data, updateData, navigate }: PageProps) {
       if (!isAvail(e) || isOnTask(e)) return false;
     } else if (filterStatus === 'unavail') {
       if (isAvailableToday(e)) return false;
-    } else if (filterStatus !== 'all' && e.status !== filterStatus) return false;
+    } else if (filterStatus !== 'all' && effectiveStatus(e) !== filterStatus) return false;
     if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   }).sort((a, b) => {
@@ -191,9 +191,9 @@ export default function Team({ data, updateData, navigate }: PageProps) {
                       </div>
                     </td>
                     <td onClick={()=>navigate('engineer',eng.id)} style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}><RoleBadge role={eng.role}/></td>
-                    <td onClick={()=>navigate('engineer',eng.id)} style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}><StatusBadge status={eng.status}/></td>
+                    <td onClick={()=>navigate('engineer',eng.id)} style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}><StatusBadge status={effectiveStatus(eng)}/></td>
                     <td onClick={()=>navigate('engineer',eng.id)} style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>
-                      {eng.status!=='active'
+                      {effectiveStatus(eng)!=='active'
                         ? <div><div style={{ fontSize:13, color:'var(--text-tertiary)' }}>—</div><div style={{ fontSize:12, color:'var(--text-tertiary)' }}>рег.: {eng.regularTask||'—'}</div></div>
                         : <div><div style={{ fontSize:14, color:'var(--text-primary)', fontWeight:500 }}>{currentTask?.name||'—'}</div><div style={{ fontSize:12, color:'var(--text-tertiary)' }}>рег.: {eng.regularTask||'—'}</div></div>
                       }

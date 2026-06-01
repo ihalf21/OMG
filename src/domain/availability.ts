@@ -76,3 +76,15 @@ export function leaveTypeOn(eng: Engineer, dateStr: ISODate): LeaveType | null {
 export function leaveTypeToday(eng: Engineer): LeaveType | null {
   return leaveTypeOn(eng, todayStr());
 }
+
+/**
+ * Фактический статус инженера с учётом даты выхода с больничного.
+ * Если sickReturnDate уже прошла — инженер считается «active», даже если
+ * поле status ещё не обновлено вручную.
+ */
+export function effectiveStatus(eng: Engineer): Engineer['status'] {
+  if (eng.status === 'sick' && eng.sickReturnDate && todayStr() >= eng.sickReturnDate) {
+    return 'active';
+  }
+  return eng.status;
+}
