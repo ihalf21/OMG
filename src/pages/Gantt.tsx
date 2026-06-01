@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { getMonthDays, todayStr, type MonthDay } from '../utils/dates';
 import { calcForecast, statusColor, getDerivedDeadline } from '../utils/forecast';
 import { isAvailableOn, isWorkingRole, leaveTypeOn } from '../domain/availability';
-import { computeInheritedTeam, computeDynamicStarts, getTaskChain, segmentByWeek, arrowAnchorOffset } from '../domain/gantt';
+import { computeInheritedTeam, computeDynamicStarts, getTaskChain, segmentByWeek, arrowAnchorOffset, sortTasksByChain } from '../domain/gantt';
 import { getEngineerActiveTasks } from '../domain/task';
 import { formatDateShort } from '../utils/dates';
 import { genId } from '../utils/ids';
@@ -45,10 +45,10 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
   }, [days]);
   const DAYS  = days.length;
 
-  // Все активные задачи без фильтра по месяцу (нужны для расчёта цепочек)
+  // Все активные задачи без фильтра по месяцу (нужны для расчёта цепочек).
+  // Топологическая сортировка: цепочки всегда идут от корня к листу.
   const allActiveTasks = useMemo(() =>
-    tasks.filter(t => t.status === 'active')
-      .sort((a,b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)),
+    sortTasksByChain(tasks.filter(t => t.status === 'active')),
   [tasks]);
 
   // Эффективная команда: задача наследует инженеров от родителя если своих нет.
@@ -673,17 +673,35 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                   ...assignedEngs.filter(e=>e.role!=='responsible'&&e.role!=='intern'&&e.role!=='lead'),
                   ...assignedEngs.filter(e=>e.role==='intern'),
                 ].map(eng => {
-                  const leave      = leaveTypeOn(eng, todayStr());
-                  const baseColor  = eng.role==='responsible' ? '#F5A830'
-                    : eng.role==='intern'       ? '#C0BEFC'
+                  const baseColor = eng.role==='responsible' ? '#F5A830'
+                    : eng.role==='intern' ? '#C0BEFC'
                     : '#9FE1CB';
-                  const engColor   = leave === 'vacation'
-                    ? 'repeating-linear-gradient(45deg,#FAEEDA,#FAEEDA 5px,#FAC775 5px,#FAC775 10px)'
-                    : leave === 'sick'
-                    ? 'repeating-linear-gradient(45deg,#FCEBEB,#FCEBEB 5px,#F09595 5px,#F09595 10px)'
-                    : leave === 'dayoff'
-                    ? 'repeating-linear-gradient(45deg,#E2ECFB,#E2ECFB 5px,#A3C6F2 5px,#A3C6F2 10px)'
-                    : baseColor;
+
+                  function leaveColor(lt: ReturnType<typeof leaveTypeOn>) {
+                    if (lt === 'vacation') return 'repeating-linear-gradient(45deg,#FAEEDA,#FAEEDA 5px,#FAC775 5px,#FAC775 10px)';
+                    if (lt === 'sick')     return 'repeating-linear-gradient(45deg,#FCEBEB,#FCEBEB 5px,#F09595 5px,#F09595 10px)';
+                    if (lt === 'dayoff')  return 'repeating-linear-gradient(45deg,#E2ECFB,#E2ECFB 5px,#A3C6F2 5px,#A3C6F2 10px)';
+                    return baseColor;
+                  }
+
+                  // Сегменты: группируем дни бара по статусу отсутствия
+                  type Seg = { from: number; to: number; leave: ReturnType<typeof leaveTypeOn> };
+                  const segments: Seg[] = [];
+                  if (barStart < barEnd) {
+                    let curLeave = leaveTypeOn(eng, days[barStart].str);
+                    let segFrom  = barStart;
+                    for (let di = barStart + 1; di < barEnd; di++) {
+                      const dl = leaveTypeOn(eng, days[di].str);
+                      if (dl !== curLeave) {
+                        segments.push({ from: segFrom, to: di, leave: curLeave });
+                        curLeave = dl; segFrom = di;
+                      }
+                    }
+                    segments.push({ from: segFrom, to: barEnd, leave: curLeave });
+                  }
+
+                  // Для тултипа берём статус на сегодня (или первый день бара)
+                  const tooltipLeave = leaveTypeOn(eng, days[Math.min(barStart, DAYS-1)]?.str ?? todayStr());
                   const isDraggingThis = dragEng?.engId === eng.id;
                   return (
                     <div
@@ -705,21 +723,35 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                       </div>
                       <div style={{ flex:1, position:'relative', height:26 }}>
                         <BgCols/>
-                            {barStart < barEnd && (
+                        {barStart < barEnd && (
                           <div
                             onClick={e => { e.stopPropagation(); navigate('engineer', eng.id); }}
                             onMouseEnter={e => show(e, eng.name, [
-                              leave === 'vacation' ? '✈️ В отпуске'
-                                : leave === 'sick' ? '🤒 На больничном'
-                                : leave === 'dayoff' ? '🏖️ Дейоф'
+                              tooltipLeave === 'vacation' ? '✈️ В отпуске (частично в периоде задачи)'
+                                : tooltipLeave === 'sick' ? '🤒 На больничном'
+                                : tooltipLeave === 'dayoff' ? '🏖️ Дейоф'
                                 : '✅ На задаче',
                               eng.role === 'responsible' ? 'Ответственный' : eng.role === 'intern' ? 'Стажёр' : '',
                               eng.regularTask ? `Регулярная: ${eng.regularTask}` : '',
                               '⠿ Перетащите на другую задачу',
                             ].filter(Boolean))}
                             onMouseLeave={hide}
-                            style={{ position:'absolute', left:L(barStart), width:W(barStart,barEnd), top:4, height:18, background:engColor, borderRadius:3, cursor:'grab', zIndex:3 }}
-                          />
+                            style={{ position:'absolute', left:L(barStart), width:W(barStart,barEnd), top:4, height:18, borderRadius:3, overflow:'hidden', cursor:'grab', zIndex:3 }}
+                          >
+                            {segments.map((seg, si) => {
+                              const segW = (seg.to - seg.from) / (barEnd - barStart) * 100;
+                              const segL = (seg.from - barStart) / (barEnd - barStart) * 100;
+                              return (
+                                <div key={si} style={{
+                                  position:'absolute',
+                                  left: `${segL.toFixed(4)}%`,
+                                  width: `${segW.toFixed(4)}%`,
+                                  height: '100%',
+                                  background: leaveColor(seg.leave),
+                                }}/>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                     </div>

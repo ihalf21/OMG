@@ -100,6 +100,42 @@ export function computeDynamicStarts(
   return cache;
 }
 
+// ─── Chain-aware sort ────────────────────────────────────────────────────────
+
+/**
+ * Сортирует задачи так, чтобы цепочки всегда шли сверху вниз в порядке выполнения
+ * (корень → лист), вне зависимости от sortOrder.
+ * Независимые задачи и корни цепочек упорядочиваются по sortOrder.
+ */
+export function sortTasksByChain(tasks: Task[]): Task[] {
+  const bySortOrder = [...tasks].sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+  const ids = new Set(tasks.map(t => t.id));
+  const added = new Set<string>();
+  const result: Task[] = [];
+
+  for (const task of bySortOrder) {
+    if (added.has(task.id)) continue;
+    // Пропускаем задачи, чей родитель есть в списке — они добавятся через свой корень
+    if (task.dependsOn && ids.has(task.dependsOn)) continue;
+
+    // Корень цепочки или независимая задача: идём вниз по цепочке
+    let cur: Task | undefined = task;
+    while (cur && !added.has(cur.id)) {
+      result.push(cur);
+      added.add(cur.id);
+      const next = bySortOrder.find(t => t.dependsOn === cur!.id && !added.has(t.id));
+      cur = next;
+    }
+  }
+
+  // Защита: добавляем задачи, не попавшие (например, циклы)
+  for (const task of bySortOrder) {
+    if (!added.has(task.id)) result.push(task);
+  }
+
+  return result;
+}
+
 // ─── Task chain ───────────────────────────────────────────────────────────────
 
 /**
