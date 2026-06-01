@@ -33,10 +33,8 @@ export function getAbsencePeriods(eng: Engineer, history: HistoryEntry[], today:
       openStart = h.date;
     } else if (h.type === 'return' && openType && openStart) {
       const endDate = prevDay(h.date);
-      // Если return в тот же день что и sick — prevDay < openStart → 1-дневный период
-      const effectiveEnd = endDate >= openStart ? endDate : openStart;
-      if (!periods.some(p => p.type === openType && p.start === openStart && p.end === effectiveEnd)) {
-        periods.push({ type: openType, start: openStart, end: effectiveEnd });
+      if (endDate >= openStart) {
+        periods.push({ type: openType, start: openStart, end: endDate });
       }
       openType = null;
       openStart = null;
