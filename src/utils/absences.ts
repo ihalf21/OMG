@@ -47,9 +47,19 @@ export function getAbsencePeriods(eng: Engineer, history: HistoryEntry[], today:
     const end   = eng.vacationTo || FAR_FUTURE;
     periods.push({ type: 'vacation', start, end });
   } else if (eng.status === 'sick') {
-    const start = (openType === 'sick' && openStart) ? openStart : today;
-    const end   = eng.sickReturnDate ? prevDay(eng.sickReturnDate) : FAR_FUTURE;
-    periods.push({ type: 'sick', start, end });
+    const end = eng.sickReturnDate ? prevDay(eng.sickReturnDate) : FAR_FUTURE;
+    let start: ISODate;
+    if (openType === 'sick' && openStart) {
+      start = openStart;
+    } else {
+      // История может быть «закрыта» return-событием в тот же день что и sick
+      // (тогда prevDay < openStart → период не записался). Ищем последний sick-entry.
+      const lastSick = [...engHistory].reverse().find(h => h.type === 'sick');
+      start = (lastSick && lastSick.date <= end) ? lastSick.date : today;
+    }
+    if (start <= end) {
+      periods.push({ type: 'sick', start, end });
+    }
   } else if (eng.status === 'dayoff' && eng.dayoffDate) {
     if (!periods.some(p => p.type === 'dayoff' && p.start === eng.dayoffDate)) {
       periods.push({ type: 'dayoff', start: eng.dayoffDate, end: eng.dayoffDate });
