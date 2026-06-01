@@ -72,15 +72,16 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
   function closeSick() { updateData(prev => clearSickLeave(prev, engineerId)); }
 
   function handleSickStart() {
-    if (!sickStartDateInput || sickStartDateInput > todayStr()) return;
-    updateData(prev => setSickLeaveFromOp(prev, engineerId, sickStartDateInput));
+    const date = sickStartDateInput || todayStr();
+    if (date > todayStr()) return;
+    updateData(prev => setSickLeaveFromOp(prev, engineerId, date));
     setShowSickStart(false);
     setSickStartDateInput('');
   }
 
   function handleSickReturn() {
-    if (!sickReturnDateInput) return;
-    updateData(prev => setSickReturnOp(prev, engineerId, sickReturnDateInput));
+    const date = sickReturnDateInput || todayStr();
+    updateData(prev => setSickReturnOp(prev, engineerId, date));
     setShowSickReturn(false);
     setSickReturnDateInput('');
   }
@@ -354,69 +355,53 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
       )}
 
       {showSickStart && (
-        <Modal title="Открыть больничный" onClose={() => { setShowSickStart(false); setSickStartDateInput(''); }} width={420}>
+        <Modal title="Открыть больничный" onClose={() => { setShowSickStart(false); setSickStartDateInput(''); }} width={400}>
           <div style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:16, lineHeight:1.6 }}>
-            Укажите дату начала. Если инженер заболел вчера или раньше — выберите фактическую дату, чтобы корректно учесть её в истории.
-          </div>
-          <BtnDanger onClick={() => { openSick(); setShowSickStart(false); }} style={{ width:'100%', justifyContent:'center', marginBottom:16 }}>
-            Открыть сегодня
-          </BtnDanger>
-          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
-            <div style={{ flex:1, height:1, background:'var(--border-light)' }}/>
-            <span style={{ fontSize:12, color:'var(--text-tertiary)', flexShrink:0 }}>или укажите другой день</span>
-            <div style={{ flex:1, height:1, background:'var(--border-light)' }}/>
+            По умолчанию — сегодня. Если инженер заболел раньше — выберите фактическую дату.
           </div>
           <FormRow label="Дата начала больничного">
-            <DatePicker value={sickStartDateInput} onChange={setSickStartDateInput} placeholder="Выбрать дату" clearable/>
+            <DatePicker value={sickStartDateInput || todayStr()} onChange={setSickStartDateInput} placeholder="Выбрать дату" clearable={false}/>
           </FormRow>
-          {sickStartDateInput && sickStartDateInput < todayStr() && (
+          {(sickStartDateInput || todayStr()) < todayStr() && (
             <div style={{ fontSize:12, color:'var(--amber)', marginTop:-6, marginBottom:10 }}>
-              Дата в прошлом — больничный будет учтён с {formatDateShort(sickStartDateInput)}
+              Дата в прошлом — больничный будет учтён с {formatDateShort(sickStartDateInput || todayStr())}
             </div>
           )}
-          {sickStartDateInput && sickStartDateInput > todayStr() && (
+          {(sickStartDateInput || todayStr()) > todayStr() && (
             <div style={{ fontSize:12, color:'var(--red)', marginTop:-6, marginBottom:10 }}>
-              Нельзя открыть больничный в будущем — выберите сегодня или прошедшую дату
+              Нельзя открыть больничный в будущем
             </div>
           )}
           <ModalFooter
             onCancel={() => { setShowSickStart(false); setSickStartDateInput(''); }}
             onSave={handleSickStart}
-            saveLabel="Сохранить"
+            saveLabel="Открыть больничный"
           />
         </Modal>
       )}
 
       {showSickReturn && (
-        <Modal title="Выход с больничного" onClose={() => { setShowSickReturn(false); setSickReturnDateInput(''); }} width={420}>
+        <Modal title="Выход с больничного" onClose={() => { setShowSickReturn(false); setSickReturnDateInput(''); }} width={400}>
           <div style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:16, lineHeight:1.6 }}>
-            Укажите дату выхода. Будущая дата учтётся в Ганте и прогнозах — инженер появится в расписании.
-          </div>
-          <BtnPrimary onClick={() => { closeSick(); setShowSickReturn(false); }} style={{ width:'100%', justifyContent:'center', marginBottom:16 }}>
-            Выйти сегодня
-          </BtnPrimary>
-          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
-            <div style={{ flex:1, height:1, background:'var(--border-light)' }}/>
-            <span style={{ fontSize:12, color:'var(--text-tertiary)', flexShrink:0 }}>или укажите другой день</span>
-            <div style={{ flex:1, height:1, background:'var(--border-light)' }}/>
+            По умолчанию — сегодня. Если инженер вышел раньше — выберите фактическую дату. Будущая дата учтётся в Ганте.
           </div>
           <FormRow label="Дата выхода">
-            <DatePicker value={sickReturnDateInput} onChange={setSickReturnDateInput} placeholder="Выбрать дату" clearable/>
+            <DatePicker value={sickReturnDateInput || todayStr()} onChange={setSickReturnDateInput} placeholder="Выбрать дату" clearable={false}/>
           </FormRow>
-          {sickReturnDateInput && sickReturnDateInput < todayStr() && (
+          {(sickReturnDateInput || todayStr()) < todayStr() && (
             <div style={{ fontSize:12, color:'var(--amber)', marginTop:-6, marginBottom:10 }}>
               Дата в прошлом — больничный закроется задним числом
             </div>
           )}
-          {sickReturnDateInput && sickReturnDateInput > todayStr() && (
+          {(sickReturnDateInput || todayStr()) > todayStr() && (
             <div style={{ fontSize:12, color:'var(--accent)', marginTop:-6, marginBottom:10 }}>
-              Плановый выход — инженер появится в планировании с {formatDateShort(sickReturnDateInput)}
+              Плановый выход — инженер появится в планировании с {formatDateShort(sickReturnDateInput || todayStr())}
             </div>
           )}
           <ModalFooter
             onCancel={() => { setShowSickReturn(false); setSickReturnDateInput(''); }}
             onSave={handleSickReturn}
-            saveLabel={sickReturnDateInput && sickReturnDateInput > todayStr() ? 'Запланировать' : 'Сохранить'}
+            saveLabel={(sickReturnDateInput || todayStr()) > todayStr() ? 'Запланировать' : 'Закрыть больничный'}
           />
         </Modal>
       )}
