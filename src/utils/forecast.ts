@@ -224,7 +224,7 @@ function readEstimateM(form: Record<string, unknown>): {
   return { stage1, stage2, stage3, restHours: total - stage1 - stage2 - stage3, total, tcTotalCount };
 }
 
-export type EstimatePhase = 'analysis' | 'tc_writing' | 'test_run' | 'defects';
+export type EstimatePhase = 'analysis' | 'tc_writing' | 'test_run';
 
 export interface PhaseInfo {
   phase: EstimatePhase;
@@ -239,6 +239,7 @@ export interface PhaseInfo {
 /**
  * Текущий этап работы над задачей на основе оценки из калькулятора.
  * Возвращает null если задача не оценивалась в калькуляторе или ещё не стартовала.
+ * Дефекты и ретесты идут параллельно с тестированием — отдельной фазой не выделяются.
  */
 export function calcPhaseInfo(task: Task, engineers: Engineer[]): PhaseInfo | null {
   if (!task.estimateForm || !task.estimateHours || !task.startDate) return null;
@@ -249,14 +250,13 @@ export function calcPhaseInfo(task: Task, engineers: Engineer[]): PhaseInfo | nu
   const totalHours = task.estimateHours;
 
   const phases: PhaseInfo['phases'] = [
-    { id: 'analysis',   label: 'Анализ',      widthPct: (stage1    / total) * 100 },
-    { id: 'tc_writing', label: 'Написание ТК', widthPct: (stage2    / total) * 100 },
-    { id: 'test_run',   label: 'Прогон ТК',   widthPct: (stage3    / total) * 100 },
-    { id: 'defects',    label: 'Дефекты',      widthPct: (restHours / total) * 100 },
+    { id: 'analysis',   label: 'Анализ',          widthPct: (stage1               / total) * 100 },
+    { id: 'tc_writing', label: 'Актуализация ТМ',  widthPct: (stage2               / total) * 100 },
+    { id: 'test_run',   label: 'Тестирование',      widthPct: ((stage3 + restHours) / total) * 100 },
   ];
 
-  const bound1 = (stage1                     / total) * totalHours;
-  const bound2 = ((stage1 + stage2)          / total) * totalHours;
+  const bound1 = (stage1              / total) * totalHours;
+  const bound2 = ((stage1 + stage2)   / total) * totalHours;
   const bound3 = ((stage1 + stage2 + stage3) / total) * totalHours;
 
   const capFull   = nominalCapacity(task, engineers);
@@ -271,25 +271,23 @@ export function calcPhaseInfo(task: Task, engineers: Engineer[]): PhaseInfo | nu
   }
 
   if (usedHours < bound1) {
-    return { phase:'analysis', phaseName:'Анализ задач',
+    return { phase:'analysis', phaseName:'Анализ',
       phasePct: bound1 > 0 ? Math.round((usedHours / bound1) * 100) : 0,
       overallPct, expectedTests:null, totalTests, phases };
   }
   if (usedHours < bound2) {
-    return { phase:'tc_writing', phaseName:'Написание ТК',
+    return { phase:'tc_writing', phaseName:'Актуализация ТМ',
       phasePct: pct(usedHours, bound1, bound2), overallPct, expectedTests:null, totalTests, phases };
   }
-  if (usedHours < bound3 || bound3 <= bound2) {
-    const dur = bound3 - bound2;
-    const inPhase = Math.max(0, Math.min(usedHours - bound2, dur));
-    const expectedTests = (totalTests && dur > 0)
-      ? Math.min(totalTests, Math.round((inPhase / dur) * totalTests))
-      : null;
-    return { phase:'test_run', phaseName:'Прогон ТК',
-      phasePct: pct(usedHours, bound2, bound3), overallPct, expectedTests, totalTests, phases };
-  }
-  return { phase:'defects', phaseName:'Дефекты и ретесты',
-    phasePct: pct(usedHours, bound3, totalHours), overallPct, expectedTests:null, totalTests, phases };
+  // Начиная с фазы test_run дефекты и ретесты идут параллельно — всё это «Тестирование»
+  const dur = bound3 - bound2;
+  const inRun = Math.max(0, Math.min(usedHours - bound2, dur));
+  const expectedTests = (totalTests && dur > 0)
+    ? Math.min(totalTests, Math.round((inRun / dur) * totalTests))
+    : null;
+  const testPct = usedHours >= bound3 ? 100 : pct(usedHours, bound2, bound3);
+  return { phase:'test_run', phaseName:'Тестирование',
+    phasePct: testPct, overallPct, expectedTests, totalTests, phases };
 }
 
 export function fmtHours(h: number | null | undefined): string {

@@ -430,8 +430,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
 
                   {/* Фазы (только если оценка из калькулятора) */}
                   {phaseInfo && (() => {
-                    const PHASE_ORDER = ['analysis','tc_writing','test_run','defects'] as const;
-                    const curIdx = PHASE_ORDER.indexOf(phaseInfo.phase);
+                    const curIdx = phaseInfo.phases.findIndex(ph => ph.id === phaseInfo.phase);
                     return (
                       <>
                         <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:12 }}>
