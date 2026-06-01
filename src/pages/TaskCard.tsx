@@ -123,6 +123,16 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
         if (editForm.newChildId && t.id === editForm.newChildId) {
           return { ...t, dependsOn: taskId, startDate: null };
         }
+        // Если у нового родителя уже была дочерняя задача — перевязываем её на текущую
+        if (
+          effectiveDependsOn &&
+          t.status === 'active' &&
+          t.dependsOn === effectiveDependsOn &&
+          t.id !== taskId &&
+          t.id !== editForm.newChildId
+        ) {
+          return { ...t, dependsOn: taskId };
+        }
         return t;
       });
 
