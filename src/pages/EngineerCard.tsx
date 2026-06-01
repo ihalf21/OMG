@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Avatar, RoleBadge, StatusBadge, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, BtnDanger, Modal, ModalFooter, FormRow, Input, DateRangePicker, DatePicker, useConfirm } from '../components/UI';
 import { formatDate, formatDateShort, todayStr, nextWorkday } from '../utils/dates';
-import { REGULAR_TASKS } from '../domain/tasks';
 import {
   updateEngineerProfile,
   setSickLeave, setSickLeaveFrom as setSickLeaveFromOp, clearSickLeave, setSickReturn as setSickReturnOp, cancelScheduledSickReturn as cancelSickReturnOp,
@@ -292,7 +291,7 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                 {editMode && editForm
                   ? <select value={editForm.regularTask || ''} onChange={e=>setEditForm(f=>f?{...f, regularTask: e.target.value}:f)} style={{ ...selectStyle, width:'auto' }}>
                       <option value="">— не задана —</option>
-                      {REGULAR_TASKS.map(t => <option key={t} value={t}>{t}</option>)}
+                      {(data.directions ?? []).map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   : <span style={{ color: eng.regularTask ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
                       {eng.regularTask || '—'}

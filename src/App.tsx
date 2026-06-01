@@ -14,6 +14,7 @@ import Estimate from './pages/Estimate';
 import Reports from './pages/Reports';
 import Absences from './pages/Absences';
 import Notes from './pages/Notes';
+import { REGULAR_TASKS } from './domain/tasks';
 import type { Engineer, HistoryEntry, Project, ProjectState, Task, Workspace } from './domain/types';
 import type { NavTarget } from './ui-types';
 
@@ -80,7 +81,18 @@ interface LegacyData {
 }
 
 function ensureWorkspace(d: LegacyData | Workspace): Workspace {
-  if ('projects' in d && d.projects) return d as Workspace;
+  const defaultDirections = [...REGULAR_TASKS];
+  if ('projects' in d && d.projects) {
+    const ws = d as Workspace;
+    return {
+      ...ws,
+      // Миграция: проекты без directions получают список по умолчанию
+      projects: ws.projects.map(p => ({
+        ...p,
+        directions: p.directions ?? defaultDirections,
+      })),
+    };
+  }
   return {
     currentProjectId: 'p1',
     projects: [{
@@ -89,6 +101,7 @@ function ensureWorkspace(d: LegacyData | Workspace): Workspace {
       engineers: (d as LegacyData).engineers || [],
       tasks: (d as LegacyData).tasks || [],
       history: (d as LegacyData).history || [],
+      directions: defaultDirections,
     }],
   };
 }
@@ -171,16 +184,29 @@ export default function App() {
     const newId = genId('p');
     setData(prev => prev ? ({
       ...prev,
-      projects: [...prev.projects, { id: newId, name, engineers: [], tasks: [], history: [] }],
+      projects: [...prev.projects, { id: newId, name, engineers: [], tasks: [], history: [], directions: [] }],
       currentProjectId: newId,
     }) : prev);
     setPage('dashboard');
   }
 
-  function editProject(id: string, name: string) {
+  function editProject(id: string, patch: {
+    name: string;
+    lead: string;
+    jiraUrl: string;
+    directions: string[];
+    plannedEngineers: number | null;
+  }) {
     setData(prev => prev ? ({
       ...prev,
-      projects: prev.projects.map(p => p.id === id ? { ...p, name } : p),
+      projects: prev.projects.map(p => p.id === id ? {
+        ...p,
+        name: patch.name,
+        lead: patch.lead || undefined,
+        jiraUrl: patch.jiraUrl || undefined,
+        directions: patch.directions,
+        plannedEngineers: patch.plannedEngineers,
+      } : p),
     }) : prev);
   }
 

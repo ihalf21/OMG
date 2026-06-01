@@ -131,7 +131,13 @@ interface SidebarProps {
   currentProjectId: string;
   onSelectProject: (id: string) => void;
   onAddProject: (name: string) => void;
-  onEditProject: (id: string, name: string) => void;
+  onEditProject: (id: string, patch: {
+    name: string;
+    lead: string;
+    jiraUrl: string;
+    directions: string[];
+    plannedEngineers: number | null;
+  }) => void;
   onArchiveProject: (id: string) => void;
   onRestoreProject: (id: string) => void;
   onDeleteProject: (id: string) => void;
@@ -154,6 +160,11 @@ export default function Sidebar({
   const [hoveredProject, setHoveredProject] = useState<string | null>(null);
   const [projectModal, setProjectModal] = useState<ProjectModalState>(null);
   const [projectName, setProjectName] = useState('');
+  const [projectLead, setProjectLead] = useState('');
+  const [projectJiraUrl, setProjectJiraUrl] = useState('');
+  const [projectDirections, setProjectDirections] = useState<string[]>([]);
+  const [projectPlannedEngineers, setProjectPlannedEngineers] = useState('');
+  const [newDirection, setNewDirection] = useState('');
   const [addTab, setAddTab] = useState<'new' | 'archive'>('new');
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -170,6 +181,11 @@ export default function Sidebar({
 
   function openEdit(project: Project) {
     setProjectName(project.name);
+    setProjectLead(project.lead || '');
+    setProjectJiraUrl(project.jiraUrl || '');
+    setProjectDirections(project.directions || []);
+    setProjectPlannedEngineers(project.plannedEngineers != null ? String(project.plannedEngineers) : '');
+    setNewDirection('');
     setConfirmArchive(false);
     setProjectModal({ mode: 'edit', project });
   }
@@ -178,13 +194,26 @@ export default function Sidebar({
     setProjectModal(null);
   }
 
+  function addDirection() {
+    const dir = newDirection.trim();
+    if (!dir || projectDirections.includes(dir)) return;
+    setProjectDirections(d => [...d, dir]);
+    setNewDirection('');
+  }
+
   function handleProjectSave() {
     const name = projectName.trim();
     if (!name || !projectModal) return;
     if (projectModal.mode === 'add') {
       onAddProject(name);
     } else {
-      onEditProject(projectModal.project.id, name);
+      onEditProject(projectModal.project.id, {
+        name,
+        lead: projectLead.trim(),
+        jiraUrl: projectJiraUrl.trim(),
+        directions: projectDirections,
+        plannedEngineers: projectPlannedEngineers.trim() ? (parseInt(projectPlannedEngineers.trim()) || null) : null,
+      });
     }
     closeModal();
   }
@@ -513,15 +542,14 @@ export default function Sidebar({
 
       {/* Project edit modal */}
       {projectModal?.mode === 'edit' && (
-        <Modal title="Редактировать проект" onClose={closeModal} width={400}>
+        <Modal title="Редактировать проект" onClose={closeModal} width={480}>
+          {/* Название */}
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 500 }}>
-              Название проекта
-            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 500 }}>Название проекта</div>
             <input
               value={projectName}
               onChange={e => setProjectName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleProjectSave(); if (e.key === 'Escape') closeModal(); }}
+              onKeyDown={e => { if (e.key === 'Escape') closeModal(); }}
               placeholder="Например: Релиз 4.5"
               autoFocus
               style={{
@@ -534,6 +562,120 @@ export default function Sidebar({
               onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
             />
           </div>
+
+          {/* Лид и Ссылка на Jira */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 500 }}>Лид проекта</div>
+              <input
+                value={projectLead}
+                onChange={e => setProjectLead(e.target.value)}
+                placeholder="Иванов Иван"
+                style={{
+                  width: '100%', padding: '9px 11px', boxSizing: 'border-box',
+                  border: '1.5px solid var(--border-mid)', borderRadius: 6,
+                  fontSize: 14, background: 'var(--bg-secondary)', color: 'var(--text-primary)',
+                  outline: 'none', transition: 'border-color 0.15s',
+                }}
+                onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 500 }}>Плановый состав</div>
+              <input
+                value={projectPlannedEngineers}
+                onChange={e => setProjectPlannedEngineers(e.target.value.replace(/\D/g, ''))}
+                placeholder="10"
+                style={{
+                  width: '100%', padding: '9px 11px', boxSizing: 'border-box',
+                  border: '1.5px solid var(--border-mid)', borderRadius: 6,
+                  fontSize: 14, background: 'var(--bg-secondary)', color: 'var(--text-primary)',
+                  outline: 'none', transition: 'border-color 0.15s',
+                }}
+                onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
+              />
+            </div>
+          </div>
+
+          {/* Jira */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 500 }}>Ссылка на Jira</div>
+            <input
+              value={projectJiraUrl}
+              onChange={e => setProjectJiraUrl(e.target.value)}
+              placeholder="https://jira.example.com/projects/ABC"
+              style={{
+                width: '100%', padding: '9px 11px', boxSizing: 'border-box',
+                border: '1.5px solid var(--border-mid)', borderRadius: 6,
+                fontSize: 14, background: 'var(--bg-secondary)', color: 'var(--text-primary)',
+                outline: 'none', transition: 'border-color 0.15s',
+              }}
+              onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+              onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
+            />
+          </div>
+
+          {/* Направления */}
+          <div style={{ marginBottom: 6 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8, fontWeight: 500 }}>Регулярные задачи / направления</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8, minHeight: 28 }}>
+              {projectDirections.length === 0 && (
+                <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontStyle: 'italic', lineHeight: '26px' }}>
+                  Список пуст — инженеры и задачи не смогут выбрать направление
+                </span>
+              )}
+              {projectDirections.map(dir => (
+                <span key={dir} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '3px 8px 3px 10px',
+                  borderRadius: 4,
+                  background: 'var(--accent-bg)', color: 'var(--accent)',
+                  fontSize: 13, fontWeight: 500,
+                }}>
+                  {dir}
+                  <button
+                    onClick={() => setProjectDirections(d => d.filter(x => x !== dir))}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: 'inherit', fontSize: 15, padding: '0 1px', lineHeight: 1,
+                      display: 'flex', alignItems: 'center', opacity: 0.7,
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                    onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
+                  >×</button>
+                </span>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                value={newDirection}
+                onChange={e => setNewDirection(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDirection(); } }}
+                placeholder="Добавить направление..."
+                style={{
+                  flex: 1, padding: '7px 10px', boxSizing: 'border-box',
+                  border: '1.5px solid var(--border-mid)', borderRadius: 6,
+                  fontSize: 13, background: 'var(--bg-secondary)', color: 'var(--text-primary)',
+                  outline: 'none', transition: 'border-color 0.15s',
+                }}
+                onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                onBlur={e => (e.target.style.borderColor = 'var(--border-mid)')}
+              />
+              <button
+                onClick={addDirection}
+                style={{
+                  padding: '7px 13px', background: 'var(--accent)', color: '#fff',
+                  border: 'none', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+                  fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0,
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-hover)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'var(--accent)')}
+              >+ Добавить</button>
+            </div>
+          </div>
+
           <ModalFooter onCancel={closeModal} onSave={handleProjectSave} saveLabel="Сохранить" />
 
           {/* Архивирование */}
@@ -544,23 +686,17 @@ export default function Sidebar({
                   Проект будет перемещён в архив. Все данные сохранятся, восстановить его можно через вкладку «Архив» при добавлении проекта.
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <BtnSecondary onClick={() => setConfirmArchive(false)} style={{ padding: '6px 13px', fontSize: 13 }}>
-                    Отмена
-                  </BtnSecondary>
+                  <BtnSecondary onClick={() => setConfirmArchive(false)} style={{ padding: '6px 13px', fontSize: 13 }}>Отмена</BtnSecondary>
                   <BtnDanger
                     onClick={() => { onArchiveProject(projectModal.project.id); closeModal(); }}
                     style={{ padding: '6px 13px', fontSize: 13 }}
-                  >
-                    Архивировать
-                  </BtnDanger>
+                  >Архивировать</BtnDanger>
                 </div>
               </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
-                  {projects.length <= 1
-                    ? 'Единственный проект — нельзя архивировать'
-                    : 'Переместить проект в архив'}
+                  {projects.length <= 1 ? 'Единственный проект — нельзя архивировать' : 'Переместить проект в архив'}
                 </span>
                 <button
                   onClick={() => setConfirmArchive(true)}

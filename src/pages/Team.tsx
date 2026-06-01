@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Avatar, RoleBadge, StatusBadge, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, useResizableColumns, ResizeHandle } from '../components/UI';
-import { REGULAR_TASKS } from '../domain/tasks';
 import { isAvailableToday, isWorkingRole, effectiveStatus } from '../domain/availability';
 import { addEngineer as addEngineerOp } from '../domain/engineer';
 import type { Engineer, EngineerRole, EngineerStatus, Task } from '../domain/types';
@@ -52,7 +51,7 @@ export default function Team({ data, updateData, navigate }: PageProps) {
 
   const ROLE_ORDER: Record<EngineerRole, number> = { lead:0, responsible:1, engineer:2, intern:3 };
   const STATUS_ORDER: Record<EngineerStatus, number> = { active:0, dayoff:1, sick:2, vacation:3 };
-  const TASK_ORDER: Record<string, number> = Object.fromEntries(REGULAR_TASKS.map((t, i) => [t, i]));
+  const TASK_ORDER: Record<string, number> = Object.fromEntries((data.directions ?? []).map((t, i) => [t, i]));
 
   const filteredAndSorted = engineers.filter(e => {
     if (e.role === 'lead') return false;
@@ -226,7 +225,7 @@ export default function Team({ data, updateData, navigate }: PageProps) {
             <FormRow label="Регулярная задача">
               <Select value={form.regularTask} onChange={e=>setForm(f=>({...f, regularTask: e.target.value}))}>
                 <option value="">— не задана —</option>
-                {REGULAR_TASKS.map(t=><option key={t} value={t}>{t}</option>)}
+                {(data.directions ?? []).map(t=><option key={t} value={t}>{t}</option>)}
               </Select>
             </FormRow>
           </div>

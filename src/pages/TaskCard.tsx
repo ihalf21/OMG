@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { calcForecast, calcPhaseInfo, statusColor, statusLabel, statusBadgeStyle, fmtHours, getDerivedDeadline } from '../utils/forecast';
 import { isAvailableToday, isWorkingRole } from '../domain/availability';
-import { REGULAR_TASKS } from '../domain/tasks';
 import {
   getEffectiveTeam,
   addEngineerToTask, removeEngineerFromTask, getEngineerActiveTasks,
@@ -270,7 +269,10 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                     <FormRow label="Направление">
                       <Select value={editForm.direction||''} onChange={e=>setEditForm(f=>f?{...f, direction:e.target.value}:f)}>
                         <option value="">— не задано —</option>
-                        {REGULAR_TASKS.map(t=><option key={t} value={t}>{t}</option>)}
+                        {(data.directions ?? []).length === 0
+                          ? <option value="" disabled>Настройте направления в карточке проекта</option>
+                          : (data.directions ?? []).map(t=><option key={t} value={t}>{t}</option>)
+                        }
                       </Select>
                     </FormRow>
                     <FormRow label="Оценка (чч)" hint="человеко-часы">

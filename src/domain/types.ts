@@ -86,6 +86,10 @@ export interface EstimateTemplate {
 export interface Project {
   id: string;
   name: string;
+  lead?: string;
+  jiraUrl?: string;
+  directions?: string[];
+  plannedEngineers?: number | null;
   engineers: Engineer[];
   tasks: Task[];
   history: HistoryEntry[];
