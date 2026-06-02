@@ -56,11 +56,13 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   const assignedEngs = engineers.filter(e => task.assignedEngineers?.includes(e.id));
   const taskHistory  = history.filter(h => h.fromTask===taskId||h.toTask===taskId).sort((a,b)=>b.date.localeCompare(a.date));
   const available    = engineers.filter(e => isWorkingRole(e) && !task.assignedEngineers?.includes(e.id) && isAvailableToday(e));
+  const isEngFree = (eng: typeof engineers[number]) =>
+    isAvailableToday(eng) && !tasks.some(t => t.status === 'active' && t.id !== taskId && (t.assignedEngineers || []).includes(eng.id));
   const recommended = engineers
     .filter(e => isWorkingRole(e) && !task.assignedEngineers?.includes(e.id))
     .sort((a, b) => {
-      const aFree  = isAvailableToday(a);
-      const bFree  = isAvailableToday(b);
+      const aFree  = isEngFree(a);
+      const bFree  = isEngFree(b);
       const aMatch = !!(task.direction && a.regularTask === task.direction);
       const bMatch = !!(task.direction && b.regularTask === task.direction);
       const aPrio  = aFree ? (aMatch ? 0 : 1) : (aMatch ? 2 : 3);
@@ -647,7 +649,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                 </div>
                 {recommended.map(eng => {
                   const matchDir = !!(task.direction && eng.regularTask === task.direction);
-                  const isFree   = isAvailableToday(eng);
+                  const isFree   = isEngFree(eng);
                   return (
                     <div key={eng.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:'0.5px solid var(--border-light)' }}>
                       <Avatar name={eng.name} size={30}/>
