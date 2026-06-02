@@ -108,12 +108,14 @@ export function workdaysBetween(fromStr: ISODate, toStr: ISODate): number {
   return count;
 }
 
-// Рабочих дней прошло с даты старта до сегодня
+// Рабочих дней прошло с даты старта до конца вчерашнего дня.
+// Намеренно не включает сегодня — показывает уже завершённую работу,
+// а не то, что будет сделано к концу текущего дня.
 export function workdaysElapsed(startDateStr: ISODate | null | undefined): number {
   if (!startDateStr) return 0;
   const today = todayStr();
-  if (startDateStr > today) return 0;
-  return workdaysBetween(startDateStr, today);
+  if (startDateStr >= today) return 0;
+  return workdaysBetween(startDateStr, subtractCalendarDay(today));
 }
 
 // Следующий календарный день (включая выходные и праздники)
@@ -121,6 +123,14 @@ export function addCalendarDay(dateStr: ISODate): ISODate {
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   date.setDate(date.getDate() + 1);
+  return toDateStr(date);
+}
+
+// Предыдущий календарный день (включая выходные и праздники)
+export function subtractCalendarDay(dateStr: ISODate): ISODate {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() - 1);
   return toDateStr(date);
 }
 
