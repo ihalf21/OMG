@@ -56,13 +56,18 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   const assignedEngs = engineers.filter(e => task.assignedEngineers?.includes(e.id));
   const taskHistory  = history.filter(h => h.fromTask===taskId||h.toTask===taskId).sort((a,b)=>b.date.localeCompare(a.date));
   const available    = engineers.filter(e => isWorkingRole(e) && !task.assignedEngineers?.includes(e.id) && isAvailableToday(e));
-  const recommended = [...available]
+  const recommended = engineers
+    .filter(e => isWorkingRole(e) && !task.assignedEngineers?.includes(e.id))
     .sort((a, b) => {
-      const aM = !!(task.direction && a.regularTask === task.direction);
-      const bM = !!(task.direction && b.regularTask === task.direction);
-      return (bM ? 1 : 0) - (aM ? 1 : 0);
+      const aFree  = isAvailableToday(a);
+      const bFree  = isAvailableToday(b);
+      const aMatch = !!(task.direction && a.regularTask === task.direction);
+      const bMatch = !!(task.direction && b.regularTask === task.direction);
+      const aPrio  = aFree ? (aMatch ? 0 : 1) : (aMatch ? 2 : 3);
+      const bPrio  = bFree ? (bMatch ? 0 : 1) : (bMatch ? 2 : 3);
+      return aPrio - bPrio;
     })
-    .slice(0, 4);
+    .slice(0, 5);
 
   function startEdit() {
     setEditForm({
@@ -638,16 +643,20 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
               <Card>
                 <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.05em' }}>Рекомендованные</div>
                 <div style={{ fontSize:12, color:'var(--text-tertiary)', marginBottom:10 }}>
-                  {task.direction ? <>По направлению <strong style={{ color:'var(--accent)' }}>{task.direction}</strong></> : 'Доступные инженеры'}
+                  {task.direction ? <>По направлению <strong style={{ color:'var(--accent)' }}>{task.direction}</strong></> : 'Все инженеры команды'}
                 </div>
                 {recommended.map(eng => {
                   const matchDir = !!(task.direction && eng.regularTask === task.direction);
+                  const isFree   = isAvailableToday(eng);
                   return (
                     <div key={eng.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:'0.5px solid var(--border-light)' }}>
                       <Avatar name={eng.name} size={30}/>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:14, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                          {eng.name}
+                        <div style={{ fontSize:14, fontWeight:600, display:'flex', alignItems:'center', gap:5 }}>
+                          <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{eng.name}</span>
+                          <span style={{ fontSize:10, padding:'1px 5px', borderRadius:3, fontWeight:600, flexShrink:0, background: isFree ? 'var(--success-bg)' : 'var(--amber-bg)', color: isFree ? 'var(--success)' : 'var(--amber)' }}>
+                            {isFree ? 'свободен' : 'занят'}
+                          </span>
                         </div>
                         <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:1, display:'flex', alignItems:'center', gap:4 }}>
                           {matchDir && <span style={{ fontSize:10, padding:'1px 5px', borderRadius:3, background:'var(--accent-bg)', color:'var(--accent)', fontWeight:600, flexShrink:0 }}>осн.</span>}
