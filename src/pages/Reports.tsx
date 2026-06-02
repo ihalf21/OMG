@@ -442,10 +442,22 @@ export default function Reports({ data }: PageProps) {
       .sort((a,b)=>(a.completedDate||'').localeCompare(b.completedDate||'')),
   [data.tasks,monthStart,monthEnd]);
 
+  // ── Active tasks visible in the selected month (same filter as Gantt) ────
+  const activeTasksInMonth = useMemo(() =>
+    allActiveTasks.filter(t => {
+      const effStart = t.dependsOn ? (dynamicStarts[t.id] ?? todayStr()) : (t.startDate ?? todayStr());
+      if (effStart > monthEnd) return false;
+      const fc = forecasts[t.id];
+      const noEst = !(t.estimateHours || 0);
+      const endDate = fc?.forecastDate || t.deadline || (noEst ? monthEnd : monthEnd);
+      return endDate >= monthStart;
+    }),
+  [allActiveTasks, dynamicStarts, forecasts, monthStart, monthEnd]);
+
   // ── Summary stats ────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     let ok=0, risk=0, overdue=0, queued=0, noFc=0, totalEst=0, totalLeft=0;
-    allActiveTasks.forEach(t => {
+    activeTasksInMonth.forEach(t => {
       const fc=forecasts[t.id];
       totalEst  += t.estimateHours||0;
       totalLeft += fc?.hoursLeft??0;
@@ -459,7 +471,7 @@ export default function Reports({ data }: PageProps) {
     });
     const overallPct = totalEst>0 ? Math.min(100,Math.round(((totalEst-totalLeft)/totalEst)*100)) : 0;
     return { ok, risk, overdue, queued, noFc, totalEst, totalLeft, overallPct };
-  }, [allActiveTasks,forecasts,today_str]);
+  }, [activeTasksInMonth,forecasts,today_str]);
 
   const activeEngCnt   = data.engineers.filter(e=>e.status==='active'&&isWorkingRole(e)).length;
   const unavailCnt     = data.engineers.filter(e=>e.status!=='active'&&isWorkingRole(e)).length;
@@ -468,13 +480,13 @@ export default function Reports({ data }: PageProps) {
   // ── Tasks by direction ───────────────────────────────────────────────────
   const tasksByDir = useMemo(() => {
     const g = new Map<string, Task[]>();
-    allActiveTasks.forEach(t => {
+    activeTasksInMonth.forEach(t => {
       const k=t.direction||'Без направления';
       if (!g.has(k)) g.set(k,[]);
       g.get(k)!.push(t);
     });
     return Array.from(g.entries());
-  }, [allActiveTasks]);
+  }, [activeTasksInMonth]);
 
   // ── Direction summary ────────────────────────────────────────────────────
   const dirSummary = useMemo(() => {
@@ -484,7 +496,7 @@ export default function Reports({ data }: PageProps) {
       if (!m.has(k)) m.set(k,{engCnt:0,activeCnt:0,doneCnt:0,totalHrs:0});
       m.get(k)!.engCnt++;
     });
-    allActiveTasks.forEach(t => {
+    activeTasksInMonth.forEach(t => {
       const k=t.direction||'Без направления';
       if (!m.has(k)) m.set(k,{engCnt:0,activeCnt:0,doneCnt:0,totalHrs:0});
       m.get(k)!.activeCnt++;
@@ -496,7 +508,7 @@ export default function Reports({ data }: PageProps) {
       m.get(k)!.doneCnt++;
     });
     return Array.from(m.entries()).sort((a,b)=>b[1].engCnt-a[1].engCnt);
-  }, [data.engineers,allActiveTasks,doneTasks]);
+  }, [data.engineers,activeTasksInMonth,doneTasks]);
 
   // ── Engineer → tasks ─────────────────────────────────────────────────────
   const engTasksMap = useMemo(() => {
@@ -578,8 +590,8 @@ export default function Reports({ data }: PageProps) {
             <SectionHead title="Сводка" mt={0}/>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:12 }}>
               {[
-                { label:'В работе',           value:allActiveTasks.length, sub:'активных задач' },
-                { label:'Завершено за месяц',  value:doneCnt,               sub:`из ${allActiveTasks.length+doneCnt} всего` },
+                { label:'В работе',           value:activeTasksInMonth.length, sub:'активных задач' },
+                { label:'Завершено за месяц',  value:doneCnt,                sub:`из ${activeTasksInMonth.length+doneCnt} всего` },
                 { label:'Активных инженеров',  value:activeEngCnt,          sub:unavailCnt>0?`${unavailCnt} недоступны`:'все доступны' },
                 { label:'Прогресс проекта',    value:`${stats.overallPct}%`, sub:stats.totalEst>0?`${fmtHours(stats.totalLeft)} осталось`:'нет оценок' },
               ].map(s=>(
@@ -663,10 +675,10 @@ export default function Reports({ data }: PageProps) {
               {/* Chart C: task progress bars */}
               <div>
                 <div style={{ fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:12 }}>Прогресс задач</div>
-                {allActiveTasks.length===0
+                {activeTasksInMonth.length===0
                   ? <div style={{ fontSize:12, color:'var(--text-tertiary)' }}>Нет активных задач</div>
                   : <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                      {allActiveTasks.filter(t=>t.startDate&&t.startDate<=today_str).slice(0,10).map(t=>{
+                      {activeTasksInMonth.slice(0,10).map(t=>{
                         const fc=forecasts[t.id];
                         const pct=fc?.progressPct??0;
                         const barColor=statusColor(fc?.deadlineStatus)||'#a8a6a0';
@@ -682,8 +694,8 @@ export default function Reports({ data }: PageProps) {
                           </div>
                         );
                       })}
-                      {allActiveTasks.filter(t=>t.startDate&&t.startDate<=today_str).length>10&&(
-                        <div style={{ fontSize:10, color:'var(--text-tertiary)', marginTop:2 }}>+ ещё {allActiveTasks.filter(t=>t.startDate&&t.startDate<=today_str).length-10}</div>
+                      {activeTasksInMonth.length>10&&(
+                        <div style={{ fontSize:10, color:'var(--text-tertiary)', marginTop:2 }}>+ ещё {activeTasksInMonth.length-10}</div>
                       )}
                     </div>
                 }
@@ -694,8 +706,8 @@ export default function Reports({ data }: PageProps) {
           {/* ── 4. Task table ── */}
           <div style={{ border:'0.5px solid var(--border-light)', borderRadius:10, padding:'16px 20px', marginBottom:16, background:'var(--bg-primary)' }}>
             <SectionHead title="Задачи в работе" mt={0}/>
-            {allActiveTasks.length===0
-              ? <div style={{ fontSize:13, color:'var(--text-tertiary)', padding:'12px 0' }}>Нет активных задач</div>
+            {activeTasksInMonth.length===0
+              ? <div style={{ fontSize:13, color:'var(--text-tertiary)', padding:'12px 0' }}>Нет активных задач за этот месяц</div>
               : tasksByDir.map(([dir, tasks]) => (
                   <div key={dir} style={{ marginBottom:20 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
