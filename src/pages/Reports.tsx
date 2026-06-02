@@ -544,6 +544,7 @@ export default function Reports({ data }: PageProps) {
 
   // ── Donut segments ───────────────────────────────────────────────────────
   const donutSegs: DonutSeg[] = [
+    { value: doneCnt,       color: '#4c91f0' },
     { value: stats.ok,      color: '#1d9e75' },
     { value: stats.risk,    color: '#ef9f27' },
     { value: stats.overdue, color: '#e24b4a' },
@@ -636,6 +637,7 @@ export default function Reports({ data }: PageProps) {
                   <DonutChart segments={donutSegs} size={100}/>
                   <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                     {[
+                      { label:'Завершено',   value:doneCnt,       color:'#4c91f0' },
                       { label:'В срок',      value:stats.ok,      color:'#1d9e75' },
                       { label:'Впритык',     value:stats.risk,    color:'#ef9f27' },
                       { label:'Срыв',        value:stats.overdue, color:'#e24b4a' },
