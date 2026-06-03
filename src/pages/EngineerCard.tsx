@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Avatar, RoleBadge, StatusBadge, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, BtnDanger, Modal, ModalFooter, FormRow, Input, DateRangePicker, DatePicker, useConfirm } from '../components/UI';
+import { Avatar, RoleBadge, StatusBadge, FieldRow, Card, PageTopbar, BackBtn, BtnPrimary, BtnSecondary, BtnDanger, Modal, ModalFooter, FormRow, Input, DateRangePicker, DatePicker, useConfirm, useDaySplit } from '../components/UI';
 import { formatDate, formatDateShort, todayStr, nextWorkday } from '../utils/dates';
 import {
   updateEngineerProfile,
@@ -41,6 +41,7 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
   const [showSickReturn, setShowSickReturn] = useState(false);
   const [sickReturnDateInput, setSickReturnDateInput] = useState('');
   const { confirm, ConfirmEl } = useConfirm();
+  const { askDaySplit, DaySplitEl } = useDaySplit();
   const [deleteDialog, setDeleteDialog] = useState<{
     entry: HistoryEntry;
     related: HistoryEntry | null;
@@ -190,8 +191,19 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
     onBack();
   }
 
-  function switchTask(toTaskId: string) {
-    updateData(prev => switchToTask(prev, engineerId, toTaskId));
+  async function switchTask(toTaskId: string) {
+    const cur = tasks.find(t => t.status === 'active' && (t.assignedEngineers || []).includes(engineerId));
+    let fraction = 0;
+    if (cur && cur.id !== toTaskId) {
+      const { confirmed, fraction: f } = await askDaySplit(
+        'Переключение на другую задачу',
+        `Инженер переключается с «${cur.name}» на новую задачу сегодня.`,
+        cur.name,
+      );
+      if (!confirmed) return;
+      fraction = f;
+    }
+    updateData(prev => switchToTask(prev, engineerId, toTaskId, fraction));
     setShowSwitchTask(false);
   }
 
@@ -202,6 +214,7 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
       {ConfirmEl}
+      {DaySplitEl}
 
       {deleteDialog && (
         <Modal title="Удалить запись из истории?" onClose={() => setDeleteDialog(null)} width={440}>

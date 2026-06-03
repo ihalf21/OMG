@@ -278,6 +278,43 @@ describe('computeUsedHours — отсутствия задним числом', 
   });
 });
 
+describe('computeUsedHours — дробный день переключения (dayFraction)', () => {
+  test('dayFraction делит день переключения между старой и новой задачей', () => {
+    const start     = subtractWorkdays(todayStr(), 20);
+    const switchDay = subtractWorkdays(todayStr(), 8); // рабочий день по построению
+    const e1 = eng({ id: 'e1' });
+
+    const tA = task({ id: 'A', estimateHours: 100000, startDate: start,     assignedEngineers: [] });    // ушёл с неё
+    const tB = task({ id: 'B', estimateHours: 100000, startDate: switchDay, assignedEngineers: ['e1'] }); // сейчас на ней
+
+    const evFull = [switchEvent('e1', 'B', 'A', switchDay)];                         // без доли → день уходит B
+    const evHalf = [{ ...switchEvent('e1', 'B', 'A', switchDay), dayFraction: 0.5 }]; // полдня осталось на A
+
+    // Старая задача без доли день переключения не получала; с долей 0.5 получает +полдня
+    expect(computeUsedHours(tA, [e1], evHalf) - computeUsedHours(tA, [e1], evFull))
+      .toBeCloseTo(0.5 * HOURS_PER_DAY, 5);
+    // Новая задача без доли получала целый день; с долей 0.5 получает на полдня меньше
+    expect(computeUsedHours(tB, [e1], evFull) - computeUsedHours(tB, [e1], evHalf))
+      .toBeCloseTo(0.5 * HOURS_PER_DAY, 5);
+  });
+
+  test('legacy: switch без dayFraction отдаёт день переключения целиком новой задаче', () => {
+    const start     = subtractWorkdays(todayStr(), 20);
+    const switchDay = subtractWorkdays(todayStr(), 8);
+    const e1 = eng({ id: 'e1' });
+    const tB = task({ id: 'B', estimateHours: 100000, startDate: switchDay, assignedEngineers: ['e1'] });
+
+    // На задаче B: вступление в switchDay, без доли → день switchDay полностью у B.
+    const usedFromSwitch = computeUsedHours(tB, [e1], [switchEvent('e1', 'B', 'A', switchDay)]);
+    // Эквивалентно «членство с switchDay без переключений» (тот же интервал).
+    const usedPlain = computeUsedHours(
+      task({ id: 'B', estimateHours: 100000, startDate: switchDay, assignedEngineers: ['e1'] }),
+      [e1], [],
+    );
+    expect(usedFromSwitch).toBe(usedPlain);
+  });
+});
+
 describe('engineersNeeded', () => {
   test('null без дедлайна', () => {
     expect(engineersNeeded(task(), [])).toBe(null);

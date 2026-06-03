@@ -7,7 +7,7 @@ import { computeInheritedTeam, computeDynamicStarts, getTaskChain, segmentByWeek
 import { getEngineerActiveTasks } from '../domain/task';
 import { formatDateShort } from '../utils/dates';
 import { genId } from '../utils/ids';
-import { Avatar, PageTopbar, useTooltip, useConfirm } from '../components/UI';
+import { Avatar, PageTopbar, useTooltip, useConfirm, useDaySplit } from '../components/UI';
 import type { Engineer, ISODate, Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
@@ -32,7 +32,8 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
   const weekRowRef   = React.useRef<HTMLDivElement>(null);
   const [weekRowH, setWeekRowH] = useState(0);
   const { show, move, hide, TooltipEl } = useTooltip();
-  const { confirm, ConfirmEl } = useConfirm();
+  const { ConfirmEl } = useConfirm();
+  const { askDaySplit, DaySplitEl } = useDaySplit();
 
   const [showDone, setShowDone]       = useState(false);
   const [hoveredCol, setHoveredCol]   = useState<number | null>(null);
@@ -302,6 +303,8 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       return ctEnd >= newStart && (ct.startDate || todayStr()) <= newEnd;
     });
 
+    const fromTask = data.tasks.find(t => t.id === fromTaskId);
+    let dayFraction = 0;
     if (conflicting.length > 0) {
       const ct = conflicting[0];
       const ctEnd = forecasts[ct.id]?.forecastDate || ct.deadline || null;
@@ -309,8 +312,9 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       const msg = isOverdue
         ? `«${ct.name}» вышла за рамки дедлайна. Инженер будет переведён — разрешите просроченную задачу вручную.`
         : `Инженер уже задействован на «${ct.name}» (до ${formatDateShort(ctEnd)}). Снять и перевести?`;
-      const ok = await confirm('Конфликт планирования', msg, { confirmLabel: 'Перевести', danger: false });
-      if (!ok) { setDragEng(null); setDragEngOver(null); return; }
+      const { confirmed, fraction } = await askDaySplit('Конфликт планирования', msg, fromTask?.name || ct.name);
+      if (!confirmed) { setDragEng(null); setDragEngOver(null); return; }
+      dayFraction = fraction;
     }
 
     // Drag-and-drop — всегда явный перевод (снять со всех конфликтующих, добавить)
@@ -321,7 +325,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
         if ((t.assignedEngineers||[]).includes(engId)) return { ...t, assignedEngineers: (t.assignedEngineers||[]).filter(id => id !== engId) };
         return t;
       }),
-      history: [...(prev.history||[]), { id:genId('h'), date:todayStr(), engineerId:engId, type:'switch', fromTask:fromTaskId, toTask:toTaskId, note:'' }],
+      history: [...(prev.history||[]), { id:genId('h'), date:todayStr(), engineerId:engId, type:'switch', fromTask:fromTaskId, toTask:toTaskId, note:'', dayFraction }],
     }));
     setDragEng(null);
     setDragEngOver(null);
@@ -1030,6 +1034,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
 
       {TooltipEl}
       {ConfirmEl}
+      {DaySplitEl}
     </div>
   );
 }

@@ -340,4 +340,14 @@ describe('switchToTask', () => {
     const s = switchToTask(baseState(), 'e1', 't2');
     expect(s.history.find(h => h.type === 'switch' && h.fromTask === 't1' && h.toTask === 't2')).toBeDefined();
   });
+  test('сохраняет dayFraction (доля дня на покидаемой задаче)', () => {
+    const s = switchToTask(baseState(), 'e1', 't2', 0.5);
+    const entry = s.history.find(h => h.type === 'switch' && h.toTask === 't2');
+    expect(entry.dayFraction).toBe(0.5);
+  });
+  test('по умолчанию dayFraction = 0 (весь день новой задаче)', () => {
+    const s = switchToTask(baseState(), 'e1', 't2');
+    const entry = s.history.find(h => h.type === 'switch' && h.toTask === 't2');
+    expect(entry.dayFraction).toBe(0);
+  });
 });

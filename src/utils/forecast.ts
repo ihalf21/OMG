@@ -103,8 +103,17 @@ export interface Forecast {
  *  2) доступность инженера по дням — отсутствия (отпуск/больничный/дейоф) через
  *     getAbsencePeriods, привязанные к самому инженеру, а не к задаче. Поэтому
  *     отпуск задним числом корректно вычитается из той задачи, на которой
- *     инженер реально был в тот период, и работает даже если сейчас он снят.
+ *     инженер реально был в тот период, и работает даже если сейчас он снят;
+ *  3) дробный день переключения — switch.dayFraction делит день между старой
+ *     и новой задачей (старая получает dayFraction, новая 1-dayFraction).
+ *     Отсутствие поля = 0 = весь день уходит новой задаче (legacy-поведение).
  */
+// Доля рабочего дня в [0..1]; нечисловое/пустое → 0 (legacy: весь день новой задаче).
+function clampFraction(v: number | null | undefined): number {
+  if (typeof v !== 'number' || isNaN(v)) return 0;
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
 export function computeUsedHours(task: Task, engineers: Engineer[], history: HistoryEntry[]): number {
   if (!task.startDate) return 0;
   const today = todayStr();
@@ -143,16 +152,25 @@ export function computeUsedHours(task: Task, engineers: Engineer[], history: His
     let onTask = evs.length === 0 ? isCurrentMember : (evs[0].fromTask === task.id);
     let curFrom: ISODate | null = onTask ? startDate : null;
     const intervals: Array<{ from: ISODate; to: ISODate }> = [];
+    // Дробные граничные дни переключения: доля рабочего дня, пришедшаяся на ЭТУ
+    // задачу в день switch (уходящая получает dayFraction, входящая 1-dayFraction).
+    const partials: Array<{ date: ISODate; frac: number }> = [];
 
     for (const h of evs) {
       const isJoin = h.toTask === task.id;
+      const oldFrac = h.type === 'switch' ? clampFraction(h.dayFraction) : 0; // доля дня на ПОКИДАЕМУЮ задачу
       if (isJoin && !onTask) {
         onTask = true;
-        curFrom = h.date > startDate ? h.date : startDate;
+        // День прихода: этой (новой) задаче — 1-oldFrac; полные дни со следующего.
+        if (h.date >= startDate) partials.push({ date: h.date, frac: 1 - oldFrac });
+        const nextDay = addCalendarDay(h.date);
+        curFrom = nextDay > startDate ? nextDay : startDate;
       } else if (!isJoin && onTask) {
         onTask = false;
-        const end = subtractCalendarDay(h.date); // ушёл в день h.date → работал по вчера
+        // Полные дни до дня ухода; в сам день ухода этой (старой) задаче — oldFrac.
+        const end = subtractCalendarDay(h.date);
         if (curFrom && end >= curFrom) intervals.push({ from: curFrom, to: end });
+        if (oldFrac > 0 && h.date >= startDate) partials.push({ date: h.date, frac: oldFrac });
         curFrom = null;
       }
     }
@@ -161,16 +179,21 @@ export function computeUsedHours(task: Task, engineers: Engineer[], history: His
     // Ось 2: доступность. Отсутствия инженера за период — независимо от задачи.
     const absences = getAbsencePeriods(eng, history, today);
     const isAbsentOn = (d: ISODate) => absences.some(p => d >= p.start && d <= p.end);
+    const dayCredit = (d: ISODate, frac: number) => {
+      if (frac <= 0 || d < startDate || d > lastDay) return;
+      if (isWorkday(d) && !isAbsentOn(d)) usedHours += frac * role * HOURS_PER_DAY;
+    };
 
-    // Суммируем по рабочим дням внутри интервалов членства, вычитая дни отсутствий.
+    // Полные рабочие дни внутри интервалов членства + дробные дни переключений.
     for (const iv of intervals) {
       let cursor = iv.from > startDate ? iv.from : startDate;
       const stop = iv.to < lastDay ? iv.to : lastDay;
       while (cursor <= stop) {
-        if (isWorkday(cursor) && !isAbsentOn(cursor)) usedHours += role * HOURS_PER_DAY;
+        dayCredit(cursor, 1);
         cursor = addCalendarDay(cursor);
       }
     }
+    for (const p of partials) dayCredit(p.date, p.frac);
   });
 
   return usedHours;

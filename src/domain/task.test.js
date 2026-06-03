@@ -145,6 +145,18 @@ describe('addEngineerToTask — автоперенос с предыдущей �
     expect(entry.note).toBe('Добавлен на задачу');
   });
 
+  test('сохраняет dayFraction при переводе с предыдущей задачи', () => {
+    const s = addEngineerToTask(baseState(), 't2', 'e1', true, 0.25);
+    const entry = s.history.find(h => h.engineerId === 'e1' && h.toTask === 't2');
+    expect(entry.dayFraction).toBe(0.25);
+  });
+
+  test('без предыдущей задачи dayFraction игнорируется (=0)', () => {
+    const s = addEngineerToTask(baseState(), 't1', 'e3', true, 0.5);
+    const entry = s.history.find(h => h.engineerId === 'e3' && h.toTask === 't1');
+    expect(entry.dayFraction).toBe(0);
+  });
+
   test('не снимает с завершённых задач', () => {
     const state = {
       ...baseState(),

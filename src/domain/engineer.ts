@@ -273,7 +273,8 @@ export function removeFromTask(state: ProjectState, engineerId: string): Project
   };
 }
 
-export function switchToTask(state: ProjectState, engineerId: string, toTaskId: string): ProjectState {
+// dayFraction — доля сегодняшнего дня, отработанная на покидаемой задаче (0..1).
+export function switchToTask(state: ProjectState, engineerId: string, toTaskId: string, dayFraction = 0): ProjectState {
   const currentTask = findCurrentTask(state, engineerId);
   return {
     ...state,
@@ -289,6 +290,7 @@ export function switchToTask(state: ProjectState, engineerId: string, toTaskId: 
     history: appendHistory(state, {
       date: todayStr(), engineerId, type: 'switch',
       fromTask: currentTask?.id || null, toTask: toTaskId, note: '',
+      dayFraction: currentTask ? dayFraction : 0,
     }),
   };
 }

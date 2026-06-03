@@ -67,6 +67,9 @@ export interface HistoryEntry {
   fromTask: string | null;
   toTask: string | null;
   note: string;
+  // Доля рабочего дня переключения (switch), пришедшаяся на ПОКИДАЕМУЮ задачу
+  // (0..1). Отсутствует → 0 → весь день уходит новой задаче (legacy-поведение).
+  dayFraction?: number;
 }
 
 // Шаблон оценки трудозатрат (для калькулятора Estimate)

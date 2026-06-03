@@ -9,7 +9,7 @@ import {
 } from '../domain/task';
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
 import { genId } from '../utils/ids';
-import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm } from '../components/UI';
+import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm, useDaySplit } from '../components/UI';
 import type { Task, ExtraWorkEntry, HistoryType } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
@@ -42,6 +42,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   const [completeDateMode, setCompleteDateMode] = useState<CompleteMode>('today');
   const [completeCustomDate, setCompleteCustomDate] = useState('');
   const { confirm, ConfirmEl } = useConfirm();
+  const { askDaySplit, DaySplitEl } = useDaySplit();
   const [showExtraForm, setShowExtraForm] = useState(false);
   const [extraForm, setExtraForm] = useState({ title: '', date: todayStr(), note: '' });
 
@@ -159,10 +160,10 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
       ? `«${ct.name}» вышла за рамки дедлайна. Инженер будет переведён — разрешите просроченную задачу вручную.`
       : `Инженер уже задействован на «${ct.name}» (до ${formatDateShort(ctEnd)}). Снять с этой задачи и назначить на текущую?`;
 
-    const ok = await confirm(title, msg, { confirmLabel: 'Перевести', danger: false });
-    if (!ok) { setShowAddEng(false); return; }
+    const { confirmed, fraction } = await askDaySplit(title, msg, ct.name);
+    if (!confirmed) { setShowAddEng(false); return; }
 
-    updateData(prev => addEngineerToTask(prev, taskId, engId, true)); // перевод со снятием
+    updateData(prev => addEngineerToTask(prev, taskId, engId, true, fraction)); // перевод со снятием
     setShowAddEng(false);
   }
   function removeEngineer(engId: string) { updateData(prev => removeEngineerFromTask(prev, taskId, engId)); }
@@ -223,6 +224,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
       {ConfirmEl}
+      {DaySplitEl}
       {completeModal && (
         <Modal title="Завершить задачу" onClose={() => setCompleteModal(false)} width={400}>
           <FormRow label="Дата завершения">

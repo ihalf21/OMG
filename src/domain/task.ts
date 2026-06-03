@@ -57,6 +57,7 @@ export function addEngineerToTask(
   taskId: string,
   engineerId: string,
   transfer = false,   // true = снять со всех активных задач; false = только добавить (планирование)
+  dayFraction = 0,    // доля сегодняшнего дня на покидаемой задаче (только при transfer)
 ): ProjectState {
   const prevTask = transfer
     ? state.tasks.find(t => t.id !== taskId && t.status === 'active' && (t.assignedEngineers || []).includes(engineerId))
@@ -75,6 +76,7 @@ export function addEngineerToTask(
       note: transfer
         ? (prevTask ? `Переключён с «${prevTask.name}»` : 'Добавлен на задачу')
         : 'Запланирован на задачу',
+      dayFraction: prevTask ? dayFraction : 0,
     }),
   };
 }

@@ -452,6 +452,82 @@ export function useConfirm() {
   return { confirm, ConfirmEl };
 }
 
+// ─── DaySplitDialog + useDaySplit ─────────────────────────────────────────────
+// Подтверждение перевода инженера сегодня с выбором доли дня на покидаемой задаче.
+
+const DAY_SPLIT_OPTIONS: Array<{ label: string; value: number }> = [
+  { label: '0',  value: 0 },
+  { label: '¼',  value: 0.25 },
+  { label: '½',  value: 0.5 },
+  { label: '¾',  value: 0.75 },
+];
+
+interface DaySplitState {
+  open: boolean;
+  title: string;
+  message: string;
+  fromTaskName: string;
+  resolve: ((value: { confirmed: boolean; fraction: number }) => void) | null;
+}
+
+export function useDaySplit() {
+  const [state, setState] = React.useState<DaySplitState>({ open:false, title:'', message:'', fromTaskName:'', resolve:null });
+  const [fraction, setFraction] = React.useState(0);
+
+  const askDaySplit = React.useCallback((title: string, message: string, fromTaskName: string): Promise<{ confirmed: boolean; fraction: number }> => {
+    return new Promise(resolve => {
+      setFraction(0);
+      setState({ open:true, title, message, fromTaskName, resolve });
+    });
+  }, []);
+
+  function finish(confirmed: boolean) {
+    state.resolve?.({ confirmed, fraction: confirmed ? fraction : 0 });
+    setState(s => ({ ...s, open:false, resolve:null }));
+  }
+
+  const DaySplitEl = !state.open ? null : (
+    <div
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000 }}
+      onClick={e => { if (e.target === e.currentTarget) finish(false); }}
+    >
+      <div style={{ background:'var(--bg-primary)', borderRadius:12, border:'0.5px solid var(--border-light)', padding:28, width:440, maxWidth:'95vw', boxShadow:'0 8px 40px rgba(0,0,0,0.25)' }}>
+        <div style={{ fontSize:16, fontWeight:700, marginBottom:10, color:'var(--text-primary)' }}>{state.title}</div>
+        <div style={{ fontSize:14, color:'var(--text-secondary)', lineHeight:1.6, marginBottom:18, whiteSpace:'pre-line' }}>{state.message}</div>
+
+        <div style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:8 }}>
+          Сколько сегодня уже ушло на «{state.fromTaskName}»?
+        </div>
+        <div style={{ display:'flex', gap:8, marginBottom:6 }}>
+          {DAY_SPLIT_OPTIONS.map(opt => {
+            const active = fraction === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => setFraction(opt.value)}
+                style={{
+                  flex:1, padding:'10px 0', borderRadius:8, cursor:'pointer', fontSize:16, fontWeight:600,
+                  border: active ? '1.5px solid var(--accent)' : '1.5px solid var(--border-mid)',
+                  background: active ? 'var(--accent)' : 'var(--bg-secondary)',
+                  color: active ? '#fff' : 'var(--text-primary)',
+                }}
+              >{opt.label}</button>
+            );
+          })}
+        </div>
+        <div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:22 }}>доля дня · остаток уйдёт новой задаче</div>
+
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+          <BtnSecondary onClick={() => finish(false)}>Отмена</BtnSecondary>
+          <BtnPrimary onClick={() => finish(true)}>Перевести</BtnPrimary>
+        </div>
+      </div>
+    </div>
+  );
+
+  return { askDaySplit, DaySplitEl };
+}
+
 // ─── DateRangePicker / DatePicker ─────────────────────────────────────────────
 const CAL_MONTHS  = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const CAL_DAYS    = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
