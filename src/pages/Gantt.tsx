@@ -498,12 +498,14 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
             const isWaitingChild = !!task.dependsOn && allActiveTasks.some(t => t.id === task.dependsOn);
             const effectSt       = effectiveStart(task);
 
+            const isNotStartedYet = !isWaitingChild && effectSt > todayStr();
+
             let barColor: string;
             let barBg: string;
             if (isWaitingChild) {
               barColor = '#A8A6A0';
               barBg = 'repeating-linear-gradient(45deg,#A8A6A0,#A8A6A0 4px,#C8C7C3 4px,#C8C7C3 8px)';
-            } else if (!hasEngineers) {
+            } else if (isNotStartedYet || !hasEngineers) {
               barColor = '#A8A6A0';
               barBg = '#A8A6A0';
             } else {

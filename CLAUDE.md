@@ -29,7 +29,7 @@ Two independent Node.js processes:
 
 **Frontend** (`src/`) — Create React App, React 18, **TypeScript** (`moduleResolution: bundler`, strict)
 - `App.tsx` — root state; owns all data, routing, theme toggle, 800ms debounced auto-save, and multi-project workspace
-- `pages/` — full-page views: Dashboard, Tasks, TaskCard, Team, EngineerCard, Gantt, Estimate, Reports
+- `pages/` — full-page views: Dashboard, Tasks, TaskCard, Team, EngineerCard, Gantt, Absences, Estimate, Reports, Notes
 - `components/` — Sidebar (nav + changelog + project switcher), Topbar, UI (shared primitives)
 - `ui-types.ts` — `NavTarget`, `PageProps`, `NavigateFn`, `UpdateProjectData`
 - `vendor.d.ts` — type stubs for `html2canvas` and `jspdf` (needed because `moduleResolution: bundler` doesn't resolve their `typings` field)
@@ -45,6 +45,8 @@ Two independent Node.js processes:
 - `forecast.ts` — core scheduling engine: `calcForecast`, `projectFinish`, `computeEffectiveDls`, `statusColor`, `fmtHours`
 - `dates.ts` — Russian production calendar 2025–2026 (holidays hardcoded), `getMonthDays`, `isWorkday`, `addWorkdays`
 - `storage.ts` — all fetch calls to the backend API
+- `absences.ts` — `getAbsencePeriods`: reconstructs absence timeline (vacation/sick/dayoff) from `HistoryEntry[]` + current engineer status; used by Absences page
+- `notes.ts` — `useNotes` hook + `Note` types; persists to **localStorage** (`omg_notes`), not the backend
 - `ids.ts` — `genId(prefix)`
 
 **Backend** (`server/`) — Express on port 3001
@@ -52,7 +54,7 @@ Two independent Node.js processes:
 - `db.js` — reads/writes `server/data.json`; optional `server/seed.json` for user-saved snapshot
 - No database — single JSON file is the entire data store
 
-**Data model** — `Workspace` (top-level) contains `projects[]` + `currentProjectId`. Each `Project` has `engineers[]`, `tasks[]`, `history[]`. Frontend fetches the full `Workspace` on load and POSTs it on every save.
+**Data model** — `Workspace` (top-level) contains `projects[]` + `currentProjectId`. Each `Project` has `engineers[]`, `tasks[]`, `history[]`, and optionally `estimateTemplates[]`. `EstimateTemplate` stores PERT-style estimate forms (optimistic/median/pessimistic per field). Frontend fetches the full `Workspace` on load and POSTs it on every save. **Exception**: `Notes` data lives only in `localStorage` and is never sent to the backend.
 
 ## Key behaviours
 
@@ -64,6 +66,8 @@ Two independent Node.js processes:
 - **Proxy** — `package.json` has `"proxy": "http://localhost:3001"`; `.env` sets `HOST=0.0.0.0 PORT=4000`.
 - **Reports / PDF** — `src/pages/Reports.tsx` uses `html2canvas + jsPDF`. SVG `<marker>` is not supported by html2canvas — use inline `<polygon>` for arrowheads. `overflow: hidden` on the capture container clips SVG arrows; keep it absent.
 - **Russian holidays** — 2025 and 2026 calendars are hardcoded in `dates.ts`. When adding 2027+, extend `ALL_HOLIDAYS` there.
+- **Notes isolation** — `Notes` page renders as `<Notes/>` with no props (unlike every other page which gets `PageProps`). Its data lives in `localStorage` only and is project-agnostic.
+- **Absences page** — timeline view of engineer absences per month. Uses `getAbsencePeriods` to merge history + current status. Colours bars by engineer's `regularTask` direction using a deterministic hash palette.
 
 ## Coding conventions
 

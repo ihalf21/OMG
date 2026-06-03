@@ -282,9 +282,10 @@ function ReportGanttView({ tasks, engineers, year, month }: ReportGanttViewProps
         const hasEngineers = assignedEngs.length>0, hasEstimate=(task.estimateHours||0)>0;
         const isWaiting    = !!task.dependsOn&&allActiveTasks.some(t=>t.id===task.dependsOn);
         const effectSt     = effectiveStart(task);
+        const isNotStartedYet = !isWaiting && effectSt > todayStr();
         let barBg: string;
         if (isWaiting) barBg='repeating-linear-gradient(45deg,#A8A6A0,#A8A6A0 4px,#C8C7C3 4px,#C8C7C3 8px)';
-        else if (!hasEngineers) barBg='#A8A6A0';
+        else if (isNotStartedYet || !hasEngineers) barBg='#A8A6A0';
         else barBg=statusColor(!hasEstimate?'ok':fc?.deadlineStatus)||'#A8A6A0';
         const barStart=dateToIdx(effectSt,'next')??0;
         const rawFcIdx=fc?.forecastDate?dateToIdx(fc.forecastDate,'prev'):null;
