@@ -16,7 +16,7 @@ type DragEngState = { engId: string; fromTaskId: string } | null;
 type FreeModalState = { day: MonthDay; engineers: Engineer[] } | null;
 
 export default function Gantt({ data, updateData, navigate }: PageProps) {
-  const { engineers, tasks } = data;
+  const { engineers, tasks, history } = data;
   const [mode, setMode]         = useState<Mode>('tasks');
   const [year, setYear]         = useState(new Date().getFullYear());
   const [month, setMonth]       = useState(new Date().getMonth());
@@ -123,13 +123,13 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
         ? { ...t, assignedEngineers: engIds, startDate: null }
         : { ...t, assignedEngineers: engIds };
       const startOverride = t.dependsOn && dynStart ? dynStart : null;
-      result[t.id] = calcForecast(taskForFc, engineers, effectiveDls[t.id] || null, startOverride);
+      result[t.id] = calcForecast(taskForFc, engineers, effectiveDls[t.id] || null, startOverride, history);
     });
     tasks.filter(t => t.status === 'done').forEach(t => {
-      result[t.id] = calcForecast(t, engineers);
+      result[t.id] = calcForecast(t, engineers, null, null, history);
     });
     return result;
-  }, [allActiveTasks, dynamicStarts, effectiveDls, engineers, inheritedEngIds, tasks]);
+  }, [allActiveTasks, dynamicStarts, effectiveDls, engineers, inheritedEngIds, tasks, history]);
 
   // Конец следующего месяца от сегодня — фолбэк для задач без оценки и без дедлайна
   const noEstFallbackEnd = useMemo<ISODate>(() => {

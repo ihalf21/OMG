@@ -15,7 +15,7 @@ function task(overrides = {}) {
   return {
     id: 't', name: 'T', status: 'active',
     startDate: null, deadline: null, direction: null,
-    estimateHours: 8, totalCases: null, doneCases: 0,
+    estimateHours: 8,
     assignedEngineers: [], dependsOn: null,
     completedDate: null, completedWithChildId: null, archivedDate: null,
     ...overrides,

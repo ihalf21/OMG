@@ -1,9 +1,9 @@
 // utils/forecast.ts — расчёт прогноза завершения задачи.
 // Оценка в человеко-часах. Рабочий день = 8 часов.
 
-import { addWorkdays, addCalendarDay, isWorkday, subtractWorkdays, workdaysElapsed, todayStr, workdaysBetween } from './dates';
+import { addWorkdays, addCalendarDay, subtractCalendarDay, isWorkday, subtractWorkdays, workdaysElapsed, todayStr, workdaysBetween } from './dates';
 import { roleCoeff, capacityToday, capacityOn } from '../domain/availability';
-import type { Engineer, ISODate, Task } from '../domain/types';
+import type { Engineer, HistoryEntry, ISODate, Task } from '../domain/types';
 
 export const HOURS_PER_DAY = 8;
 export { roleCoeff };
@@ -90,33 +90,99 @@ export interface Forecast {
 }
 
 /**
+ * Фактически отработанные человеко-часы на задаче до конца вчерашнего дня.
+ *
+ * В отличие от формулы «прошедшие_дни × текущая_команда», восстанавливает
+ * реальный состав на каждый прошедший рабочий день из истории переключений
+ * (switch/return). Поэтому добавление или снятие инженера НЕ пересчитывает
+ * задним числом уже сделанную работу — прошлое фиксируется.
+ *
+ * capacityOn учитывает роль (лид → 0) и отсутствия инженера на дату.
+ */
+export function computeUsedHours(task: Task, engineers: Engineer[], history: HistoryEntry[]): number {
+  if (!task.startDate) return 0;
+  const today = todayStr();
+  if (task.startDate >= today) return 0;
+  const startDate = task.startDate;
+  const lastDay = subtractCalendarDay(today); // учитываем до конца вчерашнего дня
+
+  // Кандидаты = текущая команда + все, кто фигурирует в истории по этой задаче.
+  // Снятые инженеры выпадают из assignedEngineers, но их прошлый труд учитываем.
+  const candidateIds = new Set<string>(task.assignedEngineers || []);
+  for (const h of history) {
+    if (h.toTask === task.id || h.fromTask === task.id) candidateIds.add(h.engineerId);
+  }
+
+  let usedHours = 0;
+
+  candidateIds.forEach(id => {
+    const eng = engineers.find(e => e.id === id);
+    if (!eng) return;
+
+    const isCurrentMember = (task.assignedEngineers || []).includes(id);
+    const evs = history
+      .filter(h => h.engineerId === id && (h.toTask === task.id || h.fromTask === task.id))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Восстанавливаем интервалы присутствия forward-replay'ем.
+    // Начальное состояние: без событий → текущее членство;
+    // первое событие — уход (fromTask) → значит был на задаче с самого старта.
+    let onTask = evs.length === 0 ? isCurrentMember : (evs[0].fromTask === task.id);
+    let curFrom: ISODate | null = onTask ? startDate : null;
+    const intervals: Array<{ from: ISODate; to: ISODate }> = [];
+
+    for (const h of evs) {
+      const isJoin = h.toTask === task.id;
+      if (isJoin && !onTask) {
+        onTask = true;
+        curFrom = h.date > startDate ? h.date : startDate;
+      } else if (!isJoin && onTask) {
+        onTask = false;
+        const end = subtractCalendarDay(h.date); // ушёл в день h.date → работал по вчера
+        if (curFrom && end >= curFrom) intervals.push({ from: curFrom, to: end });
+        curFrom = null;
+      }
+    }
+    if (onTask && curFrom) intervals.push({ from: curFrom, to: lastDay });
+
+    // Суммируем capacity по рабочим дням внутри интервалов (в пределах [startDate, lastDay]).
+    for (const iv of intervals) {
+      let cursor = iv.from > startDate ? iv.from : startDate;
+      const stop = iv.to < lastDay ? iv.to : lastDay;
+      while (cursor <= stop) {
+        if (isWorkday(cursor)) usedHours += capacityOn(eng, cursor) * HOURS_PER_DAY;
+        cursor = addCalendarDay(cursor);
+      }
+    }
+  });
+
+  return usedHours;
+}
+
+/**
  * Основной расчёт прогноза.
  * estimateHours — оценка в человеко-часах.
+ * history — если передана, прогресс считается посуточно по реальному составу
+ * команды (см. computeUsedHours); без неё — fallback по текущей команде.
  */
 export function calcForecast(
   task: Task,
   engineers: Engineer[],
   deadlineOverride: ISODate | null = null,
   startOverride: ISODate | null = null,
+  history?: HistoryEntry[],
 ): Forecast {
   const cap = currentCapacity(task, engineers);
   const capFull = nominalCapacity(task, engineers);
   const totalHours = task.estimateHours || 0;
 
-  let progressPct = 0;
-  let remainingHours = totalHours;
-
-  if (task.totalCases && task.totalCases > 0 && (task.doneCases || 0) > 0) {
-    progressPct = Math.min(100, Math.round((task.doneCases / task.totalCases) * 100));
-    remainingHours = totalHours * (1 - progressPct / 100);
-  } else {
-    const elapsed = task.startDate ? workdaysElapsed(task.startDate) : 0;
-    const usedHours = elapsed * capFull * HOURS_PER_DAY;
-    remainingHours = Math.max(0, totalHours - usedHours);
-    progressPct = totalHours > 0
-      ? Math.min(100, Math.round((usedHours / totalHours) * 100))
-      : 0;
-  }
+  const usedHours = history
+    ? computeUsedHours(task, engineers, history)
+    : (task.startDate ? workdaysElapsed(task.startDate) : 0) * capFull * HOURS_PER_DAY;
+  const remainingHours = Math.max(0, totalHours - usedHours);
+  const progressPct = totalHours > 0
+    ? Math.min(100, Math.round((usedHours / totalHours) * 100))
+    : 0;
 
   let forecastDate: ISODate | null = null;
   let daysLeft: number | null = null;
@@ -241,7 +307,7 @@ export interface PhaseInfo {
  * Возвращает null если задача не оценивалась в калькуляторе или ещё не стартовала.
  * Дефекты и ретесты идут параллельно с тестированием — отдельной фазой не выделяются.
  */
-export function calcPhaseInfo(task: Task, engineers: Engineer[]): PhaseInfo | null {
+export function calcPhaseInfo(task: Task, engineers: Engineer[], history?: HistoryEntry[]): PhaseInfo | null {
   if (!task.estimateForm || !task.estimateHours || !task.startDate) return null;
   const est = readEstimateM(task.estimateForm as Record<string, unknown>);
   if (!est) return null;
@@ -259,8 +325,9 @@ export function calcPhaseInfo(task: Task, engineers: Engineer[]): PhaseInfo | nu
   const bound2 = ((stage1 + stage2)   / total) * totalHours;
   const bound3 = ((stage1 + stage2 + stage3) / total) * totalHours;
 
-  const capFull   = nominalCapacity(task, engineers);
-  const usedHours = workdaysElapsed(task.startDate) * capFull * HOURS_PER_DAY;
+  const usedHours = history
+    ? computeUsedHours(task, engineers, history)
+    : workdaysElapsed(task.startDate) * nominalCapacity(task, engineers) * HOURS_PER_DAY;
   const overallPct = Math.min(100, totalHours > 0 ? Math.round((usedHours / totalHours) * 100) : 0);
 
   const totalTests: number | null = tcTotalCount > 0 ? Math.round(tcTotalCount) : null;
@@ -333,26 +400,20 @@ export function calcScheduledChildStart(parentTask: Task, parentEngineers: Engin
  * Сколько инженеров нужно добавить чтобы уложиться в дедлайн.
  * Возвращает 0 если уже укладываемся, null если нет дедлайна.
  */
-export function engineersNeeded(task: Task, engineers: Engineer[], deadlineOverride: ISODate | null = null): number | null {
+export function engineersNeeded(task: Task, engineers: Engineer[], deadlineOverride: ISODate | null = null, history?: HistoryEntry[]): number | null {
   const effectiveDl = deadlineOverride !== null ? deadlineOverride : (task.deadline || null);
   if (!effectiveDl) return null;
-  const fc = calcForecast(task, engineers, deadlineOverride);
+  const fc = calcForecast(task, engineers, deadlineOverride, null, history);
   if (fc.deadlineStatus !== 'overdue') return 0;
 
   const totalHours = task.estimateHours || 0;
   const today = todayStr();
   if (effectiveDl < today) return null;
 
-  let remainingHours = totalHours;
-  if (task.totalCases && task.totalCases > 0 && (task.doneCases || 0) > 0) {
-    const pct = Math.min(1, (task.doneCases || 0) / task.totalCases);
-    remainingHours = totalHours * (1 - pct);
-  } else {
-    const capFull = nominalCapacity(task, engineers);
-    const elapsed = workdaysElapsed(task.startDate);
-    const usedHours = elapsed * capFull * HOURS_PER_DAY;
-    remainingHours = Math.max(0, totalHours - usedHours);
-  }
+  const usedHours = history
+    ? computeUsedHours(task, engineers, history)
+    : workdaysElapsed(task.startDate) * nominalCapacity(task, engineers) * HOURS_PER_DAY;
+  const remainingHours = Math.max(0, totalHours - usedHours);
 
   // Посуточный подсчёт реально доступных часов — учитывает отпуска/больничные
   const assignedEngs = (task.assignedEngineers || [])

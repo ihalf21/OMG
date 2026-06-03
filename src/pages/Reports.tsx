@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PageProps } from '../ui-types';
-import type { Engineer, ISODate, Task } from '../domain/types';
+import type { Engineer, HistoryEntry, ISODate, Task } from '../domain/types';
 import { calcForecast, fmtHours, statusColor, statusLabel } from '../utils/forecast';
 import { getMonthDays, todayStr } from '../utils/dates';
 import { isAvailableOn, isWorkingRole } from '../domain/availability';
@@ -114,10 +114,10 @@ function DonutChart({ segments, size = 100 }: { segments: DonutSeg[]; size?: num
 // ─── ReportGanttView (read-only, unchanged) ───────────────────────────────────
 
 interface ReportGanttViewProps {
-  tasks: Task[]; engineers: Engineer[]; year: number; month: number;
+  tasks: Task[]; engineers: Engineer[]; history: HistoryEntry[]; year: number; month: number;
 }
 
-function ReportGanttView({ tasks, engineers, year, month }: ReportGanttViewProps) {
+function ReportGanttView({ tasks, engineers, history, year, month }: ReportGanttViewProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const allDays = useMemo(() => getMonthDays(year, month), [year, month]);
   const days    = useMemo(() => allDays.filter(d => !d.off), [allDays]);
@@ -155,10 +155,10 @@ function ReportGanttView({ tasks, engineers, year, month }: ReportGanttViewProps
       const dynStart = dynamicStarts[t.id];
       const engIds   = inheritedEngIds[t.id] || t.assignedEngineers || [];
       const tfc = t.dependsOn ? { ...t, assignedEngineers: engIds, startDate: null } : { ...t, assignedEngineers: engIds };
-      r[t.id] = calcForecast(tfc, engineers, null, t.dependsOn && dynStart ? dynStart : null);
+      r[t.id] = calcForecast(tfc, engineers, null, t.dependsOn && dynStart ? dynStart : null, history);
     });
     return r;
-  }, [allActiveTasks, engineers, inheritedEngIds, dynamicStarts]);
+  }, [allActiveTasks, engineers, inheritedEngIds, dynamicStarts, history]);
 
   const activeTasks = useMemo(() => {
     const ms = `${year}-${String(month+1).padStart(2,'0')}-01`;
@@ -432,10 +432,10 @@ export default function Reports({ data }: PageProps) {
     allActiveTasks.forEach(t => {
       const dynStart=dynamicStarts[t.id], engIds=inheritedEngIds[t.id]||t.assignedEngineers||[];
       const tfc=t.dependsOn?{...t,assignedEngineers:engIds,startDate:null}:{...t,assignedEngineers:engIds};
-      r[t.id]=calcForecast(tfc,data.engineers,null,t.dependsOn&&dynStart?dynStart:null);
+      r[t.id]=calcForecast(tfc,data.engineers,null,t.dependsOn&&dynStart?dynStart:null,data.history);
     });
     return r;
-  }, [allActiveTasks,data.engineers,inheritedEngIds,dynamicStarts]);
+  }, [allActiveTasks,data.engineers,inheritedEngIds,dynamicStarts,data.history]);
 
   // ── Done tasks for the month ─────────────────────────────────────────────
   const doneTasks = useMemo(() =>
@@ -744,7 +744,6 @@ export default function Reports({ data }: PageProps) {
                             <tr key={t.id}>
                               <td style={tdStyle}>
                                 <div style={{ fontWeight:500 }}>{t.name}{t.dependsOn&&<span style={{ fontSize:10, color:'var(--text-tertiary)', marginLeft:4 }}>↳</span>}</div>
-                                {t.totalCases&&t.totalCases>0 ? <div style={{ fontSize:10, color:'var(--text-tertiary)', marginTop:1 }}>{t.doneCases}/{t.totalCases} кейсов</div> : null}
                               </td>
                               <td style={tdStyle}>
                                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
@@ -908,7 +907,7 @@ export default function Reports({ data }: PageProps) {
           {/* ── 7. Gantt ── */}
           <div style={{ border:'0.5px solid var(--border-light)', borderRadius:10, padding:'16px 20px', background:'var(--bg-primary)' }}>
             <SectionHead title="Диаграмма Ганта" mt={0}/>
-            <ReportGanttView tasks={data.tasks} engineers={data.engineers} year={year} month={month}/>
+            <ReportGanttView tasks={data.tasks} engineers={data.engineers} history={data.history} year={year} month={month}/>
           </div>
 
         </div>

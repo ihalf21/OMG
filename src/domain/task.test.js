@@ -5,7 +5,6 @@ import {
   getEngineerCurrentTask, getEngineerActiveTasks,
   unlinkParent, unlinkChild,
   completeTask, reopenTask, archiveTask, restoreFromArchive,
-  updateTaskProgress,
 } from './task';
 import { todayStr } from '../utils/dates';
 
@@ -311,29 +310,3 @@ describe('restoreFromArchive', () => {
   });
 });
 
-describe('updateTaskProgress', () => {
-  test('обновляет doneCases', () => {
-    const state = {
-      ...baseState(),
-      tasks: [{ id: 't1', totalCases: 100, doneCases: 0, assignedEngineers: [], status: 'active' }],
-    };
-    const s = updateTaskProgress(state, 't1', 50);
-    expect(s.tasks[0].doneCases).toBe(50);
-  });
-  test('ограничивает значением totalCases', () => {
-    const state = {
-      ...baseState(),
-      tasks: [{ id: 't1', totalCases: 100, doneCases: 0, assignedEngineers: [], status: 'active' }],
-    };
-    const s = updateTaskProgress(state, 't1', 500);
-    expect(s.tasks[0].doneCases).toBe(100);
-  });
-  test('без totalCases — не ограничивает', () => {
-    const state = {
-      ...baseState(),
-      tasks: [{ id: 't1', totalCases: null, doneCases: 0, assignedEngineers: [], status: 'active' }],
-    };
-    const s = updateTaskProgress(state, 't1', 500);
-    expect(s.tasks[0].doneCases).toBe(500);
-  });
-});

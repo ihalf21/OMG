@@ -6,7 +6,7 @@ import {
   fmtHours, engineersNeeded, getDerivedDeadline,
   projectFinish,
 } from './forecast';
-import { todayStr, addWorkdays } from './dates';
+import { todayStr, addWorkdays, subtractWorkdays } from './dates';
 
 function eng(overrides = {}) {
   return {
@@ -22,10 +22,14 @@ function task(overrides = {}) {
   return {
     id: 't1', name: 'Задача', status: 'active',
     startDate: null, deadline: null,
-    estimateHours: 0, totalCases: null, doneCases: 0,
+    estimateHours: 0,
     assignedEngineers: [],
     ...overrides,
   };
+}
+
+function switchEvent(engineerId, toTask, fromTask, date) {
+  return { id: `h-${engineerId}-${date}`, date, engineerId, type: 'switch', fromTask: fromTask ?? null, toTask: toTask ?? null, note: '' };
 }
 
 describe('HOURS_PER_DAY', () => {
@@ -132,15 +136,46 @@ describe('calcForecast', () => {
     expect(fc.daysLeft).toBe(5);
   });
 
-  test('прогресс по кейсам уменьшает оставшиеся часы', () => {
-    const e = eng({ id: 'e1' });
-    const t = task({
-      estimateHours: 80, totalCases: 100, doneCases: 50,
-      assignedEngineers: ['e1'],
-    });
-    const fc = calcForecast(t, [e]);
-    expect(fc.progressPct).toBe(50);
-    expect(fc.hoursLeft).toBe(40);
+  test('history-aware: усиление НЕ пересчитывает прошлый прогресс задним числом', () => {
+    // Задача идёт 10 рабочих дней с 1 инженером: 10×8 = 80чч из 160 = 50%.
+    const start = subtractWorkdays(todayStr(), 10);
+    const e1 = eng({ id: 'e1' }), e2 = eng({ id: 'e2' });
+
+    const base = calcForecast(
+      task({ id: 't1', estimateHours: 160, startDate: start, assignedEngineers: ['e1'] }),
+      [e1], null, null, [],
+    );
+    expect(base.progressPct).toBe(50);
+    expect(base.hoursLeft).toBe(80);
+
+    // Сегодня добавили 2-го инженера. Он не работал эти 10 дней — прогресс не должен скакнуть.
+    const hist = [switchEvent('e2', 't1', null, todayStr())];
+    const after = calcForecast(
+      task({ id: 't1', estimateHours: 160, startDate: start, assignedEngineers: ['e1', 'e2'] }),
+      [e1, e2], null, null, hist,
+    );
+    expect(after.progressPct).toBe(50);
+    expect(after.hoursLeft).toBe(80);
+  });
+
+  test('history-aware: снятие инженера НЕ обнуляет уже отработанное', () => {
+    // Задача шла вдвоём 10 рабочих дней: 10×2×8 = 160чч из 160 = 100%.
+    const start = subtractWorkdays(todayStr(), 10);
+    const e1 = eng({ id: 'e1' }), e2 = eng({ id: 'e2' });
+
+    const before = calcForecast(
+      task({ id: 't1', estimateHours: 160, startDate: start, assignedEngineers: ['e1', 'e2'] }),
+      [e1, e2], null, null, [],
+    );
+    expect(before.progressPct).toBe(100);
+
+    // Сегодня e2 сняли с задачи. Отработанное двоём за 10 дней сохраняется.
+    const hist = [switchEvent('e2', null, 't1', todayStr())];
+    const after = calcForecast(
+      task({ id: 't1', estimateHours: 160, startDate: start, assignedEngineers: ['e1'] }),
+      [e1, e2], null, null, hist,
+    );
+    expect(after.progressPct).toBe(before.progressPct);
   });
 
   test('forecastDate в будущем относительно startDate', () => {

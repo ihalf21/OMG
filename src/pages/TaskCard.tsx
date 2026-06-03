@@ -50,7 +50,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   const activeTasks = tasks.filter(t => t.status === 'active');
   const currentChild = tasks.find(t => t.dependsOn === taskId && t.status === 'active');
   const effectiveDl = task.deadline || getDerivedDeadline(task, activeTasks, engineers) || null;
-  const fc        = calcForecast(task, engineers, effectiveDl);
+  const fc        = calcForecast(task, engineers, effectiveDl, null, history);
   const barColor  = statusColor(fc?.deadlineStatus);
   const bs        = statusBadgeStyle(fc?.deadlineStatus);
   const assignedEngs = engineers.filter(e => task.assignedEngineers?.includes(e.id));
@@ -128,13 +128,13 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
     if (!engineers.find(e => e.id === engId)) return;
 
     const newStart = task!.startDate || todayStr();
-    const newFc    = calcForecast(task!, engineers);
+    const newFc    = calcForecast(task!, engineers, null, null, history);
     const newEnd   = newFc.forecastDate || task!.deadline || null;
 
     // Ищем задачи инженера, чьи периоды пересекаются с новой
     const otherTasks = getEngineerActiveTasks(data, engId, taskId);
     const conflicting = otherTasks.filter(ct => {
-      const ctFc  = calcForecast(ct, engineers);
+      const ctFc  = calcForecast(ct, engineers, null, null, history);
       const ctEnd = ctFc.forecastDate || ct.deadline || null;
       if (!ctEnd) return true;                          // задача без конца — всегда конфликт
       if (!newEnd) return ctEnd >= newStart;            // новая без конца
@@ -150,7 +150,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
 
     // Есть конфликт — нужно подтверждение и перевод
     const ct       = conflicting[0];
-    const ctFc     = calcForecast(ct, engineers);
+    const ctFc     = calcForecast(ct, engineers, null, null, history);
     const ctEnd    = ctFc.forecastDate || ct.deadline || null;
     const isOverdue = !!(ct.deadline && todayStr() > ct.deadline);
 
@@ -168,7 +168,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   function removeEngineer(engId: string) { updateData(prev => removeEngineerFromTask(prev, taskId, engId)); }
 
   const totalCount = assignedEngs.length;
-  const phaseInfo  = calcPhaseInfo(task, engineers);
+  const phaseInfo  = calcPhaseInfo(task, engineers, history);
 
   const parentTask      = task.dependsOn ? tasks.find(t => t.id === task.dependsOn) : null;
   const inheritedEngIds = parentTask ? getEffectiveTeam(parentTask, tasks) : [];

@@ -2,9 +2,8 @@ import React, { useState } from 'react';
 import { calcForecast, statusColor, statusLabel, statusBadgeStyle, engineersNeeded, computeEffectiveDls, type Forecast } from '../utils/forecast';
 import { computeInheritedTeam, computeDynamicStarts } from '../domain/gantt';
 import { isAvailableToday, isWorkingRole, leaveTypeToday } from '../domain/availability';
-import { updateTaskProgress } from '../domain/task';
 import { formatDateShort, todayStr } from '../utils/dates';
-import { Avatar, ProgressBar, Card, SectionTitle, PageTopbar } from '../components/UI';
+import { Avatar, Card, SectionTitle, PageTopbar } from '../components/UI';
 import type { Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
@@ -19,8 +18,8 @@ function byDeadline(
   return 0;
 }
 
-export default function Dashboard({ data, updateData, navigate }: PageProps) {
-  const { engineers, tasks } = data;
+export default function Dashboard({ data, navigate }: PageProps) {
+  const { engineers, tasks, history } = data;
   const activeTasks    = tasks.filter(t => t.status === 'active');
   const inheritedEngIds = computeInheritedTeam(activeTasks);
   const dynamicStarts   = computeDynamicStarts(activeTasks, engineers, inheritedEngIds);
@@ -34,7 +33,7 @@ export default function Dashboard({ data, updateData, navigate }: PageProps) {
       ? { ...t, assignedEngineers: engIds, startDate: null as null }
       : { ...t, assignedEngineers: engIds };
     const startOverride = t.dependsOn && dynStart ? dynStart : null;
-    forecasts[t.id] = calcForecast(taskForFc, engineers, effectiveDls[t.id] || null, startOverride);
+    forecasts[t.id] = calcForecast(taskForFc, engineers, effectiveDls[t.id] || null, startOverride, history);
   });
 
   const today = todayStr();
@@ -57,15 +56,7 @@ export default function Dashboard({ data, updateData, navigate }: PageProps) {
   const atRisk  = g1.length;
   const onTrack = activeTasks.filter(t => !isQueued(t) && forecasts[t.id]?.deadlineStatus === 'ok' && effectiveDls[t.id]).length;
 
-  const [progressInputs, setProgressInputs] = useState<Record<string, string>>({});
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-
-  function saveProgress(taskId: string) {
-    const val = parseInt(progressInputs[taskId]);
-    if (!val || isNaN(val)) return;
-    updateData(prev => updateTaskProgress(prev, taskId, val));
-    setProgressInputs(p => ({ ...p, [taskId]: '' }));
-  }
 
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
@@ -136,14 +127,6 @@ export default function Dashboard({ data, updateData, navigate }: PageProps) {
                     {assignedEngs.slice(0,3).map((e,i) => <Avatar key={e.id} name={e.name} size={28} style={{ marginLeft:i>0?-7:0, border:'2px solid var(--bg-primary)' }}/>)}
                     {assignedEngs.length>3 && <span style={{ fontSize:13, color:'var(--text-tertiary)', marginLeft:7 }}>+{assignedEngs.length-3}</span>}
                   </div>
-                  {task.totalCases && (
-                    <div style={{ width:150, flexShrink:0 }}>
-                      <ProgressBar pct={fc?.progressPct||0} color={barColor} height={5}/>
-                      <div style={{ fontSize:12, color:'var(--text-tertiary)', display:'flex', justifyContent:'space-between', marginTop:3 }}>
-                        <span>{task.doneCases}/{task.totalCases}</span><span>{fc?.progressPct||0}%</span>
-                      </div>
-                    </div>
-                  )}
                   <div style={{ flexShrink:0, textAlign:'right', minWidth:110 }}>
                     {dl ? (
                       <>
@@ -153,7 +136,7 @@ export default function Dashboard({ data, updateData, navigate }: PageProps) {
                           {queued ? 'В очереди' : statusLabel(fc?.deadlineStatus)}
                         </div>
                         {!queued && fc?.deadlineStatus === 'overdue' && (() => {
-                          const needed = engineersNeeded(task, engineers, isDerived ? dl : null);
+                          const needed = engineersNeeded(task, engineers, isDerived ? dl : null, history);
                           return needed && needed > 0
                             ? <div style={{ marginTop:4, fontSize:11, color:'var(--red)', fontWeight:500 }}>+{needed} инж. чтобы уложиться</div>
                             : null;
@@ -207,27 +190,6 @@ export default function Dashboard({ data, updateData, navigate }: PageProps) {
             </div>
           );
         })()}
-
-        {/* Quick progress */}
-        {activeTasks.filter(t=>t.totalCases).length>0&&(
-          <div style={{ marginBottom:20 }}>
-            <SectionTitle>Внести фактический прогресс</SectionTitle>
-            <Card>
-              {activeTasks.filter(t=>t.totalCases).map((task,idx,arr)=>(
-                <div key={task.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:idx<arr.length-1?'0.5px solid var(--border-light)':'none' }}>
-                  <div style={{ flex:1, fontSize:14, fontWeight:600 }}>{task.name}</div>
-                  <div style={{ fontSize:13, color:'var(--text-tertiary)', whiteSpace:'nowrap' }}>план: {task.totalCases} · факт:</div>
-                  <input type="number" placeholder="кейсов"
-                    value={progressInputs[task.id] || ''}
-                    onChange={e => setProgressInputs(p => ({ ...p, [task.id]: e.target.value }))}
-                    style={{ width:90, padding:'6px 9px', border:'1.5px solid var(--border-mid)', borderRadius:6, fontSize:14, background:'var(--bg-secondary)', color:'var(--text-primary)', textAlign:'center' }}
-                  />
-                  <button onClick={() => saveProgress(task.id)} style={{ padding:'6px 16px', border:'none', borderRadius:6, background:'var(--accent)', fontSize:14, color:'#fff', cursor:'pointer', fontWeight:500 }}>Обновить</button>
-                </div>
-              ))}
-            </Card>
-          </div>
-        )}
 
         {/* Team status */}
         <div style={{ marginBottom:20 }}>

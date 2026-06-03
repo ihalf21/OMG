@@ -188,15 +188,3 @@ export function restoreFromArchive(state: ProjectState, taskId: string): Project
   };
 }
 
-// ─── Прогресс ─────────────────────────────────────────────────────────────────
-
-export function updateTaskProgress(state: ProjectState, taskId: string, doneCases: number): ProjectState {
-  return {
-    ...state,
-    tasks: state.tasks.map(t => {
-      if (t.id !== taskId) return t;
-      const capped = t.totalCases ? Math.min(doneCases, t.totalCases) : doneCases;
-      return { ...t, doneCases: capped };
-    }),
-  };
-}

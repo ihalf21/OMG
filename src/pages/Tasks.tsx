@@ -14,7 +14,6 @@ interface NewTaskForm {
   direction: string;
   startDate: string;
   deadline: string;
-  totalCases: string;
   dependsOn: string | null;
   hoursAnalysis: string;
   hoursActualize: string;
@@ -23,7 +22,7 @@ interface NewTaskForm {
   link: string;
 }
 
-const emptyForm = (): NewTaskForm => ({ name:'', direction:'', startDate: todayStr(), deadline:'', totalCases:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'', link:'' });
+const emptyForm = (): NewTaskForm => ({ name:'', direction:'', startDate: todayStr(), deadline:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'', link:'' });
 
 type StatusFilter = 'all' | 'active' | 'done';
 
@@ -48,7 +47,7 @@ function DoneIcon({ task }: { task: Task }) {
 }
 
 export default function Tasks({ data, updateData, navigate }: PageProps) {
-  const { engineers, tasks } = data;
+  const { engineers, tasks, history } = data;
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('active');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<NewTaskForm>(emptyForm);
@@ -70,7 +69,7 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
       ? { ...t, assignedEngineers: engIds, startDate: null as null }
       : { ...t, assignedEngineers: engIds };
     const startOverride = t.dependsOn && dynStart ? dynStart : null;
-    forecasts[t.id] = calcForecast(taskForFc, engineers, effectiveDls[t.id] || null, startOverride);
+    forecasts[t.id] = calcForecast(taskForFc, engineers, effectiveDls[t.id] || null, startOverride, history);
   });
 
   const archivedTasks = tasks.filter(t => t.status === 'archived')
@@ -128,8 +127,6 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
       dependsOn:   form.dependsOn || null,
       estimateHours: totalFromBreakdown > 0 ? totalFromBreakdown : null,
       ...hoursBreakdown,
-      totalCases:  form.totalCases ? parseInt(form.totalCases) : null,
-      doneCases:   0,
       assignedEngineers,
       completedDate: null,
       completedWithChildId: null,
@@ -250,7 +247,7 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
                     <td style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>
                       <ProgressBar pct={fc?.progressPct||0} color={barColor} height={5}/>
                       <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:3 }}>
-                        {task.totalCases?`${task.doneCases} / ${task.totalCases}`:`авто · ${fc?.progressPct||0}%`}
+                        {`авто · ${fc?.progressPct||0}%`}
                       </div>
                     </td>
                     <td style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>

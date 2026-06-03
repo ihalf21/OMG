@@ -32,8 +32,6 @@ export interface Task {
   deadline: ISODate | null;
   direction: string | null;
   estimateHours: number | null;
-  totalCases: number | null;
-  doneCases: number;
   assignedEngineers: string[];
   dependsOn: string | null;
   completedDate: ISODate | null;

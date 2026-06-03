@@ -27,12 +27,12 @@ const SEED_DATA = {
         { id:'e10', name:'Петухов А.С.',  role:'engineer',     regularTask:'Спецзадачи',      status:'active',   vacationFrom:null,         vacationTo:null         },
       ],
       tasks: [
-        { id:'t1', name:'Тестирование релиза 4.2',    direction:'Релиз',         status:'active', startDate:'2025-04-28', deadline:'2025-05-14', estimateHours:96,  totalCases:500,  doneCases:310, assignedEngineers:['e2','e3','e6','e7','e8','e9'], completedDate:null },
-        { id:'t2', name:'Синхронизация данных Q2',    direction:'Синхронизация', status:'active', startDate:'2025-05-01', deadline:'2025-05-20', estimateHours:80,  totalCases:500,  doneCases:225, assignedEngineers:['e4','e8','e10'],               completedDate:null },
-        { id:'t3', name:'Смоук-тестирование',         direction:'Смоук',         status:'active', startDate:'2025-05-05', deadline:'2025-05-12', estimateHours:40,  totalCases:200,  doneCases:156, assignedEngineers:['e6','e7'],                     completedDate:null },
-        { id:'t4', name:'Хот-фикс авторизации',       direction:'Спецзадачи',    status:'active', startDate:'2025-05-09', deadline:'2025-05-12', estimateHours:16,  totalCases:null, doneCases:0,   assignedEngineers:['e3'],                          completedDate:null },
-        { id:'t5', name:'Регрессионное тестирование', direction:'Регресс',       status:'active', startDate:'2025-05-01', deadline:null,         estimateHours:144, totalCases:null, doneCases:0,   assignedEngineers:['e5','e6','e9'],                completedDate:null },
-        { id:'t6', name:'Документация по API',        direction:'Спецзадачи',    status:'active', startDate:'2025-05-06', deadline:null,         estimateHours:64,  totalCases:null, doneCases:0,   assignedEngineers:['e10'],                         completedDate:null },
+        { id:'t1', name:'Тестирование релиза 4.2',    direction:'Релиз',         status:'active', startDate:'2025-04-28', deadline:'2025-05-14', estimateHours:96,  assignedEngineers:['e2','e3','e6','e7','e8','e9'], completedDate:null },
+        { id:'t2', name:'Синхронизация данных Q2',    direction:'Синхронизация', status:'active', startDate:'2025-05-01', deadline:'2025-05-20', estimateHours:80,  assignedEngineers:['e4','e8','e10'],               completedDate:null },
+        { id:'t3', name:'Смоук-тестирование',         direction:'Смоук',         status:'active', startDate:'2025-05-05', deadline:'2025-05-12', estimateHours:40,  assignedEngineers:['e6','e7'],                     completedDate:null },
+        { id:'t4', name:'Хот-фикс авторизации',       direction:'Спецзадачи',    status:'active', startDate:'2025-05-09', deadline:'2025-05-12', estimateHours:16,  assignedEngineers:['e3'],                          completedDate:null },
+        { id:'t5', name:'Регрессионное тестирование', direction:'Регресс',       status:'active', startDate:'2025-05-01', deadline:null,         estimateHours:144, assignedEngineers:['e5','e6','e9'],                completedDate:null },
+        { id:'t6', name:'Документация по API',        direction:'Спецзадачи',    status:'active', startDate:'2025-05-06', deadline:null,         estimateHours:64,  assignedEngineers:['e10'],                         completedDate:null },
       ],
       history: [
         { id:'h1', date:'2025-05-09', engineerId:'e3', type:'switch',   fromTask:'t5', toTask:'t4', note:'Срочный хот-фикс' },
