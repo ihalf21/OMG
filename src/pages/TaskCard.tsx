@@ -9,7 +9,7 @@ import {
 } from '../domain/task';
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
 import { genId } from '../utils/ids';
-import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm, useDaySplit } from '../components/UI';
+import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm, useDaySplit, DaySplitButtons, hoursToFraction } from '../components/UI';
 import type { Task, ExtraWorkEntry, HistoryType } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
@@ -41,6 +41,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   const [completeModal, setCompleteModal] = useState(false);
   const [completeDateMode, setCompleteDateMode] = useState<CompleteMode>('today');
   const [completeCustomDate, setCompleteCustomDate] = useState('');
+  const [completeHours, setCompleteHours] = useState(0); // часов сегодня на завершаемой задаче (для дробного дня)
   const { confirm, ConfirmEl } = useConfirm();
   const { askDaySplit, DaySplitEl } = useDaySplit();
   const [showExtraForm, setShowExtraForm] = useState(false);
@@ -176,14 +177,15 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   const inheritedEngs   = inheritedEngIds.map(id => engineers.find(e => e.id === id)).filter((e): e is NonNullable<typeof e> => !!e);
   const inheritedCount  = inheritedEngs.length;
 
-  function completeTask(date: string) {
-    updateData(prev => completeTaskOp(prev, taskId, date));
+  function completeTask(date: string, dayFraction = 0) {
+    updateData(prev => completeTaskOp(prev, taskId, date, dayFraction));
     onBack();
   }
 
   function handleCompleteClick() {
     setCompleteDateMode('today');
     setCompleteCustomDate('');
+    setCompleteHours(0);
     setCompleteModal(true);
   }
 
@@ -191,7 +193,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
     const date = completeDateMode === 'today' ? todayStr() : completeCustomDate;
     if (!date) return;
     setCompleteModal(false);
-    completeTask(date);
+    completeTask(date, currentChild ? hoursToFraction(completeHours) : 0);
   }
 
   function reopenTask() {
@@ -244,6 +246,14 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
               )}
             </div>
           </FormRow>
+          {currentChild && (
+            <FormRow label="Учёт времени за сегодня">
+              <div style={{ fontSize:12, color:'var(--text-tertiary)', marginBottom:10 }}>
+                Команда автоматически перейдёт на «{currentChild.name}». Укажите, сколько сегодня ушло на текущую задачу — остаток дня зачтётся следующей.
+              </div>
+              <DaySplitButtons fromTaskName={task.name} hours={completeHours} onChange={setCompleteHours}/>
+            </FormRow>
+          )}
           <ModalFooter
             onCancel={() => setCompleteModal(false)}
             onSave={confirmComplete}

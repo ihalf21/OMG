@@ -118,7 +118,9 @@ interface TeamTransferResult {
   childId: string | null;
 }
 
-function transferTeamToChild(state: ProjectState, taskId: string): TeamTransferResult {
+// dayFraction — доля сегодняшнего дня, ушедшая на ЗАВЕРШАЕМУЮ задачу до перевода
+// (0 = весь день дочерней задаче, как раньше; 1 = весь день остаётся на родителе).
+function transferTeamToChild(state: ProjectState, taskId: string, dayFraction = 0): TeamTransferResult {
   const child = state.tasks.find(t => t.dependsOn === taskId && t.status === 'active');
   if (!child) return { tasks: state.tasks, history: state.history, childId: null };
 
@@ -131,6 +133,7 @@ function transferTeamToChild(state: ProjectState, taskId: string): TeamTransferR
   const newHistory: HistoryEntry[] = team.map(engId => ({
     id: genId('h'), date: today, engineerId: engId, type: 'switch',
     fromTask: taskId, toTask: child.id, note: 'Автоперевод при завершении задачи',
+    dayFraction,
   }));
 
   return {
@@ -142,8 +145,9 @@ function transferTeamToChild(state: ProjectState, taskId: string): TeamTransferR
   };
 }
 
-export function completeTask(state: ProjectState, taskId: string, completionDate: ISODate): ProjectState {
-  const transfer = transferTeamToChild(state, taskId);
+// dayFraction — доля сегодняшнего дня, ушедшая на завершаемую задачу (0..1).
+export function completeTask(state: ProjectState, taskId: string, completionDate: ISODate, dayFraction = 0): ProjectState {
+  const transfer = transferTeamToChild(state, taskId, dayFraction);
   return {
     ...state,
     tasks: transfer.tasks.map(t => t.id === taskId

@@ -455,12 +455,41 @@ export function useConfirm() {
 // ─── DaySplitDialog + useDaySplit ─────────────────────────────────────────────
 // Подтверждение перевода инженера сегодня с выбором доли дня на покидаемой задаче.
 
-const DAY_SPLIT_OPTIONS: Array<{ label: string; value: number }> = [
-  { label: '0',  value: 0 },
-  { label: '¼',  value: 0.25 },
-  { label: '½',  value: 0.5 },
-  { label: '¾',  value: 0.75 },
-];
+// Часы, отработанные на покидаемой задаче в день переключения.
+// 0 — весь день уйдёт новой задаче; 8 — весь день остаётся на старой.
+export const DAY_SPLIT_HOURS = [0, 2, 4, 6, 8];
+export const HOURS_PER_WORKDAY = 8;
+export const hoursToFraction = (h: number) => Math.max(0, Math.min(1, h / HOURS_PER_WORKDAY));
+
+// Переиспользуемый выбор часов (кнопки 0/2/4/6/8) для дня переключения.
+export function DaySplitButtons({ fromTaskName, hours, onChange }: { fromTaskName: string; hours: number; onChange: (h: number) => void }) {
+  return (
+    <div>
+      <div style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:8 }}>
+        Сколько сегодня уже ушло на «{fromTaskName}»?
+      </div>
+      <div style={{ display:'flex', gap:8, marginBottom:6 }}>
+        {DAY_SPLIT_HOURS.map(h => {
+          const active = hours === h;
+          return (
+            <button
+              key={h}
+              type="button"
+              onClick={() => onChange(h)}
+              style={{
+                flex:1, padding:'10px 0', borderRadius:8, cursor:'pointer', fontSize:15, fontWeight:600,
+                border: active ? '1.5px solid var(--accent)' : '1.5px solid var(--border-mid)',
+                background: active ? 'var(--accent)' : 'var(--bg-secondary)',
+                color: active ? '#fff' : 'var(--text-primary)',
+              }}
+            >{h}</button>
+          );
+        })}
+      </div>
+      <div style={{ fontSize:11, color:'var(--text-tertiary)' }}>часов сегодня · 8 = весь день старой задаче, остаток — новой</div>
+    </div>
+  );
+}
 
 interface DaySplitState {
   open: boolean;
@@ -472,17 +501,17 @@ interface DaySplitState {
 
 export function useDaySplit() {
   const [state, setState] = React.useState<DaySplitState>({ open:false, title:'', message:'', fromTaskName:'', resolve:null });
-  const [fraction, setFraction] = React.useState(0);
+  const [hours, setHours] = React.useState(0);
 
   const askDaySplit = React.useCallback((title: string, message: string, fromTaskName: string): Promise<{ confirmed: boolean; fraction: number }> => {
     return new Promise(resolve => {
-      setFraction(0);
+      setHours(0);
       setState({ open:true, title, message, fromTaskName, resolve });
     });
   }, []);
 
   function finish(confirmed: boolean) {
-    state.resolve?.({ confirmed, fraction: confirmed ? fraction : 0 });
+    state.resolve?.({ confirmed, fraction: confirmed ? hoursToFraction(hours) : 0 });
     setState(s => ({ ...s, open:false, resolve:null }));
   }
 
@@ -495,29 +524,9 @@ export function useDaySplit() {
         <div style={{ fontSize:16, fontWeight:700, marginBottom:10, color:'var(--text-primary)' }}>{state.title}</div>
         <div style={{ fontSize:14, color:'var(--text-secondary)', lineHeight:1.6, marginBottom:18, whiteSpace:'pre-line' }}>{state.message}</div>
 
-        <div style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:8 }}>
-          Сколько сегодня уже ушло на «{state.fromTaskName}»?
-        </div>
-        <div style={{ display:'flex', gap:8, marginBottom:6 }}>
-          {DAY_SPLIT_OPTIONS.map(opt => {
-            const active = fraction === opt.value;
-            return (
-              <button
-                key={opt.value}
-                onClick={() => setFraction(opt.value)}
-                style={{
-                  flex:1, padding:'10px 0', borderRadius:8, cursor:'pointer', fontSize:16, fontWeight:600,
-                  border: active ? '1.5px solid var(--accent)' : '1.5px solid var(--border-mid)',
-                  background: active ? 'var(--accent)' : 'var(--bg-secondary)',
-                  color: active ? '#fff' : 'var(--text-primary)',
-                }}
-              >{opt.label}</button>
-            );
-          })}
-        </div>
-        <div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:22 }}>доля дня · остаток уйдёт новой задаче</div>
+        <DaySplitButtons fromTaskName={state.fromTaskName} hours={hours} onChange={setHours}/>
 
-        <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:22 }}>
           <BtnSecondary onClick={() => finish(false)}>Отмена</BtnSecondary>
           <BtnPrimary onClick={() => finish(true)}>Перевести</BtnPrimary>
         </div>

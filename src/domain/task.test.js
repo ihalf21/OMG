@@ -282,6 +282,17 @@ describe('completeTask', () => {
     const s = completeTask(baseState(), 't1', todayStr());
     expect(s.tasks.find(t => t.id === 't1').completedWithChildId).toBe('t2');
   });
+  test('dayFraction проставляется на события автоперевода', () => {
+    const s = completeTask(baseState(), 't1', todayStr(), 1); // весь день — на завершаемую задачу
+    const transferEvents = s.history.filter(h => h.type === 'switch' && h.fromTask === 't1' && h.toTask === 't2');
+    expect(transferEvents.length).toBeGreaterThan(0);
+    transferEvents.forEach(h => expect(h.dayFraction).toBe(1));
+  });
+  test('по умолчанию dayFraction = 0 на автопереводе (весь день дочерней)', () => {
+    const s = completeTask(baseState(), 't1', todayStr());
+    const transferEvents = s.history.filter(h => h.type === 'switch' && h.fromTask === 't1' && h.toTask === 't2');
+    transferEvents.forEach(h => expect(h.dayFraction).toBe(0));
+  });
 });
 
 describe('reopenTask', () => {
