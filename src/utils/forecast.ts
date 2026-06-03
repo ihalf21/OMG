@@ -3,6 +3,7 @@
 
 import { addWorkdays, addCalendarDay, subtractCalendarDay, isWorkday, subtractWorkdays, workdaysElapsed, todayStr, workdaysBetween } from './dates';
 import { roleCoeff, capacityToday, capacityOn } from '../domain/availability';
+import { getAbsencePeriods } from './absences';
 import type { Engineer, HistoryEntry, ISODate, Task } from '../domain/types';
 
 export const HOURS_PER_DAY = 8;
@@ -97,7 +98,12 @@ export interface Forecast {
  * (switch/return). Поэтому добавление или снятие инженера НЕ пересчитывает
  * задним числом уже сделанную работу — прошлое фиксируется.
  *
- * capacityOn учитывает роль (лид → 0) и отсутствия инженера на дату.
+ * Две независимые оси:
+ *  1) членство в задаче по дням — только реальные назначения (switch/return);
+ *  2) доступность инженера по дням — отсутствия (отпуск/больничный/дейоф) через
+ *     getAbsencePeriods, привязанные к самому инженеру, а не к задаче. Поэтому
+ *     отпуск задним числом корректно вычитается из той задачи, на которой
+ *     инженер реально был в тот период, и работает даже если сейчас он снят.
  */
 export function computeUsedHours(task: Task, engineers: Engineer[], history: HistoryEntry[]): number {
   if (!task.startDate) return 0;
@@ -118,10 +124,17 @@ export function computeUsedHours(task: Task, engineers: Engineer[], history: His
   candidateIds.forEach(id => {
     const eng = engineers.find(e => e.id === id);
     if (!eng) return;
+    const role = roleCoeff(eng.role);
+    if (role <= 0) return; // лид и т.п. не дают production
 
+    // Ось 1: членство в задаче. Учитываем только реальные назначения —
+    // switch/return. События отсутствий (vacation/sick/dayoff) НЕ означают
+    // ухода с задачи, поэтому в реконструкцию членства не входят.
     const isCurrentMember = (task.assignedEngineers || []).includes(id);
     const evs = history
-      .filter(h => h.engineerId === id && (h.toTask === task.id || h.fromTask === task.id))
+      .filter(h => h.engineerId === id
+        && (h.type === 'switch' || h.type === 'return')
+        && (h.toTask === task.id || h.fromTask === task.id))
       .sort((a, b) => a.date.localeCompare(b.date));
 
     // Восстанавливаем интервалы присутствия forward-replay'ем.
@@ -145,12 +158,16 @@ export function computeUsedHours(task: Task, engineers: Engineer[], history: His
     }
     if (onTask && curFrom) intervals.push({ from: curFrom, to: lastDay });
 
-    // Суммируем capacity по рабочим дням внутри интервалов (в пределах [startDate, lastDay]).
+    // Ось 2: доступность. Отсутствия инженера за период — независимо от задачи.
+    const absences = getAbsencePeriods(eng, history, today);
+    const isAbsentOn = (d: ISODate) => absences.some(p => d >= p.start && d <= p.end);
+
+    // Суммируем по рабочим дням внутри интервалов членства, вычитая дни отсутствий.
     for (const iv of intervals) {
       let cursor = iv.from > startDate ? iv.from : startDate;
       const stop = iv.to < lastDay ? iv.to : lastDay;
       while (cursor <= stop) {
-        if (isWorkday(cursor)) usedHours += capacityOn(eng, cursor) * HOURS_PER_DAY;
+        if (isWorkday(cursor) && !isAbsentOn(cursor)) usedHours += role * HOURS_PER_DAY;
         cursor = addCalendarDay(cursor);
       }
     }

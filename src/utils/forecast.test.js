@@ -4,9 +4,10 @@ import {
   currentCapacity, nominalCapacity,
   calcForecast, statusColor, statusLabel,
   fmtHours, engineersNeeded, getDerivedDeadline,
-  projectFinish,
+  projectFinish, computeUsedHours,
 } from './forecast';
-import { todayStr, addWorkdays, subtractWorkdays } from './dates';
+import { todayStr, addWorkdays, subtractWorkdays, addCalendarDay, workdaysBetween } from './dates';
+import { setVacation } from '../domain/engineer';
 
 function eng(overrides = {}) {
   return {
@@ -30,6 +31,15 @@ function task(overrides = {}) {
 
 function switchEvent(engineerId, toTask, fromTask, date) {
   return { id: `h-${engineerId}-${date}`, date, engineerId, type: 'switch', fromTask: fromTask ?? null, toTask: toTask ?? null, note: '' };
+}
+
+// Пара событий «ушёл в отпуск → вернулся», как пишет setVacation для прошлого отпуска.
+// return ставится на следующий день после конца, чтобы период был [from, to] включительно.
+function vacationPair(engineerId, fromTask, vacFrom, vacTo) {
+  return [
+    { id: `vac-${engineerId}-${vacFrom}`, date: vacFrom, engineerId, type: 'vacation', fromTask: fromTask ?? null, toTask: null, note: '' },
+    { id: `ret-${engineerId}-${vacTo}`, date: addCalendarDay(vacTo), engineerId, type: 'return', fromTask: null, toTask: null, note: '' },
+  ];
 }
 
 describe('HOURS_PER_DAY', () => {
@@ -207,6 +217,64 @@ describe('calcForecast', () => {
     // Принудительно ставим дедлайн в прошлое
     const fc = calcForecast(t, [e], '2020-01-01');
     expect(fc.deadlineStatus).toBe('overdue');
+  });
+});
+
+describe('computeUsedHours — отсутствия задним числом', () => {
+  test('отпуск задним числом списывается с фактической задачи периода, а не с текущей', () => {
+    const start     = subtractWorkdays(todayStr(), 20);
+    const switchDay = subtractWorkdays(todayStr(), 6);   // перешёл с T0 на T1
+    const vacFrom   = subtractWorkdays(todayStr(), 15);
+    const vacTo     = subtractWorkdays(todayStr(), 13);  // отпуск в период работы на T0
+    const e1 = eng({ id: 'e1' });
+
+    // T0: работал [start, switchDay-1], сейчас снят. T1: с switchDay по сейчас.
+    const t0 = task({ id: 'T0', estimateHours: 100000, startDate: start,     assignedEngineers: [] });
+    const t1 = task({ id: 'T1', estimateHours: 100000, startDate: switchDay, assignedEngineers: ['e1'] });
+
+    const membership = [switchEvent('e1', 'T1', 'T0', switchDay)];
+    const withVac    = [...membership, ...vacationPair('e1', 'T0', vacFrom, vacTo)];
+    const vacWd = workdaysBetween(vacFrom, vacTo);
+
+    // С фактической задачи (T0) дни отпуска вычитаются
+    expect(computeUsedHours(t0, [e1], membership) - computeUsedHours(t0, [e1], withVac))
+      .toBe(vacWd * HOURS_PER_DAY);
+    // Текущая задача (T1) не затронута — отпуск был до её старта
+    expect(computeUsedHours(t1, [e1], withVac)).toBe(computeUsedHours(t1, [e1], membership));
+  });
+
+  test('отпуск задним числом учитывается даже если инженер сейчас снят с задачи', () => {
+    const start    = subtractWorkdays(todayStr(), 20);
+    const leaveDay = subtractWorkdays(todayStr(), 4);   // снят с задачи
+    const vacFrom  = subtractWorkdays(todayStr(), 14);
+    const vacTo    = subtractWorkdays(todayStr(), 12);
+    const e1 = eng({ id: 'e1' });
+    const t0 = task({ id: 'T0', estimateHours: 100000, startDate: start, assignedEngineers: [] });
+
+    const membership = [{ id: 'r0', date: leaveDay, engineerId: 'e1', type: 'return', fromTask: 'T0', toTask: null, note: '' }];
+    const withVac    = [...membership, ...vacationPair('e1', 'T0', vacFrom, vacTo)];
+    const vacWd = workdaysBetween(vacFrom, vacTo);
+
+    const noVac = computeUsedHours(t0, [e1], membership);
+    expect(noVac).toBeGreaterThan(0);
+    expect(noVac - computeUsedHours(t0, [e1], withVac)).toBe(vacWd * HOURS_PER_DAY);
+  });
+
+  test('integration: setVacation задним числом снижает прогресс, но состав задачи не меняет', () => {
+    const start = subtractWorkdays(todayStr(), 10);
+    const state = {
+      engineers: [eng({ id: 'e1' })],
+      tasks: [task({ id: 't1', estimateHours: 1000, startDate: start, assignedEngineers: ['e1'] })],
+      history: [],
+    };
+    const before = calcForecast(state.tasks[0], state.engineers, null, null, state.history);
+
+    const after = setVacation(state, 'e1', subtractWorkdays(todayStr(), 6), subtractWorkdays(todayStr(), 4));
+    const t1 = after.tasks.find(t => t.id === 't1');
+    const fcAfter = calcForecast(t1, after.engineers, null, null, after.history);
+
+    expect(fcAfter.progressPct).toBeLessThan(before.progressPct);
+    expect(t1.assignedEngineers).toContain('e1');
   });
 });
 

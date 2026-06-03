@@ -1,7 +1,7 @@
 // src/domain/engineer.ts
 // Чистые функции переходов состояния инженера. (state, ...args) -> newState.
 
-import { todayStr, formatDateShort } from '../utils/dates';
+import { todayStr, formatDateShort, addCalendarDay } from '../utils/dates';
 import { genId } from '../utils/ids';
 import type {
   Engineer, EngineerRole, HistoryEntry, ISODate,
@@ -160,23 +160,19 @@ export function setVacation(state: ProjectState, engineerId: string, vacationFro
   const noteRange = `Отпуск ${formatDateShort(vacationFrom)} — ${formatDateShort(vacationTo)}`;
 
   if (isPast) {
-    // Исторический отпуск: снимаем со всех задач, возвращаем на ту же если она ещё активна
-    let updatedTasks = removeEngineerFromAllTasks(state, engineerId);
-    const newHistory: HistoryEntry[] = [
-      ...state.history,
-      { id: genId('h'), date: vacationFrom, engineerId, type: 'vacation', fromTask: preTask?.id || null, toTask: null, note: noteRange },
-    ];
-    if (preTask && updatedTasks.find(t => t.id === preTask.id)?.status === 'active') {
-      updatedTasks = updatedTasks.map(t => t.id === preTask.id
-        ? { ...t, assignedEngineers: [...(t.assignedEngineers || []), engineerId] }
-        : t);
-      newHistory.push({ id: genId('h'), date: vacationTo, engineerId, type: 'switch', fromTask: null, toTask: preTask.id, note: 'Вернулся из отпуска' });
-    }
+    // Исторический отпуск: инженер уже вернулся, состав задач не меняем.
+    // Пишем чистую пару vacation → return (return на день после конца отпуска,
+    // чтобы getAbsencePeriods восстановил период [from, to] включительно).
+    // Период привязан к инженеру, а не к задаче — корректно учитывается там,
+    // где инженер реально был, и в «Отсутствиях», и в расчёте прогресса.
     return {
       ...state,
       engineers: patchEngineer(state, engineerId, { status: 'active', vacationFrom: null, vacationTo: null }),
-      tasks: updatedTasks,
-      history: newHistory,
+      history: [
+        ...state.history,
+        { id: genId('h'), date: vacationFrom, engineerId, type: 'vacation', fromTask: preTask?.id || null, toTask: null, note: noteRange },
+        { id: genId('h'), date: addCalendarDay(vacationTo), engineerId, type: 'return', fromTask: null, toTask: null, note: 'Вернулся из отпуска' },
+      ],
     };
   }
 

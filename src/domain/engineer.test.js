@@ -240,16 +240,17 @@ describe('setVacation', () => {
     expect(s.engineers.find(e => e.id === 'e1').status).toBe('vacation');
     expect(s.tasks.find(t => t.id === 't1').assignedEngineers).toEqual([]);
   });
-  test('исторический отпуск — возвращает на ту же задачу', () => {
+  test('исторический отпуск — задачи не трогает, пишет пару vacation→return', () => {
     const from = subtractWorkdays(todayStr(), 10);
     const to   = subtractWorkdays(todayStr(), 5);
     const s = setVacation(baseState(), 'e1', from, to);
     expect(s.engineers.find(e => e.id === 'e1').status).toBe('active');
     expect(s.engineers.find(e => e.id === 'e1').vacationFrom).toBe(null);
+    // Состав задачи не меняется — инженер остаётся на t1
     expect(s.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
-    // History содержит и vacation, и switch обратно
+    // History содержит открывающий vacation и закрывающий return
     expect(s.history.find(h => h.type === 'vacation')).toBeDefined();
-    expect(s.history.find(h => h.type === 'switch' && h.note.includes('Вернулся'))).toBeDefined();
+    expect(s.history.find(h => h.type === 'return' && h.note.includes('Вернулся'))).toBeDefined();
   });
 });
 
