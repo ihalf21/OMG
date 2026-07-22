@@ -35,7 +35,7 @@ export default function Team({ data, updateData, navigate }: PageProps) {
     free:        engineers.filter(e => isAvail(e) && !isOnTask(e)).length,
   };
 
-  const { widths: colWidths, startResize } = useResizableColumns('omg_team_cols', [200, 130, 110, 210, 110]);
+  const { widths: colWidths, startResize } = useResizableColumns('omg_team_cols', [220, 130, 110, 260, 56]);
   const [sortBy, setSortBy] = useState<SortCol>('group');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
@@ -197,9 +197,14 @@ export default function Team({ data, updateData, navigate }: PageProps) {
                         : <div><div style={{ fontSize:14, color:'var(--text-primary)', fontWeight:500 }}>{currentTask?.name||'—'}</div><div style={{ fontSize:12, color:'var(--text-tertiary)' }}>рег.: {eng.regularTask||'—'}</div></div>
                       }
                     </td>
-                    <td style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>
-                      <div style={{ display:'flex', gap:6 }}>
-                        <button onClick={e=>{e.stopPropagation();navigate('engineer',eng.id);}} style={{ padding:'5px 12px', border:'1.5px solid var(--border-mid)', borderRadius:6, background:'var(--bg-secondary)', fontSize:13, fontWeight:500, color:'var(--text-primary)', cursor:'pointer' }}>Открыть</button>
+                    <td style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)', textAlign:'right' }}>
+                      <div style={{ display:'flex', justifyContent:'flex-end' }}>
+                        <button
+                          aria-label={`Открыть карточку: ${eng.name}`}
+                          title="Открыть карточку"
+                          onClick={e=>{e.stopPropagation();navigate('engineer',eng.id);}}
+                          style={{ width:28, height:28, border:'1.5px solid transparent', borderRadius:6, background:'transparent', fontSize:20, lineHeight:1, fontWeight:700, color:'var(--text-tertiary)', cursor:'pointer' }}
+                        >›</button>
                       </div>
                     </td>
                   </tr>

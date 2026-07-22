@@ -321,6 +321,26 @@ export default function Absences({ data, navigate }: PageProps) {
             </div>
           )}
 
+          {/* Строка итогов: сколько человек на работе каждый день */}
+          {workingEngs.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', marginTop: 4, paddingTop: 2 }}>
+              <div style={{ width: LABEL_W, minWidth: LABEL_W, flexShrink: 0, fontSize: 12, color: 'var(--text-tertiary)', paddingRight: 12 }}>На работе</div>
+              <div style={{ flex: 1, display: 'flex' }}>
+                {days.map((d, i) => {
+                  const present = workingEngs.length - absentPerDay[i];
+                  const isOff   = d.off;
+                  const bg  = isOff ? 'var(--bg-secondary)' : present > 0 ? 'var(--success-bg)' : 'var(--bg-secondary)';
+                  const col = isOff ? 'var(--text-tertiary)' : present > 0 ? 'var(--success)' : 'var(--text-tertiary)';
+                  return (
+                    <div key={i} style={{ flex: 1, height: 22, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: col, borderRight: i < DAYS - 1 ? '0.5px solid var(--bg-primary)' : 'none' }}>
+                      {isOff ? '—' : present}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 

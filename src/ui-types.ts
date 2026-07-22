@@ -13,6 +13,7 @@ export type NavTarget =
   | 'absences'
   | 'estimate'
   | 'reports'
+  | 'admin'
   | 'notes';
 
 export type NavigateFn = (target: NavTarget, id?: string) => void;

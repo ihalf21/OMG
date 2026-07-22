@@ -20,9 +20,12 @@ interface NewTaskForm {
   hoursDevelopment: string;
   hoursTesting: string;
   link: string;
+  testOpsUrl: string;
+  workDocUrl: string;
 }
 
-const emptyForm = (): NewTaskForm => ({ name:'', direction:'', startDate: todayStr(), deadline:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'', link:'' });
+const emptyForm = (): NewTaskForm => ({ name:'', direction:'', startDate: todayStr(), deadline:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'', link:'', testOpsUrl:'', workDocUrl:'' });
+const hasEstimate = (task: Task) => (task.estimateHours || 0) > 0;
 
 type StatusFilter = 'all' | 'active' | 'done';
 
@@ -131,7 +134,9 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
       completedDate: null,
       completedWithChildId: null,
       archivedDate: null,
-      link: form.link || undefined,
+      link: form.link.trim() || undefined,
+      testOpsUrl: form.testOpsUrl.trim() || undefined,
+      workDocUrl: form.workDocUrl.trim() || undefined,
     };
     updateData(prev => {
       const parentId = newTask.dependsOn;
@@ -212,11 +217,14 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
             <tbody>
               {filtered.map(task => {
                 const fc = forecasts[task.id];
+                const estimated = hasEstimate(task);
                 const isQueued = !!(task.dependsOn && tasks.find(t => t.id === task.dependsOn)?.status === 'active')
                   || !!(task.startDate && task.startDate > todayStr());
                 const barColor = isQueued ? 'var(--text-tertiary)' : statusColor(fc?.deadlineStatus);
                 const bs = isQueued
                   ? { bg: 'var(--bg-secondary)', color: 'var(--text-secondary)' }
+                  : !estimated
+                    ? { bg: 'var(--blue-bg)', color: 'var(--blue)' }
                   : statusBadgeStyle(fc?.deadlineStatus);
                 const assignedEngs = engineers.filter(e => task.assignedEngineers?.includes(e.id));
                 return (
@@ -241,14 +249,26 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
                       <span style={{ fontSize:12, padding:'3px 9px', borderRadius:4, fontWeight:500, ...bs }}>
                         {task.status==='done' ? 'Завершена'
                           : isQueued ? 'В очереди'
+                          : !estimated ? 'Нужна оценка'
                           : task.deadline ? statusLabel(fc?.deadlineStatus) : 'В работе'}
                       </span>
                     </td>
                     <td style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>
-                      <ProgressBar pct={fc?.progressPct||0} color={barColor} height={5}/>
-                      <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:3 }}>
-                        {`авто · ${fc?.progressPct||0}%`}
-                      </div>
+                      {estimated ? (
+                        <>
+                          <ProgressBar pct={fc?.progressPct||0} color={barColor} height={5}/>
+                          <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:3 }}>
+                            {`авто · ${fc?.progressPct||0}%`}
+                          </div>
+                        </>
+                      ) : (
+                        <button
+                          onClick={e => { e.stopPropagation(); navigate('estimate', task.id); }}
+                          style={{ padding:'5px 10px', border:'1.5px solid var(--blue)', borderRadius:6, background:'var(--blue-bg)', color:'var(--blue)', fontSize:12, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}
+                        >
+                          Оценить быстро
+                        </button>
+                      )}
                     </td>
                     <td style={{ padding:'12px 14px', borderBottom:'0.5px solid var(--border-light)' }}>
                       <div style={{ display:'flex', alignItems:'center' }}>
@@ -298,9 +318,17 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
           <FormRow label="Дедлайн (опционально)">
             <DatePicker value={form.deadline} onChange={v => setForm(f=>({...f, deadline:v}))} placeholder="Без дедлайна"/>
           </FormRow>
-          <FormRow label="Ссылка" hint="Необязательно">
-            <Input value={form.link} onChange={e=>setForm(f=>({...f, link:e.target.value}))} placeholder="https://..."/>
+          <FormRow label="Ссылка на Jira" hint="Необязательно">
+            <Input value={form.link} onChange={e=>setForm(f=>({...f, link:e.target.value}))} placeholder="https://jira.example.com/browse/ABC-123"/>
           </FormRow>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
+            <FormRow label="Прогон в ТестОпс" hint="Необязательно">
+              <Input value={form.testOpsUrl} onChange={e=>setForm(f=>({...f, testOpsUrl:e.target.value}))} placeholder="https://testops.mos.ru/launch/11019"/>
+            </FormRow>
+            <FormRow label="Рабочий ГД" hint="Необязательно">
+              <Input value={form.workDocUrl} onChange={e=>setForm(f=>({...f, workDocUrl:e.target.value}))} placeholder="https://docs.google.com/spreadsheets/d/..."/>
+            </FormRow>
+          </div>
           <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:4, padding:'8px 12px', background:'var(--bg-secondary)', borderRadius:6 }}>
             💡 Оценку трудозатрат можно добавить в разделе <strong>Оценка</strong> после создания задачи
           </div>

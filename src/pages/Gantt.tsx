@@ -7,13 +7,14 @@ import { computeInheritedTeam, computeDynamicStarts, getTaskChain, segmentByWeek
 import { getEngineerActiveTasks } from '../domain/task';
 import { formatDateShort } from '../utils/dates';
 import { genId } from '../utils/ids';
-import { Avatar, PageTopbar, useTooltip, useConfirm, useDaySplit } from '../components/UI';
+import { Avatar, PageTopbar, Select, useTooltip, useConfirm, useDaySplit } from '../components/UI';
 import type { Engineer, ISODate, Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
 type Mode = 'tasks' | 'team';
 type DragEngState = { engId: string; fromTaskId: string } | null;
 type FreeModalState = { day: MonthDay; engineers: Engineer[] } | null;
+const NO_DIRECTION_FILTER = '__no_direction__';
 
 export default function Gantt({ data, updateData, navigate }: PageProps) {
   const { engineers, tasks, history } = data;
@@ -21,6 +22,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
   const [year, setYear]         = useState(new Date().getFullYear());
   const [month, setMonth]       = useState(new Date().getMonth());
   const [hideOff, setHideOff]   = useState(true);
+  const [directionFilter, setDirectionFilter] = useState('all');
   const [hoveredTask, setHoveredTask] = useState<string | null>(null);
   const [freeModal, setFreeModal]     = useState<FreeModalState>(null);
   const [dragIdx, setDragIdx]         = useState<number | null>(null);
@@ -40,6 +42,44 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
 
   const allDays = useMemo(() => getMonthDays(year, month), [year, month]);
   const days  = useMemo(() => hideOff ? allDays.filter(d => !d.off) : allDays, [allDays, hideOff]);
+
+  const directionOptions = useMemo(() => {
+    const dirs = new Set<string>();
+    (data.directions || []).forEach(dir => {
+      const value = dir.trim();
+      if (value) dirs.add(value);
+    });
+    tasks.forEach(task => {
+      const value = task.direction?.trim();
+      if (value) dirs.add(value);
+    });
+    return Array.from(dirs);
+  }, [data.directions, tasks]);
+
+  const hasDirectionlessTasks = useMemo(
+    () => tasks.some(task => !task.direction?.trim()),
+    [tasks],
+  );
+
+  React.useEffect(() => {
+    if (
+      directionFilter !== 'all' &&
+      directionFilter !== NO_DIRECTION_FILTER &&
+      !directionOptions.includes(directionFilter)
+    ) {
+      setDirectionFilter('all');
+    }
+    if (directionFilter === NO_DIRECTION_FILTER && !hasDirectionlessTasks) {
+      setDirectionFilter('all');
+    }
+  }, [directionFilter, directionOptions, hasDirectionlessTasks]);
+
+  const directionMatches = React.useCallback((task: Task) => {
+    const taskDirection = task.direction?.trim() || '';
+    if (directionFilter === 'all') return true;
+    if (directionFilter === NO_DIRECTION_FILTER) return !taskDirection;
+    return taskDirection === directionFilter;
+  }, [directionFilter]);
 
   React.useLayoutEffect(() => {
     if (weekRowRef.current) setWeekRowH(weekRowRef.current.offsetHeight);
@@ -147,6 +187,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
     const lastDay    = new Date(year, month+1, 0).getDate();
     const monthEnd   = `${year}-${String(month+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
     return allActiveTasks.filter(t => {
+      if (!directionMatches(t)) return false;
       const effStart = dynamicStarts[t.id] || todayStr();
       if (effStart > monthEnd) return false;
       const fc = forecasts[t.id];
@@ -155,7 +196,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       if (endDate < monthStart) return false;
       return true;
     });
-  }, [allActiveTasks, dynamicStarts, forecasts, year, month, noEstFallbackEnd]);
+  }, [allActiveTasks, dynamicStarts, forecasts, year, month, noEstFallbackEnd, directionMatches]);
 
   // Завершённые задачи — фильтруем по completedDate в текущем месяце
   const doneTasks = useMemo<Task[]>(() => {
@@ -165,11 +206,12 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
     const monthEnd   = `${year}-${String(month+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
     return tasks.filter(t => {
       if (t.status !== 'done') return false;
+      if (!directionMatches(t)) return false;
       const start = t.startDate || monthStart;
       const end   = t.completedDate || monthEnd;
       return start <= monthEnd && end >= monthStart;
     }).sort((a,b) => (a.completedDate||'').localeCompare(b.completedDate||''));
-  }, [tasks, year, month, showDone]);
+  }, [tasks, year, month, showDone, directionMatches]);
 
   const monthName = new Date(year, month, 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
 
@@ -265,10 +307,9 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       return;
     }
 
-    // Убираем всю цепочку из списка
-    const withoutChain = activeTasks.filter(t => !chainIds.has(t.id));
-
-    // Ищем позицию целевой задачи в урезанном списке и вставляем цепочку туда
+    // Переставляем видимую цепочку внутри полного активного списка, чтобы
+    // скрытые фильтром задачи не получали конфликтующие sortOrder.
+    const withoutChain = allActiveTasks.filter(t => !chainIds.has(t.id));
     const insertAt = withoutChain.findIndex(t => t.id === toTask.id);
     const reordered = [
       ...withoutChain.slice(0, insertAt),
@@ -353,11 +394,22 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       const pr = pEl.getBoundingClientRect();
       const cr = cEl.getBoundingClientRect();
       const childIsBelow = cr.top >= pr.top;
+      const parentLeft   = pr.left - base.left;
+      const parentAnchor = parentLeft + arrowAnchorOffset(pr.width);
+      const x2           = cr.left - base.left;
+      // Защита от «сломанной» стрелки: если дочерняя задача начинается левее
+      // правого края родителя (например, родитель без оценки рисуется во всю
+      // ширину, а старт ребёнка считается от его левого края), анкер у правого
+      // края увёл бы горизонтальный сегмент назад и развернул наконечник.
+      // Отводим точку выхода чуть левее старта ребёнка (но не левее левого края
+      // родителя), чтобы стрелка всегда шла вперёд.
+      const ARROW_GAP = 8;
+      const x1 = Math.max(parentLeft, Math.min(parentAnchor, x2 - ARROW_GAP));
       arrows.push({
         key: `${pTask.id}-${cTask.id}`,
-        x1: pr.left - base.left + arrowAnchorOffset(pr.width),
+        x1,
         y1: childIsBelow ? pr.bottom - base.top : pr.top - base.top,
-        x2: cr.left - base.left,
+        x2,
         y2: cr.top - base.top + cr.height / 2,
       });
     }
@@ -371,6 +423,44 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
     return new Set(getChain(hoveredTask).map(t => t.id));
   }, [hoveredTask, activeTasks, doneTasks]);
 
+  function SegmentedButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+    return (
+      <button onClick={onClick} style={{
+        padding:'7px 12px',
+        border:'none',
+        borderRadius:5,
+        background: active ? 'var(--accent)' : 'transparent',
+        color: active ? 'var(--accent-contrast)' : 'var(--text-secondary)',
+        fontSize:14,
+        fontWeight: active ? 700 : 500,
+        cursor:'pointer',
+        transition:'background 0.15s, color 0.15s',
+        whiteSpace:'nowrap',
+      }}>{children}</button>
+    );
+  }
+
+  function ToggleButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+    return (
+      <button onClick={onClick} style={{
+        padding:'7px 12px',
+        border:'1.5px solid',
+        borderColor: active ? 'var(--accent)' : 'var(--border-mid)',
+        borderRadius:6,
+        background: active ? 'var(--accent-bg)' : 'var(--bg-secondary)',
+        color: active ? 'var(--accent)' : 'var(--text-secondary)',
+        fontSize:14,
+        fontWeight: active ? 700 : 500,
+        cursor:'pointer',
+        display:'flex',
+        alignItems:'center',
+        gap:6,
+        transition:'background 0.15s, color 0.15s, border-color 0.15s',
+        whiteSpace:'nowrap',
+      }}>{children}</button>
+    );
+  }
+
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
       <PageTopbar title="Диаграмма Ганта">
@@ -378,33 +468,42 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
         <div style={{ padding:'7px 16px', border:'1.5px solid var(--border-mid)', borderRadius:6, fontSize:14, fontWeight:600, minWidth:160, textAlign:'center', background:'var(--bg-secondary)', color:'var(--text-primary)', textTransform:'capitalize' }}>{monthName}</div>
         <button onClick={nextMonth} style={{ padding:'7px 12px', border:'1.5px solid var(--border-mid)', borderRadius:6, background:'var(--bg-secondary)', fontSize:14, cursor:'pointer', color:'var(--text-primary)', fontWeight:600 }}>›</button>
         <div style={{ width:1, height:24, background:'var(--border-light)' }}/>
-        {([['team','👥 С командой'],['tasks','📋 Только задачи']] as const).map(([val,label]) => (
-          <button key={val} onClick={() => setMode(val)} style={{
-            padding:'7px 14px', border:'1.5px solid var(--border-mid)', borderRadius:6,
-            background: mode===val ? 'var(--accent)' : 'var(--bg-secondary)',
-            color: mode===val ? '#fff' : 'var(--text-secondary)',
-            fontSize:14, fontWeight: mode===val ? 600 : 500, cursor:'pointer',
-          }}>{label}</button>
-        ))}
+        <div style={{
+          display:'flex',
+          alignItems:'center',
+          gap:3,
+          padding:3,
+          border:'1.5px solid var(--border-mid)',
+          borderRadius:7,
+          background:'var(--bg-secondary)',
+        }}>
+          <SegmentedButton active={mode === 'tasks'} onClick={() => setMode('tasks')}>Только задачи</SegmentedButton>
+          <SegmentedButton active={mode === 'team'} onClick={() => setMode('team')}>С командой</SegmentedButton>
+        </div>
+        <div style={{ width:1, height:24, background:'var(--border-light)' }}/>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:13, color:'var(--text-tertiary)', whiteSpace:'nowrap' }}>Направление</span>
+          <Select
+            value={directionFilter}
+            onChange={e => setDirectionFilter(e.target.value)}
+            style={{ width:190, padding:'7px 10px', fontSize:13 }}
+          >
+            <option value="all">Все направления</option>
+            {directionOptions.map(dir => <option key={dir} value={dir}>{dir}</option>)}
+            {hasDirectionlessTasks && <option value={NO_DIRECTION_FILTER}>Без направления</option>}
+          </Select>
+        </div>
         <div style={{ width:1, height:24, background:'var(--border-light)' }}/>
         {/* Завершённые задачи */}
-        <button onClick={() => setShowDone(v => !v)} style={{
-          padding:'6px 12px', border:'1.5px solid var(--border-mid)', borderRadius:6,
-          background: showDone ? 'var(--bg-secondary)' : 'var(--bg-secondary)',
-          color: showDone ? 'var(--text-primary)' : 'var(--text-secondary)',
-          fontSize:14, fontWeight: showDone ? 600 : 500, cursor:'pointer',
-          display:'flex', alignItems:'center', gap:6,
-          borderColor: showDone ? 'var(--border-primary)' : 'var(--border-mid)',
-        }}>
-          {showDone ? '✅' : '☑️'} Завершённые
+        <ToggleButton active={showDone} onClick={() => setShowDone(v => !v)}>
+          Завершённые
           {showDone && doneTasks.length > 0 && <span style={{ fontSize:12, color:'var(--text-tertiary)', fontWeight:400 }}>({doneTasks.length})</span>}
-        </button>
+        </ToggleButton>
         {/* Чекбокс скрыть выходные */}
-        <label style={{ display:'flex', alignItems:'center', gap:7, fontSize:14, cursor:'pointer', userSelect:'none', padding:'6px 12px', border:'1.5px solid var(--border-mid)', borderRadius:6, background: hideOff ? 'var(--accent-bg)' : 'var(--bg-secondary)', color: hideOff ? 'var(--accent)' : 'var(--text-secondary)' }}>
-          <input type="checkbox" checked={hideOff} onChange={e => setHideOff(e.target.checked)} style={{ cursor:'pointer', accentColor:'var(--accent)' }}/>
+        <ToggleButton active={hideOff} onClick={() => setHideOff(v => !v)}>
           Только рабочие дни
           {hideOff && <span style={{ fontSize:12, color:'var(--text-tertiary)', fontWeight:400 }}>({workdaysCount} дн.)</span>}
-        </label>
+        </ToggleButton>
       </PageTopbar>
 
       <div style={{ flex:1, overflow:'auto', padding:'16px 20px' }} onMouseMove={move}>
@@ -554,6 +653,9 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
             const isDragging  = dragChainIds.has(task.id);
             const isOver      = dragOver === rowIdx && !dragChainIds.has(task.id);
             const isEngTarget = dragEng && dragEng.fromTaskId !== task.id && dragEngOver === task.id;
+            const progressLabel = hasEstimate
+              ? `${fc?.progressPct || 0}%`
+              : colSpan <= 3 ? 'Оценить' : 'Нужна оценка';
 
             return (
               <React.Fragment key={task.id}>
@@ -596,7 +698,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                       ].filter(Boolean))}
                       onMouseLeave={hide}
                     >
-                      <div style={{ fontSize:14, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                      <div title={task.name} style={{ fontSize:14, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                         {task.name}
                       </div>
                       <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>
@@ -624,7 +726,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                           opacity: isWaitingChild ? 0.75 : 1,
                         }}
                       >
-                        <span style={{ fontSize:12, fontWeight:700, color:'#fff', whiteSpace:'nowrap', flexShrink:0 }}>{fc?.progressPct||0}%</span>
+                        <span style={{ fontSize:12, fontWeight:700, color:'var(--bar-contrast)', whiteSpace:'nowrap', flexShrink:0 }}>{progressLabel}</span>
                         {maxAvatars > 0 && (
                           <div style={{ display:'flex', alignItems:'center', flexShrink:0 }}>
                             {assignedEngs.slice(0, maxAvatars).map((e,i) => {
@@ -767,6 +869,12 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
             );
           })}
 
+          {activeTasks.length === 0 && (
+            <div style={{ textAlign:'center', padding:'28px 0', color:'var(--text-tertiary)', fontSize:13, borderTop:'0.5px solid var(--border-light)' }}>
+              Нет активных задач для выбранного направления в {monthName}
+            </div>
+          )}
+
           {/* Занятые и свободные инженеры */}
           {(() => {
             // Для каждого дня считаем: задействованы (на активных задачах) и свободны.
@@ -881,7 +989,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                       borderRadius:6, transition:'background 0.15s' }}
                   >
                     <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0, paddingRight:14, paddingLeft:24 }}>
-                      <div style={{ fontSize:13, fontWeight:500, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', color:'var(--text-tertiary)' }}>
+                      <div title={task.name} style={{ fontSize:13, fontWeight:500, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', color:'var(--text-tertiary)' }}>
                         {task.name}
                         {task.dependsOn && <span style={{ marginLeft:6, fontSize:11 }}>↳</span>}
                       </div>

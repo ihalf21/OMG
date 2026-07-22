@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { loadData, saveData, checkServer } from './utils/storage';
+import { loadData, loadMe, saveData, checkServer } from './utils/storage';
 import { todayStr } from './utils/dates';
 import { genId } from './utils/ids';
 import Sidebar from './components/Sidebar';
@@ -14,8 +14,9 @@ import Estimate from './pages/Estimate';
 import Reports from './pages/Reports';
 import Absences from './pages/Absences';
 import Notes from './pages/Notes';
+import Admin from './pages/Admin';
 import { REGULAR_TASKS } from './domain/tasks';
-import type { Engineer, HistoryEntry, Project, ProjectState, Task, Workspace } from './domain/types';
+import type { Engineer, HistoryEntry, Project, ProjectState, Task, User, Workspace } from './domain/types';
 import type { NavTarget } from './ui-types';
 
 // Исправляет статусы инженеров на основе дат отпуска/дейофа (работает на одном проекте)
@@ -110,6 +111,8 @@ export default function App() {
   const [data, setData]         = useState<Workspace | null>(null);
   const [loading, setLoading]   = useState(true);
   const [serverOk, setServerOk] = useState(true);
+  const [saveConflict, setSaveConflict] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [page, setPage]         = useState<NavTarget>('dashboard');
   const [selectedTaskId, setSelectedTaskId]               = useState<string | null>(null);
   const [selectedEngineerId, setSelectedEngineerId]       = useState<string | null>(null);
@@ -127,7 +130,8 @@ export default function App() {
       const ok = await checkServer();
       setServerOk(ok);
       if (ok) {
-        const d = await loadData();
+        const [user, d] = await Promise.all([loadMe(), loadData()]);
+        setCurrentUser(user);
         const base = ensureWorkspace(d as unknown as LegacyData);
         setData({ ...base, projects: base.projects.map(p => normalizeStatuses(p)) });
       }
@@ -148,15 +152,50 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (page === 'admin' && currentUser?.globalRole !== 'admin') {
+      setPage('dashboard');
+    }
+  }, [page, currentUser]);
+
   // Автосохранение — debounce 800ms
   useEffect(() => {
-    if (!data || !serverOk) return;
+    if (!data || !serverOk || saveConflict) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => saveData(data), 800);
+    saveTimer.current = setTimeout(() => {
+      saveData(data)
+        .then(result => {
+          if (result.conflict) {
+            setSaveConflict(
+              `Проект «${result.conflict.projectName}» уже изменён другим пользователем. Обновите страницу перед продолжением.`
+            );
+            return;
+          }
+
+          if (result.savedProjects.length === 0) {
+            setSaveConflict(null);
+            return;
+          }
+
+          setData(prev => prev ? ({
+            ...prev,
+            projects: prev.projects.map(project => {
+              const meta = result.savedProjects.find(saved => saved.id === project.id);
+              return meta
+                ? { ...project, revision: meta.revision, updatedAt: meta.updatedAt, updatedBy: meta.updatedBy }
+                : project;
+            }),
+          }) : prev);
+          setSaveConflict(null);
+        })
+        .catch(err => {
+          console.error('Ошибка сохранения данных:', err);
+        });
+    }, 800);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [data, serverOk]);
+  }, [data, serverOk, saveConflict]);
 
   // Обновляет данные текущего проекта (используется страницами)
   function updateProjectData(fn: (state: ProjectState) => ProjectState) {
@@ -167,6 +206,10 @@ export default function App() {
   }
 
   function navigate(target: NavTarget, id?: string) {
+    if (target === 'admin' && currentUser?.globalRole !== 'admin') {
+      setPage('dashboard');
+      return;
+    }
     setPage(target);
     if (target === 'task'     && id) setSelectedTaskId(id);
     if (target === 'engineer' && id) setSelectedEngineerId(id);
@@ -276,6 +319,7 @@ export default function App() {
   }
 
   if (!data) return null;
+  const isGlobalAdmin = currentUser?.globalRole === 'admin';
 
   const currentProject = data.projects.find(p => p.id === data.currentProjectId && !p.archived)
     ?? data.projects.find(p => !p.archived)
@@ -298,9 +342,21 @@ export default function App() {
         onArchiveProject={archiveProject}
         onRestoreProject={restoreProject}
         onDeleteProject={deleteProject}
+        isGlobalAdmin={isGlobalAdmin}
       />
       <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         <Topbar theme={theme} onToggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')}/>
+        {saveConflict && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, padding:'10px 24px', background:'var(--red-bg)', color:'var(--red)', borderBottom:'0.5px solid var(--border-light)', fontSize:13, fontWeight:600 }}>
+            <span>{saveConflict}</span>
+            <button
+              onClick={() => window.location.reload()}
+              style={{ padding:'5px 12px', border:'1.5px solid var(--red)', borderRadius:6, background:'transparent', color:'var(--red)', cursor:'pointer', fontSize:12, fontWeight:700, whiteSpace:'nowrap' }}
+            >
+              Обновить
+            </button>
+          </div>
+        )}
         <div style={{ flex:1, overflow:'hidden', display:'flex', justifyContent:'center', alignItems:'stretch' }}>
         <div style={{ width:'100%', maxWidth:1680, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         {page==='dashboard' && <Dashboard {...ctx}/>}
@@ -312,6 +368,7 @@ export default function App() {
         {page==='gantt'     && <Gantt     {...ctx}/>}
         {page==='estimate'  && <Estimate  {...ctx} initialTaskId={selectedEstimateTaskId || undefined}/>}
         {page==='reports'   && <Reports   {...ctx}/>}
+        {page==='admin'     && isGlobalAdmin && <Admin projects={data.projects} currentUser={currentUser!}/>}
         {page==='notes'     && <Notes/>}
         </div>
         </div>

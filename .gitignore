@@ -5,3 +5,6 @@ build/
 .env.local
 .env.production
 server/data.json
+server/omg.sqlite
+server/omg.sqlite-*
+server/backups/

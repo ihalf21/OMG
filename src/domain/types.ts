@@ -23,6 +23,17 @@ export interface Engineer {
 
 // Статус задачи.
 export type TaskStatus = 'active' | 'done' | 'archived';
+export type GlobalRole = 'admin' | 'user';
+export type ProjectRole = 'admin' | 'lead';
+
+export interface User {
+  id: string;
+  login: string;
+  displayName: string;
+  globalRole: GlobalRole;
+  externalId?: string;
+  active: boolean;
+}
 
 export interface Task {
   id: string;
@@ -46,6 +57,8 @@ export interface Task {
   // Произвольная форма из калькулятора оценки
   estimateForm?: Record<string, unknown>;
   link?: string;
+  testOpsUrl?: string;
+  workDocUrl?: string;
   extraWork?: ExtraWorkEntry[];
 }
 
@@ -87,6 +100,9 @@ export interface EstimateTemplate {
 export interface Project {
   id: string;
   name: string;
+  revision?: number;
+  updatedAt?: string;
+  updatedBy?: string;
   lead?: string;
   jiraUrl?: string;
   directions?: string[];
@@ -100,10 +116,18 @@ export interface Project {
   archivedAt?: ISODate | null;
 }
 
+export interface ProjectMember {
+  projectId: string;
+  userId: string;
+  role: ProjectRole;
+}
+
 // Корневое состояние воркспейса — список проектов и текущий выбранный.
 export interface Workspace {
   projects: Project[];
   currentProjectId: string;
+  users?: User[];
+  projectMembers?: ProjectMember[];
 }
 
 // «State» для доменных функций — это всегда Project (внутри одного проекта).

@@ -464,8 +464,9 @@ export default function Estimate({ data, updateData, initialTaskId }: EstimatePr
   // Tasks visible in the selector: только активные задачи.
   // Архивные/завершённые не показываем, даже если у них сохранена оценка.
   const displayTasks = allTasks.filter(t => t.status === 'active');
-  const withEstimate  = displayTasks.filter(t =>  t.estimateForm);
-  const withoutEst    = displayTasks.filter(t => !t.estimateForm);
+  const withEstimate    = displayTasks.filter(t =>  t.estimateForm);
+  const expressEstimate = displayTasks.filter(t => !t.estimateForm && (t.estimateHours || 0) > 0);
+  const withoutEst      = displayTasks.filter(t => !t.estimateForm && !(t.estimateHours || 0));
 
   const [form, setForm] = useState<ScenarioForm>(() => {
     if (initialTaskId) {
@@ -479,7 +480,13 @@ export default function Estimate({ data, updateData, initialTaskId }: EstimatePr
   const [showManager,    setShowManager] = useState(false);
   const [showPertInfo,   setShowPertInfo] = useState(false);
   const [saved,          setSaved]       = useState(false);
+  const [expressSaved,   setExpressSaved] = useState(false);
   const [confirmSave,    setConfirmSave] = useState(false);
+  const [expressHours,   setExpressHours] = useState(() => {
+    if (!initialTaskId) return '';
+    const t = allTasks.find(t => t.id === initialTaskId);
+    return t?.estimateHours && !t.estimateForm ? String(t.estimateHours) : '';
+  });
 
   const O = useMemo(() => calcScenario(form, 'o'), [form]);
   const M = useMemo(() => calcScenario(form, 'm'), [form]);
@@ -495,10 +502,12 @@ export default function Estimate({ data, updateData, initialTaskId }: EstimatePr
   function selectTask(id: string) {
     setSelectedTaskId(id);
     setSaved(false);
+    setExpressSaved(false);
     setConfirmSave(false);
     setActiveTplId('');
-    if (!id) return;
+    if (!id) { setExpressHours(''); return; }
     const task = allTasks.find(t => t.id === id);
+    setExpressHours(task?.estimateHours && !task.estimateForm ? String(task.estimateHours) : '');
     if (task?.estimateForm) {
       setForm({ ...DEFAULT_FORM, ...task.estimateForm });
     }
@@ -528,7 +537,25 @@ export default function Estimate({ data, updateData, initialTaskId }: EstimatePr
     }));
     setConfirmSave(false);
     setSaved(true);
+    setExpressSaved(false);
     setTimeout(() => setSaved(false), 2500);
+  }
+
+  function saveExpressEstimate() {
+    if (!selectedTaskId) return;
+    const hours = Math.round(parseFloat(expressHours) || 0);
+    if (hours <= 0) return;
+    updateData(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t =>
+        t.id === selectedTaskId
+          ? { ...t, estimateHours: hours }
+          : t
+      ),
+    }));
+    setSaved(false);
+    setExpressSaved(true);
+    setTimeout(() => setExpressSaved(false), 2500);
   }
 
   function handleSaveClick() {
@@ -569,6 +596,11 @@ export default function Estimate({ data, updateData, initialTaskId }: EstimatePr
             {withEstimate.length > 0 && (
               <optgroup label="С сохранённой оценкой">
                 {withEstimate.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </optgroup>
+            )}
+            {expressEstimate.length > 0 && (
+              <optgroup label="Экспресс-оценка">
+                {expressEstimate.map(t => <option key={t.id} value={t.id}>{t.name} · {t.estimateHours} ч</option>)}
               </optgroup>
             )}
             {withoutEst.length > 0 && (
@@ -618,7 +650,7 @@ export default function Estimate({ data, updateData, initialTaskId }: EstimatePr
                   {selectedTask.estimateHours != null && selectedTask.estimateHours > 0 && (
                     <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:2 }}>
                       Сохранено: {selectedTask.estimateHours} ч
-                      {selectedTask.estimateForm && ' · полная форма'}
+                      {selectedTask.estimateForm ? ' · полная форма' : ' · экспресс'}
                     </div>
                   )}
                 </div>
@@ -628,6 +660,42 @@ export default function Estimate({ data, updateData, initialTaskId }: EstimatePr
                   title="Снять задачу"
                 >✕</button>
               </div>
+            )}
+
+            {selectedTask && !selectedTask.estimateForm && (
+              <Card>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:10 }}>
+                  <div>
+                    <div style={{ fontSize:12, fontWeight:700, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.04em' }}>Экспресс-оценка</div>
+                    {selectedTask.estimateHours != null && selectedTask.estimateHours > 0 && (
+                      <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>Сейчас: {selectedTask.estimateHours} ч</div>
+                    )}
+                  </div>
+                  {expressSaved && (
+                    <span style={{ fontSize:12, color:'var(--accent)', fontWeight:700, background:'var(--accent-bg)', borderRadius:10, padding:'2px 8px' }}>Сохранено</span>
+                  )}
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8, alignItems:'center' }}>
+                  <label style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 10px', border:'1.5px solid var(--border-mid)', borderRadius:7, background:'var(--bg-secondary)' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={expressHours}
+                      onChange={e => { setExpressHours(e.target.value); setExpressSaved(false); }}
+                      placeholder="Например, 16"
+                      style={{ width:'100%', border:'none', background:'transparent', color:'var(--text-primary)', outline:'none', fontSize:16, fontWeight:700 }}
+                    />
+                    <span style={{ fontSize:12, color:'var(--text-tertiary)', fontWeight:600 }}>ч</span>
+                  </label>
+                  <BtnPrimary
+                    onClick={saveExpressEstimate}
+                    style={{ opacity: Math.round(parseFloat(expressHours) || 0) > 0 ? 1 : 0.45, pointerEvents: Math.round(parseFloat(expressHours) || 0) > 0 ? 'auto' : 'none' }}
+                  >
+                    Сохранить
+                  </BtnPrimary>
+                </div>
+              </Card>
             )}
 
             {/* 3 scenario cards */}
@@ -762,6 +830,11 @@ export default function Estimate({ data, updateData, initialTaskId }: EstimatePr
                     {withEstimate.length > 0 && (
                       <optgroup label="С сохранённой оценкой">
                         {withEstimate.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </optgroup>
+                    )}
+                    {expressEstimate.length > 0 && (
+                      <optgroup label="Экспресс-оценка">
+                        {expressEstimate.map(t => <option key={t.id} value={t.id}>{t.name} · {t.estimateHours} ч</option>)}
                       </optgroup>
                     )}
                     {withoutEst.length > 0 && (

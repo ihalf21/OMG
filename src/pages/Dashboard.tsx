@@ -3,7 +3,7 @@ import { calcForecast, statusColor, statusLabel, statusBadgeStyle, engineersNeed
 import { computeInheritedTeam, computeDynamicStarts } from '../domain/gantt';
 import { isAvailableToday, isWorkingRole, leaveTypeToday } from '../domain/availability';
 import { formatDateShort, todayStr } from '../utils/dates';
-import { Avatar, Card, SectionTitle, PageTopbar } from '../components/UI';
+import { Avatar, Card, SectionTitle, PageTopbar, Modal } from '../components/UI';
 import type { Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
@@ -17,6 +17,8 @@ function byDeadline(
   if (db) return 1;
   return 0;
 }
+
+const hasEstimate = (task: Task) => (task.estimateHours || 0) > 0;
 
 export default function Dashboard({ data, navigate }: PageProps) {
   const { engineers, tasks, history } = data;
@@ -54,9 +56,23 @@ export default function Dashboard({ data, navigate }: PageProps) {
 
   const unavailable = engineers.filter(e => isWorkingRole(e) && !isAvailableToday(e));
   const atRisk  = g1.length;
-  const onTrack = activeTasks.filter(t => !isQueued(t) && forecasts[t.id]?.deadlineStatus === 'ok' && effectiveDls[t.id]).length;
+
+  // ─── Требует внимания ───────────────────────────────────────────────────────
+  // 1. Рабочие инженеры, не назначенные ни на одну активную задачу
+  const assignedSet = new Set<string>();
+  activeTasks.forEach(t => (t.assignedEngineers || []).forEach(id => assignedSet.add(id)));
+  const idleEngineers = engineers.filter(e => isWorkingRole(e) && isAvailableToday(e) && !assignedSet.has(e.id));
+  // 2. Задачи со срывом сроков (совпадает с группой «Срыв сроков»)
+  const overdueTasks = g1;
+  // 3. Задачи в работе без оценки. Дедлайн не обязателен: без оценки команда
+  //    всё равно не видит реальный объём работ.
+  const noEstimateTasks = activeTasks.filter(
+    t => !isQueued(t) && !hasEstimate(t),
+  );
+  const attentionCount = idleEngineers.length + overdueTasks.length + noEstimateTasks.length;
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [showAttention, setShowAttention] = useState(false);
 
   return (
     <div style={{ display:'flex', flexDirection:'column', flex:1, overflow:'hidden' }}>
@@ -84,13 +100,22 @@ export default function Dashboard({ data, navigate }: PageProps) {
                 value: `${available}/${total}`,
                 sub: unav > 0 ? `${unav} недоступн${unav===1?'ый':'ых'}` : 'все доступны',
                 subColor: unav>0?'var(--amber)':'var(--success)',
-                valueColor:'var(--text-primary)', note: staffingNote },
-              { label:'Активных задач', value:tasks.filter(t=>t.status==='active').length, sub:`${activeTasks.filter(t=>t.deadline).length} с жёстким дедлайном`, subColor:'var(--text-tertiary)', valueColor:'var(--text-primary)', note: null },
-              { label:'Под угрозой', value:atRisk, sub:'требуют внимания', subColor:atRisk>0?'var(--red)':'var(--text-tertiary)', valueColor:atRisk>0?'var(--red)':'var(--text-primary)', note: null },
-              { label:'С опережением', value:onTrack, sub:'идут по плану', subColor:'var(--success)', valueColor:'var(--success)', note: null },
+                valueColor:'var(--text-primary)', note: staffingNote, onClick: undefined as (()=>void)|undefined },
+              { label:'Активных задач', value:tasks.filter(t=>t.status==='active').length, sub:`${activeTasks.filter(t=>t.deadline).length} с жёстким дедлайном`, subColor:'var(--text-tertiary)', valueColor:'var(--text-primary)', note: null, onClick: undefined as (()=>void)|undefined },
+              { label:'Под угрозой', value:atRisk, sub:'требуют внимания', subColor:atRisk>0?'var(--red)':'var(--text-tertiary)', valueColor:atRisk>0?'var(--red)':'var(--text-primary)', note: null, onClick: undefined as (()=>void)|undefined },
+              { label:'Требует внимания', value:attentionCount,
+                sub: attentionCount>0
+                  ? `${idleEngineers.length} без задач · ${overdueTasks.length} срыв · ${noEstimateTasks.length} без оценки`
+                  : 'всё в порядке',
+                subColor: attentionCount>0?'var(--red)':'var(--success)',
+                valueColor: attentionCount>0?'var(--red)':'var(--success)',
+                note: null, onClick: (()=>setShowAttention(true)) as (()=>void)|undefined },
             ];
           })().map((m,i)=>(
-            <div key={i} style={{ background:'var(--bg-primary)', border:'0.5px solid var(--border-light)', borderRadius:10, padding:'16px 18px', boxShadow:'var(--shadow-sm)' }}>
+            <div key={i} onClick={m.onClick} style={{ background:'var(--bg-primary)', border:'0.5px solid var(--border-light)', borderRadius:10, padding:'16px 18px', boxShadow:'var(--shadow-sm)', cursor:m.onClick?'pointer':undefined, transition:'border-color 0.15s' }}
+              onMouseEnter={m.onClick?(e: React.MouseEvent<HTMLDivElement>)=>(e.currentTarget.style.borderColor='var(--border-mid)'):undefined}
+              onMouseLeave={m.onClick?(e: React.MouseEvent<HTMLDivElement>)=>(e.currentTarget.style.borderColor='var(--border-light)'):undefined}
+            >
               <div style={{ fontSize:13, color:'var(--text-tertiary)', marginBottom:8, fontWeight:500 }}>{m.label}</div>
               <div style={{ fontSize:26, fontWeight:700, color:m.valueColor }}>{m.value}</div>
               <div style={{ fontSize:13, color:m.subColor, marginTop:4 }}>{m.sub}</div>
@@ -106,10 +131,13 @@ export default function Dashboard({ data, navigate }: PageProps) {
           function TaskCard({ task, queued }: { task: Task; queued: boolean }) {
             const fc  = forecasts[task.id];
             const dl  = effectiveDls[task.id];
+            const estimated = hasEstimate(task);
             const isDerived = !task.deadline || (!!dl && dl < task.deadline);
             const barColor  = queued ? '#A8A6A0' : statusColor(fc?.deadlineStatus);
             const bs        = queued
               ? { bg: 'var(--bg-secondary)', color: 'var(--text-secondary)' }
+              : !estimated
+                ? { bg: 'var(--blue-bg)', color: 'var(--blue)' }
               : statusBadgeStyle(fc?.deadlineStatus);
             const assignedEngs = engineers.filter(e => task.assignedEngineers?.includes(e.id));
             return (
@@ -133,7 +161,7 @@ export default function Dashboard({ data, navigate }: PageProps) {
                         {isDerived && <div style={{ fontSize:11, color:'var(--text-tertiary)', marginBottom:2 }}>расчётный дедлайн</div>}
                         <div style={{ fontSize:13, color:'var(--text-secondary)', fontWeight:500 }}>до {formatDateShort(dl)}</div>
                         <div style={{ marginTop:4, ...bs, fontSize:12, padding:'2px 8px', borderRadius:4, display:'inline-block', fontWeight:500 }}>
-                          {queued ? 'В очереди' : statusLabel(fc?.deadlineStatus)}
+                          {queued ? 'В очереди' : !estimated ? 'Нужна оценка' : statusLabel(fc?.deadlineStatus)}
                         </div>
                         {!queued && fc?.deadlineStatus === 'overdue' && (() => {
                           const needed = engineersNeeded(task, engineers, isDerived ? dl : null, history);
@@ -148,7 +176,7 @@ export default function Dashboard({ data, navigate }: PageProps) {
                           {fc?.forecastDate ? `расчёт: ${formatDateShort(fc.forecastDate)}` : 'без дедлайна'}
                         </div>
                         <div style={{ marginTop:4, ...bs, fontSize:12, padding:'2px 8px', borderRadius:4, display:'inline-block', fontWeight:500 }}>
-                          {queued ? 'В очереди' : statusLabel(fc?.deadlineStatus)}
+                          {queued ? 'В очереди' : !estimated ? 'Нужна оценка' : statusLabel(fc?.deadlineStatus)}
                         </div>
                       </>
                     )}
@@ -213,6 +241,76 @@ export default function Dashboard({ data, navigate }: PageProps) {
           </Card>
         </div>
       </div>
+
+      {showAttention && (
+        <Modal title="Требует внимания" width={560} onClose={() => setShowAttention(false)}>
+          {attentionCount === 0 && (
+            <div style={{ fontSize:14, color:'var(--text-tertiary)', padding:'4px 0' }}>
+              Всё в порядке — критичных ситуаций нет.
+            </div>
+          )}
+
+          {([
+            {
+              key:'idle', color:'var(--amber)', icon:'👤',
+              title:'Инженеры без задач',
+              empty:'Все инженеры распределены',
+              items: idleEngineers.map(e => ({
+                id:e.id,
+                primary:e.name,
+                secondary: 'на работе, без задачи',
+                onClick: () => { setShowAttention(false); navigate('engineer', e.id); },
+              })),
+            },
+            {
+              key:'overdue', color:'var(--red)', icon:'⚠️',
+              title:'Срыв сроков',
+              empty:'',
+              items: overdueTasks.map(t => ({
+                id:t.id,
+                primary:t.name,
+                secondary:`дедлайн ${formatDateShort(effectiveDls[t.id])}`,
+                onClick: () => { setShowAttention(false); navigate('task', t.id); },
+              })),
+            },
+            {
+              key:'noEstimate', color:'var(--blue)', icon:'📋',
+              title:'В работе без оценки',
+              empty:'',
+              items: noEstimateTasks.map(t => ({
+                id:t.id,
+                primary:t.name,
+                secondary: effectiveDls[t.id]
+                  ? `нужно добавить оценку · дедлайн ${formatDateShort(effectiveDls[t.id])}`
+                  : `нужно добавить оценку · старт ${formatDateShort(t.startDate)}`,
+                onClick: () => { setShowAttention(false); navigate('estimate', t.id); },
+              })),
+            },
+          ] as const).filter(s => s.items.length > 0).map(s => (
+            <div key={s.key} style={{ marginBottom:18 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                <span style={{ fontSize:15 }}>{s.icon}</span>
+                <span style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)' }}>{s.title}</span>
+                <span style={{ fontSize:12, fontWeight:700, color:'#fff', background:s.color, borderRadius:10, padding:'1px 8px', minWidth:18, textAlign:'center' }}>{s.items.length}</span>
+              </div>
+              {s.items.map(it => (
+                <div key={it.id} onClick={it.onClick}
+                  style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', marginBottom:6, borderRadius:8, cursor:'pointer', background:'var(--bg-secondary)', border:'0.5px solid var(--border-light)', transition:'border-color 0.15s' }}
+                  onMouseEnter={e=>(e.currentTarget.style.borderColor='var(--border-mid)')}
+                  onMouseLeave={e=>(e.currentTarget.style.borderColor='var(--border-light)')}
+                >
+                  <div style={{ width:7, height:7, borderRadius:'50%', background:s.color, flexShrink:0 }}/>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:14, fontWeight:500, color:'var(--text-primary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{it.primary}</div>
+                    <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>{it.secondary}</div>
+                  </div>
+                  <span style={{ fontSize:13, color:'var(--text-tertiary)', flexShrink:0 }}>→</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </Modal>
+      )}
     </div>
   );
 }

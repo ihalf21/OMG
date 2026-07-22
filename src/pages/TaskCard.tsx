@@ -27,9 +27,39 @@ interface EditForm {
   dependsOn: string;
   newChildId: string;
   link: string;
+  testOpsUrl: string;
+  workDocUrl: string;
 }
 
 type CompleteMode = 'today' | 'custom';
+
+function externalLinkLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    return parts[parts.length - 1] || parsed.hostname;
+  } catch {
+    return url;
+  }
+}
+
+function TaskExternalLink({ label, url, showValue = true }: { label: string; url?: string; showValue?: boolean }) {
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12, fontWeight:500, color:'var(--accent)', background:'var(--accent-bg)', border:'1.5px solid var(--accent)', borderRadius:6, padding:'4px 8px', textDecoration:'none', cursor:'pointer', maxWidth:'100%', flexShrink:0, whiteSpace:'nowrap' }}
+      title={url}
+    >
+      <span>↗</span>
+      <span style={{ maxWidth:120, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+        {showValue ? `${label} ${externalLinkLabel(url)}` : label}
+      </span>
+    </a>
+  );
+}
 
 export default function TaskCard({ data, updateData, navigate, taskId, onBack }: Props) {
   const { engineers, tasks, history } = data;
@@ -81,6 +111,8 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
       dependsOn:  task!.dependsOn || '',
       newChildId: '',
       link: task!.link || '',
+      testOpsUrl: task!.testOpsUrl || '',
+      workDocUrl: task!.workDocUrl || '',
     });
     setEditMode(true);
   }
@@ -102,7 +134,9 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
           startDate: effectiveDependsOn ? null : (editForm.startDate || null),
           deadline: editForm.deadline || null,
           dependsOn: effectiveDependsOn,
-          link: editForm.link || undefined,
+          link: editForm.link.trim() || undefined,
+          testOpsUrl: editForm.testOpsUrl.trim() || undefined,
+          workDocUrl: editForm.workDocUrl.trim() || undefined,
         };
         if (editForm.newChildId && t.id === editForm.newChildId) {
           return { ...t, dependsOn: taskId, startDate: null };
@@ -283,7 +317,11 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
               {editMode && editForm ? (
                 <>
                   <FormRow label="Название"><Input value={editForm.name} onChange={e=>setEditForm(f=>f?{...f, name:e.target.value}:f)}/></FormRow>
-                  <FormRow label="Ссылка"><Input value={editForm.link} onChange={e=>setEditForm(f=>f?{...f, link:e.target.value}:f)} placeholder="https://..."/></FormRow>
+                  <FormRow label="Ссылка на Jira"><Input value={editForm.link} onChange={e=>setEditForm(f=>f?{...f, link:e.target.value}:f)} placeholder="https://jira.example.com/browse/ABC-123"/></FormRow>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
+                    <FormRow label="Прогон в ТестОпс"><Input value={editForm.testOpsUrl} onChange={e=>setEditForm(f=>f?{...f, testOpsUrl:e.target.value}:f)} placeholder="https://testops.mos.ru/launch/11019"/></FormRow>
+                    <FormRow label="Рабочий ГД"><Input value={editForm.workDocUrl} onChange={e=>setEditForm(f=>f?{...f, workDocUrl:e.target.value}:f)} placeholder="https://docs.google.com/spreadsheets/d/..."/></FormRow>
+                  </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                     <FormRow label="Направление">
                       <Select value={editForm.direction||''} onChange={e=>setEditForm(f=>f?{...f, direction:e.target.value}:f)}>
@@ -383,19 +421,13 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
               ) : (
                 <>
                   <FieldRow label="Направление"><span style={{ fontSize:13, fontWeight:500, color:'var(--accent)' }}>{task.direction||'—'}</span></FieldRow>
-                  {task.link && (
-                    <FieldRow label="Ссылка">
-                      <a
-                        href={task.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ display:'inline-flex', alignItems:'center', gap:5, fontSize:12, fontWeight:500, color:'var(--accent)', background:'var(--accent-bg)', border:'1.5px solid var(--accent)', borderRadius:6, padding:'4px 10px', textDecoration:'none', cursor:'pointer' }}
-                      >
-                        <span>↗</span>
-                        <span style={{ maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                          {(() => { try { const p = new URL(task.link).pathname.split('/').filter(Boolean); return p[p.length - 1] || new URL(task.link).hostname; } catch { return task.link; } })()}
-                        </span>
-                      </a>
+                  {(task.link || task.testOpsUrl || task.workDocUrl) && (
+                  <FieldRow label="Ссылки">
+                      <span style={{ display:'flex', justifyContent:'flex-end', flexWrap:'nowrap', gap:6, maxWidth:'100%', overflow:'hidden' }}>
+                        <TaskExternalLink label="Jira" url={task.link}/>
+                        <TaskExternalLink label="ТестОпс" url={task.testOpsUrl}/>
+                        <TaskExternalLink label="ГД" url={task.workDocUrl} showValue={false}/>
+                      </span>
                     </FieldRow>
                   )}
                   <FieldRow label="Статус">
@@ -406,14 +438,26 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                   <FieldRow label="Дата старта">{formatDate(task.startDate)}</FieldRow>
                   <FieldRow label="Дедлайн">{task.deadline?<span style={{ color:'var(--red)', fontWeight:600 }}>{formatDate(task.deadline)}</span>:'—'}</FieldRow>
                   <FieldRow label="Итоговая оценка">
-                    {task.estimateForm
-                      ? <strong
+                    {task.estimateHours && task.estimateHours > 0 ? (
+                      <span style={{ display:'inline-flex', alignItems:'center', gap:8 }}>
+                        <strong
                           onClick={() => navigate('estimate', task.id)}
-                          style={{ color:'var(--accent)', cursor:'pointer', textDecoration:'underline dotted' }}
-                          title="Открыть в калькуляторе"
+                          style={{ color: task.estimateForm ? 'var(--accent)' : 'var(--blue)', cursor:'pointer', textDecoration:'underline dotted' }}
+                          title={task.estimateForm ? 'Открыть в калькуляторе' : 'Уточнить оценку'}
                         >{fmtHours(task.estimateHours)}</strong>
-                      : <strong>{fmtHours(task.estimateHours)}</strong>
-                    }
+                        {!task.estimateForm && (
+                          <span style={{ fontSize:11, color:'var(--blue)', background:'var(--blue-bg)', borderRadius:10, padding:'1px 7px', fontWeight:700 }}>экспресс</span>
+                        )}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => navigate('estimate', task.id)}
+                        style={{ padding:'4px 10px', border:'1.5px solid var(--blue)', borderRadius:6, background:'var(--blue-bg)', color:'var(--blue)', fontSize:12, fontWeight:700, cursor:'pointer' }}
+                      >
+                        Оценить быстро
+                      </button>
+                    )}
                   </FieldRow>
                   {task.dependsOn && (() => {
                     const parent = tasks.find(t=>t.id===task.dependsOn);

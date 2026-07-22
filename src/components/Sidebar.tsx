@@ -80,6 +80,17 @@ function IconNotes({ active }: IconProps) {
   );
 }
 
+function IconAdmin({ active }: IconProps) {
+  const c = active ? 'var(--accent)' : 'var(--text-tertiary)';
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <circle cx="9" cy="5.5" r="2.5" stroke={c} strokeWidth="1.5"/>
+      <path d="M3.5 16c0-3 2.4-5 5.5-5s5.5 2 5.5 5" stroke={c} strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M14 2.5l.5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5.5-1z" fill={c}/>
+    </svg>
+  );
+}
+
 function IconAbsences({ active }: IconProps) {
   const c = active ? 'var(--accent)' : 'var(--text-tertiary)';
   return (
@@ -121,6 +132,8 @@ const NAV: NavItem[] = [
   { id: 'reports',   label: 'Отчёты',    Icon: IconReports },
 ];
 
+const ADMIN_NAV: NavItem = { id: 'admin', label: 'Администрирование', Icon: IconAdmin };
+
 type ProjectModalState = null | { mode: 'add' } | { mode: 'edit'; project: Project };
 
 interface SidebarProps {
@@ -142,6 +155,7 @@ interface SidebarProps {
   onArchiveProject: (id: string) => void;
   onRestoreProject: (id: string) => void;
   onDeleteProject: (id: string) => void;
+  isGlobalAdmin?: boolean;
 }
 
 export default function Sidebar({
@@ -156,6 +170,7 @@ export default function Sidebar({
   onArchiveProject,
   onRestoreProject,
   onDeleteProject,
+  isGlobalAdmin = false,
 }: SidebarProps) {
   const [showChangelog, setShowChangelog] = useState(false);
   const [hoveredProject, setHoveredProject] = useState<string | null>(null);
@@ -173,6 +188,7 @@ export default function Sidebar({
 
   const active: NavTarget = activePage === 'task' ? 'tasks' : activePage === 'engineer' ? 'team' : activePage;
   const currentVersion = CHANGELOG[0].version;
+  const navItems = isGlobalAdmin ? [...NAV, ADMIN_NAV] : NAV;
 
   function openAdd() {
     setProjectName('');
@@ -252,7 +268,8 @@ export default function Sidebar({
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
                 color: 'var(--text-tertiary)', fontSize: 18, lineHeight: 1,
-                padding: '0 2px', display: 'flex', alignItems: 'center',
+                width: 28, height: 28, padding: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
                 borderRadius: 4, transition: 'color 0.15s',
               }}
               onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
@@ -293,7 +310,9 @@ export default function Sidebar({
                   title="Переименовать"
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer',
-                    color: 'var(--text-tertiary)', fontSize: 13, padding: '2px 4px',
+                    color: 'var(--text-tertiary)', fontSize: 13,
+                    width: 28, height: 28, padding: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                     borderRadius: 4, flexShrink: 0, lineHeight: 1,
                     opacity: isActive || isHovered ? 1 : 0,
                     transition: 'opacity 0.15s, color 0.15s',
@@ -323,7 +342,7 @@ export default function Sidebar({
 
         {/* Nav */}
         <nav style={{ padding: '10px 0', flex: 1 }}>
-          {NAV.map(({ id, label, Icon }) => {
+          {navItems.map(({ id, label, Icon }) => {
             const isActive = active === id;
             return (
               <div key={id} onClick={() => onNavigate(id)} style={{

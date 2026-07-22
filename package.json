@@ -23,7 +23,11 @@
     "client": "react-scripts start",
     "server": "node server/index.js",
     "build": "react-scripts build",
-    "test": "react-scripts test --watchAll=false",
+    "db:migrate": "node -e \"const db=require('./server/db'); const d=db.getAllData(); console.log(JSON.stringify({sqlitePath:db.SQLITE_PATH, projects:d.projects.length, users:d.users.length, members:d.projectMembers.length}, null, 2))\"",
+    "db:backup": "node server/backup-db.js",
+    "test": "npm run test:client && npm run test:server",
+    "test:client": "react-scripts test --watchAll=false",
+    "test:server": "node --test server/*.test.js",
     "test:watch": "react-scripts test"
   },
   "proxy": "http://localhost:3001",

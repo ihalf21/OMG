@@ -14,6 +14,8 @@ input[type=number] { -moz-appearance: textfield; }
   --border-light:   #D8D7D3;
   --border-mid:     #C4C3BF;
   --accent:         #1D9E75;
+  --accent-contrast:#FFFFFF;
+  --bar-contrast:   #FFFFFF;
   --accent-hover:   #0F6E56;
   --accent-bg:      #D8F4EC;
   --success:        #1D9E75;
@@ -42,6 +44,8 @@ input[type=number] { -moz-appearance: textfield; }
   --border-light:   #383838;
   --border-mid:     #484848;
   --accent:         #F0883E;
+  --accent-contrast:#1A1A18;
+  --bar-contrast:   #FFFFFF;
   --accent-hover:   #D4701F;
   --accent-bg:      #3A2510;
   --success:        #2EBD8A;

@@ -1,17 +1,30 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PageProps } from '../ui-types';
 import type { Engineer, HistoryEntry, ISODate, Task } from '../domain/types';
-import { calcForecast, fmtHours, statusColor, statusLabel } from '../utils/forecast';
+import { calcForecast, fmtHours, statusColor } from '../utils/forecast';
 import { getMonthDays, todayStr } from '../utils/dates';
 import { isAvailableOn, isWorkingRole } from '../domain/availability';
 import {
-  computeInheritedTeam, computeDynamicStarts, segmentByWeek, arrowAnchorOffset,
+  computeInheritedTeam, computeDynamicStarts, segmentByWeek, arrowAnchorOffset, sortTasksByChain,
 } from '../domain/gantt';
 import { PageTopbar, BtnPrimary } from '../components/UI';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const LABEL_W = 200;
 const DOW_RU  = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+
+const REPORT_BLOCKS = [
+  { id:'project', label:'Паспорт проекта' },
+  { id:'summary', label:'Сводка' },
+  { id:'charts', label:'Визуализация' },
+  { id:'activeTasks', label:'Задачи в работе' },
+  { id:'doneTasks', label:'Завершённые задачи' },
+  { id:'team', label:'Команда' },
+  { id:'gantt', label:'Диаграмма Ганта' },
+] as const;
+
+type ReportBlockId = typeof REPORT_BLOCKS[number]['id'];
+const DEFAULT_REPORT_BLOCK_IDS = REPORT_BLOCKS.map(block => block.id);
 
 const ROLE_LABEL: Record<string, string> = {
   lead: 'Лид', responsible: 'Ответственный', engineer: 'Инженер', intern: 'Стажёр',
@@ -138,7 +151,7 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
   }
 
   const allActiveTasks = useMemo(() =>
-    tasks.filter(t => t.status === 'active').sort((a,b) => (a.sortOrder??999)-(b.sortOrder??999)),
+    sortTasksByChain(tasks.filter(t => t.status === 'active')),
   [tasks]);
 
   const inheritedEngIds = useMemo(() => computeInheritedTeam(allActiveTasks), [allActiveTasks]);
@@ -207,9 +220,11 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
       if (!pEl || !cEl) return;
       const pr = pEl.getBoundingClientRect(), cr = cEl.getBoundingClientRect();
       const childIsBelow = cr.top >= pr.top;
+      const x1 = pr.left-base.left+arrowAnchorOffset(pr.width);
+      const x2 = cr.left-base.left;
       newArrows.push({ key:`${child.dependsOn}-${child.id}`,
-        x1: pr.left-base.left+arrowAnchorOffset(pr.width), y1: childIsBelow?pr.bottom-base.top:pr.top-base.top,
-        x2: cr.left-base.left, y2: cr.top-base.top+cr.height/2 });
+        x1, y1: childIsBelow?pr.bottom-base.top:pr.top-base.top,
+        x2, y2: cr.top-base.top+cr.height/2 });
     });
     setArrows(newArrows);
   }, [allVisibleTasks, days]);
@@ -364,9 +379,10 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
         <svg style={{ position:'absolute', top:0, left:0, width:'100%', height:bodyHeight||'100%', pointerEvents:'none', overflow:'visible', zIndex:50 }}>
           {arrows.map(a => {
             const x1=+a.x1.toFixed(1),y1=+a.y1.toFixed(1),x2=+a.x2.toFixed(1),y2=+a.y2.toFixed(1);
+            const laneX = LABEL_W - 12;
             return (
               <g key={a.key}>
-                <path d={`M ${x1} ${y1} L ${x1} ${y2} L ${x2} ${y2}`} fill="none" stroke="#F0A030" strokeWidth="1.2" strokeOpacity="0.85" strokeLinejoin="round"/>
+                <path d={`M ${x1} ${y1} L ${laneX} ${y1} L ${laneX} ${y2} L ${x2} ${y2}`} fill="none" stroke="#F0A030" strokeWidth="1.2" strokeOpacity="0.85" strokeLinejoin="round"/>
                 <polygon points={`${x2-7},${y2-3.5} ${x2+0.5},${y2} ${x2-7},${y2+3.5}`} fill="#F0A030" opacity="0.9"/>
               </g>
             );
@@ -403,6 +419,22 @@ function SectionHead({ title, mt = 32 }: { title: string; mt?: number }) {
   );
 }
 
+function ReportBlock({ children }: { children: React.ReactNode }) {
+  return (
+    <div data-report-block="true" style={{
+      border:'0.5px solid var(--border-light)',
+      borderRadius:8,
+      padding:'16px 20px',
+      marginBottom:16,
+      background:'var(--bg-primary)',
+      breakInside:'avoid',
+      pageBreakInside:'avoid',
+    }}>
+      {children}
+    </div>
+  );
+}
+
 // ─── Reports ─────────────────────────────────────────────────────────────────
 
 export default function Reports({ data }: PageProps) {
@@ -410,7 +442,26 @@ export default function Reports({ data }: PageProps) {
   const [year, setYear]     = useState(today.getFullYear());
   const [month, setMonth]   = useState(today.getMonth());
   const [exporting, setExporting] = useState(false);
+  const [selectedBlockIds, setSelectedBlockIds] = useState<ReportBlockId[]>([...DEFAULT_REPORT_BLOCK_IDS]);
   const printRef = useRef<HTMLDivElement>(null);
+
+  const selectedBlockSet = useMemo(() => new Set(selectedBlockIds), [selectedBlockIds]);
+  const isBlockSelected = (id: ReportBlockId) => selectedBlockSet.has(id);
+  const selectedBlocksCount = selectedBlockIds.length;
+
+  function toggleReportBlock(id: ReportBlockId) {
+    setSelectedBlockIds(prev =>
+      prev.includes(id) ? prev.filter(blockId => blockId !== id) : [...prev, id],
+    );
+  }
+
+  function selectAllBlocks() {
+    setSelectedBlockIds([...DEFAULT_REPORT_BLOCK_IDS]);
+  }
+
+  function selectCoreBlocks() {
+    setSelectedBlockIds(['project','summary','activeTasks','gantt']);
+  }
 
   function prevMonth() { if (month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1); }
   function nextMonth() { if (month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1); }
@@ -421,7 +472,7 @@ export default function Reports({ data }: PageProps) {
 
   // ── Active tasks & forecasts ─────────────────────────────────────────────
   const allActiveTasks = useMemo(() =>
-    data.tasks.filter(t=>t.status==='active').sort((a,b)=>(a.sortOrder??999)-(b.sortOrder??999)),
+    sortTasksByChain(data.tasks.filter(t=>t.status==='active')),
   [data.tasks]);
 
   const inheritedEngIds = useMemo(() => computeInheritedTeam(allActiveTasks), [allActiveTasks]);
@@ -526,18 +577,48 @@ export default function Reports({ data }: PageProps) {
   // ── Export PDF ───────────────────────────────────────────────────────────
   async function handleExport() {
     const el = printRef.current; if (!el) return;
+    const blockEls = Array.from(el.querySelectorAll<HTMLElement>('[data-report-block="true"]'));
+    if (blockEls.length === 0) return;
     setExporting(true);
     try {
       const html2canvas = (await import('html2canvas')).default;
       const { jsPDF }   = await import('jspdf');
-      const canvas  = await html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
-      const imgData = canvas.toDataURL('image/png');
       const pdf     = new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
       const pageW=pdf.internal.pageSize.getWidth(), pageH=pdf.internal.pageSize.getHeight();
-      const imgW=pageW, imgH=canvas.height*imgW/canvas.width;
-      let pos=0, left=imgH;
-      pdf.addImage(imgData,'PNG',0,pos,imgW,imgH); left-=pageH;
-      while(left>0){pos-=pageH;pdf.addPage();pdf.addImage(imgData,'PNG',0,pos,imgW,imgH);left-=pageH;}
+      const margin=8, gap=6, imgW=pageW-margin*2, pageContentH=pageH-margin*2;
+      let y=margin, hasContent=false;
+
+      for (const block of blockEls) {
+        const canvas  = await html2canvas(block,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+        const imgData = canvas.toDataURL('image/png');
+        const imgH = canvas.height*imgW/canvas.width;
+
+        if (imgH <= pageContentH) {
+          if (hasContent && y + imgH > pageH - margin) {
+            pdf.addPage();
+            y = margin;
+          }
+          pdf.addImage(imgData,'PNG',margin,y,imgW,imgH);
+          y += imgH + gap;
+          hasContent = true;
+          continue;
+        }
+
+        if (hasContent && y > margin) {
+          pdf.addPage();
+          y = margin;
+        }
+
+        let renderedH = 0;
+        while (renderedH < imgH) {
+          pdf.addImage(imgData,'PNG',margin,margin-renderedH,imgW,imgH);
+          const currentPageH = Math.min(pageContentH, imgH-renderedH);
+          renderedH += pageContentH;
+          y = margin + currentPageH + gap;
+          hasContent = true;
+          if (renderedH < imgH) pdf.addPage();
+        }
+      }
       pdf.save(`report-${year}-${String(month+1).padStart(2,'0')}.pdf`);
     } catch(e){console.error(e);}
     finally{setExporting(false);}
@@ -564,16 +645,53 @@ export default function Reports({ data }: PageProps) {
           </div>
           <button onClick={nextMonth} style={navBtn}>›</button>
         </div>
-        <BtnPrimary onClick={handleExport} style={{ opacity:exporting?0.65:1, pointerEvents:exporting?'none':undefined }}>
+        <BtnPrimary onClick={handleExport} style={{ opacity:exporting||selectedBlocksCount===0?0.65:1, pointerEvents:exporting||selectedBlocksCount===0?'none':undefined }}>
           {exporting ? 'Генерация…' : '↓ Скачать PDF'}
         </BtnPrimary>
       </PageTopbar>
 
       <div style={{ flex:1, overflow:'auto', padding:'20px 24px' }}>
+        <div style={{
+          display:'flex',
+          alignItems:'center',
+          gap:12,
+          flexWrap:'wrap',
+          marginBottom:16,
+          padding:'12px 14px',
+          border:'0.5px solid var(--border-light)',
+          borderRadius:8,
+          background:'var(--bg-primary)',
+        }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'var(--text-primary)', marginRight:2 }}>
+            Блоки отчёта
+          </div>
+          {REPORT_BLOCKS.map(block => (
+            <label key={block.id} style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, color:'var(--text-secondary)', cursor:'pointer', userSelect:'none' }}>
+              <input
+                type="checkbox"
+                checked={isBlockSelected(block.id)}
+                onChange={() => toggleReportBlock(block.id)}
+                style={{ accentColor:'var(--accent)', cursor:'pointer' }}
+              />
+              {block.label}
+            </label>
+          ))}
+          <div style={{ flex:1 }}/>
+          <button onClick={selectAllBlocks} style={{ padding:'6px 10px', border:'1.5px solid var(--border-mid)', borderRadius:6, background:'var(--bg-secondary)', color:'var(--text-secondary)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+            Все
+          </button>
+          <button onClick={selectCoreBlocks} style={{ padding:'6px 10px', border:'1.5px solid var(--border-mid)', borderRadius:6, background:'var(--bg-secondary)', color:'var(--text-secondary)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+            Основные
+          </button>
+          <div style={{ fontSize:12, color:'var(--text-tertiary)' }}>
+            Выбрано: {selectedBlocksCount}
+          </div>
+        </div>
         <div ref={printRef} style={{ background:'var(--bg-primary)' }}>
 
           {/* ── 1. Project header ── */}
-          <div style={{ padding:'18px 20px 14px', borderRadius:10, border:'0.5px solid var(--border-light)', background:'var(--bg-primary)', marginBottom:16 }}>
+          {isBlockSelected('project') && (
+          <ReportBlock>
             <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16 }}>
               <div>
                 <div style={{ fontSize:22, fontWeight:800, color:'var(--text-primary)', lineHeight:1.2 }}>{data.name}</div>
@@ -585,10 +703,12 @@ export default function Reports({ data }: PageProps) {
                 </div>
               </div>
             </div>
-          </div>
+          </ReportBlock>
+          )}
 
           {/* ── 2. Summary cards ── */}
-          <div style={{ border:'0.5px solid var(--border-light)', borderRadius:10, padding:'16px 20px', marginBottom:16, background:'var(--bg-primary)' }}>
+          {isBlockSelected('summary') && (
+          <ReportBlock>
             <SectionHead title="Сводка" mt={0}/>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:12 }}>
               {[
@@ -624,10 +744,12 @@ export default function Reports({ data }: PageProps) {
                 </div>
               ))}
             </div>
-          </div>
+          </ReportBlock>
+          )}
 
           {/* ── 3. Charts ── */}
-          <div style={{ border:'0.5px solid var(--border-light)', borderRadius:10, padding:'16px 20px', marginBottom:16, background:'var(--bg-primary)' }}>
+          {isBlockSelected('charts') && (
+          <ReportBlock>
             <SectionHead title="Визуализация" mt={0}/>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:20 }}>
 
@@ -704,10 +826,12 @@ export default function Reports({ data }: PageProps) {
                 }
               </div>
             </div>
-          </div>
+          </ReportBlock>
+          )}
 
           {/* ── 4. Task table ── */}
-          <div style={{ border:'0.5px solid var(--border-light)', borderRadius:10, padding:'16px 20px', marginBottom:16, background:'var(--bg-primary)' }}>
+          {isBlockSelected('activeTasks') && (
+          <ReportBlock>
             <SectionHead title="Задачи в работе" mt={0}/>
             {activeTasksInMonth.length===0
               ? <div style={{ fontSize:13, color:'var(--text-tertiary)', padding:'12px 0' }}>Нет активных задач за этот месяц</div>
@@ -766,12 +890,17 @@ export default function Reports({ data }: PageProps) {
                   </div>
                 ))
             }
-          </div>
+          </ReportBlock>
+          )}
 
           {/* ── 5. Completed tasks ── */}
-          {doneTasks.length>0&&(
-            <div style={{ border:'0.5px solid var(--border-light)', borderRadius:10, padding:'16px 20px', marginBottom:16, background:'var(--bg-primary)' }}>
+          {isBlockSelected('doneTasks')&&(
+            <ReportBlock>
               <SectionHead title={`Завершённые задачи — ${MONTHS[month]}`} mt={0}/>
+              {doneTasks.length===0
+                ? <div style={{ fontSize:13, color:'var(--text-tertiary)', padding:'12px 0' }}>Нет завершённых задач за этот месяц</div>
+                : (
+              <>
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead>
                   <tr>
@@ -825,11 +954,15 @@ export default function Reports({ data }: PageProps) {
                   </div>
                 );
               })()}
-            </div>
+              </>
+                )
+              }
+            </ReportBlock>
           )}
 
           {/* ── 6. Team ── */}
-          <div style={{ border:'0.5px solid var(--border-light)', borderRadius:10, padding:'16px 20px', marginBottom:16, background:'var(--bg-primary)' }}>
+          {isBlockSelected('team') && (
+          <ReportBlock>
             <SectionHead title="Команда" mt={0}/>
 
             {/* Engineers table */}
@@ -902,13 +1035,16 @@ export default function Reports({ data }: PageProps) {
                 </table>
               </>
             )}
-          </div>
+          </ReportBlock>
+          )}
 
           {/* ── 7. Gantt ── */}
-          <div style={{ border:'0.5px solid var(--border-light)', borderRadius:10, padding:'16px 20px', background:'var(--bg-primary)' }}>
+          {isBlockSelected('gantt') && (
+          <ReportBlock>
             <SectionHead title="Диаграмма Ганта" mt={0}/>
             <ReportGanttView tasks={data.tasks} engineers={data.engineers} history={data.history} year={year} month={month}/>
-          </div>
+          </ReportBlock>
+          )}
 
         </div>
       </div>
