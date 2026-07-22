@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 const {
   DEFAULT_USER_ID,
   getAllData,
@@ -202,6 +204,17 @@ app.post('/api/data', (req, res) => {
     sendError(res, err);
   }
 });
+
+const buildPath = path.join(__dirname, '..', 'build');
+const indexHtmlPath = path.join(buildPath, 'index.html');
+
+if (fs.existsSync(indexHtmlPath)) {
+  app.use(express.static(buildPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
+    res.sendFile(indexHtmlPath);
+  });
+}
 
 if (require.main === module) {
   app.listen(PORT, () => {

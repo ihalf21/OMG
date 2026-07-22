@@ -22,6 +22,7 @@
     "start": "concurrently \"npm run server\" \"npm run client\"",
     "client": "react-scripts start",
     "server": "node server/index.js",
+    "serve": "node server/index.js",
     "build": "react-scripts build",
     "db:migrate": "node -e \"const db=require('./server/db'); const d=db.getAllData(); console.log(JSON.stringify({sqlitePath:db.SQLITE_PATH, projects:d.projects.length, users:d.users.length, members:d.projectMembers.length}, null, 2))\"",
     "db:backup": "node server/backup-db.js",
