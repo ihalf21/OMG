@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 360">
+  <rect width="1500" height="360" rx="28" fill="#F2F1ED"/>
+  <g transform="translate(40 32) scale(.9)">
+    <rect width="256" height="256" rx="52" fill="#101820"/>
+    <rect x="44" y="60" width="106" height="28" rx="14" fill="#FFA62B"/>
+    <rect x="44" y="106" width="140" height="28" rx="14" fill="#FFA62B"/>
+    <rect x="44" y="152" width="174" height="28" rx="14" fill="#FFA62B"/>
+    <path d="M178 55 197 74 178 93 159 74Z" fill="#1D9E75" stroke="#101820" stroke-width="8"/>
+  </g>
+  <g transform="translate(330 32) scale(.9)">
+    <rect width="256" height="256" rx="52" fill="#101820"/>
+    <circle cx="128" cy="128" r="76" fill="none" stroke="#FFA62B" stroke-width="24"/>
+    <rect x="194" y="94" width="30" height="55" fill="#101820"/>
+    <path d="M196 128h32" fill="none" stroke="#FFA62B" stroke-width="24"/>
+    <path d="M82 164V96l46 52 46-52v68" fill="none" stroke="#FFA62B" stroke-width="20" stroke-linejoin="miter"/>
+  </g>
+  <g transform="translate(620 32) scale(.9)">
+    <rect width="256" height="256" rx="52" fill="#101820"/>
+    <circle cx="118" cy="128" r="72" fill="none" stroke="#1D9E75" stroke-width="24"/>
+    <rect x="172" y="80" width="58" height="96" fill="#101820"/>
+    <rect x="112" y="91" width="104" height="20" rx="10" fill="#FFA62B"/>
+    <rect x="128" y="121" width="88" height="20" rx="10" fill="#FFA62B"/>
+    <rect x="144" y="151" width="72" height="20" rx="10" fill="#FFA62B"/>
+  </g>
+  <g transform="translate(910 32) scale(.9)">
+    <rect width="256" height="256" rx="52" fill="#101820"/>
+    <rect x="46" y="48" width="164" height="166" rx="24" fill="none" stroke="#1D9E75" stroke-width="14"/>
+    <path d="M46 91h164M101 91v123M155 91v123M46 132h164M46 173h164" fill="none" stroke="#1D9E75" stroke-width="8"/>
+    <rect x="53" y="99" width="40" height="26" rx="7" fill="#FFA62B"/>
+    <rect x="108" y="140" width="40" height="26" rx="7" fill="#FFA62B"/>
+    <path d="M182 174 201 193 182 212 163 193Z" fill="#FFA62B" stroke="#101820" stroke-width="6"/>
+  </g>
+  <g transform="translate(1200 32) scale(.9)">
+    <rect width="256" height="256" rx="52" fill="#101820"/>
+    <path d="M51 170 96 84l40 86 57-86" fill="none" stroke="#FFA62B" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M51 146 75 170 51 194 27 170Z" fill="#FFA62B" stroke="#101820" stroke-width="8"/>
+    <path d="M196 58 222 84 196 110 170 84Z" fill="#1D9E75" stroke="#101820" stroke-width="8"/>
+    <path d="m207 73 15 11-15 11" fill="none" stroke="#101820" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g fill="#1A1A18" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="700" text-anchor="middle">
+    <text x="155" y="330">1</text>
+    <text x="445" y="330">2</text>
+    <text x="735" y="330">3</text>
+    <text x="1025" y="330">4</text>
+    <text x="1315" y="330">5</text>
+  </g>
+</svg>

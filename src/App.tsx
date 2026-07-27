@@ -19,6 +19,74 @@ import { REGULAR_TASKS } from './domain/tasks';
 import type { Engineer, HistoryEntry, Project, ProjectState, Task, User, Workspace } from './domain/types';
 import type { NavTarget } from './ui-types';
 
+interface AppRoute {
+  page: NavTarget;
+  taskId?: string | null;
+  engineerId?: string | null;
+  estimateTaskId?: string | null;
+}
+
+interface AppRouteState extends AppRoute {
+  omgRoute: true;
+  index: number;
+}
+
+const NAV_TARGETS: NavTarget[] = [
+  'dashboard',
+  'tasks',
+  'task',
+  'team',
+  'engineer',
+  'gantt',
+  'absences',
+  'estimate',
+  'reports',
+  'admin',
+  'notes',
+];
+
+function isNavTarget(value: string): value is NavTarget {
+  return NAV_TARGETS.includes(value as NavTarget);
+}
+
+function decodeRoutePart(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function readRouteFromLocation(): AppRoute {
+  const rawHash = window.location.hash.replace(/^#\/?/, '');
+  const [rawPage, rawId] = rawHash.split('/');
+  const page = rawPage && isNavTarget(rawPage) ? rawPage : 'dashboard';
+  const id = rawId ? decodeRoutePart(rawId) : null;
+
+  if (page === 'task') return id ? { page, taskId: id } : { page: 'tasks' };
+  if (page === 'engineer') return id ? { page, engineerId: id } : { page: 'team' };
+  if (page === 'estimate') return { page, estimateTaskId: id };
+  return { page };
+}
+
+function routeFromTarget(target: NavTarget, id?: string): AppRoute {
+  if (target === 'task') return id ? { page: target, taskId: id } : { page: 'tasks' };
+  if (target === 'engineer') return id ? { page: target, engineerId: id } : { page: 'team' };
+  if (target === 'estimate') return { page: target, estimateTaskId: id || null };
+  return { page: target };
+}
+
+function routeToHash(route: AppRoute): string {
+  if (route.page === 'task' && route.taskId) return `#/task/${encodeURIComponent(route.taskId)}`;
+  if (route.page === 'engineer' && route.engineerId) return `#/engineer/${encodeURIComponent(route.engineerId)}`;
+  if (route.page === 'estimate' && route.estimateTaskId) return `#/estimate/${encodeURIComponent(route.estimateTaskId)}`;
+  return `#/${route.page}`;
+}
+
+function isAppRouteState(state: unknown): state is AppRouteState {
+  return Boolean(state && typeof state === 'object' && (state as AppRouteState).omgRoute === true);
+}
+
 // Исправляет статусы инженеров на основе дат отпуска/дейофа (работает на одном проекте)
 function normalizeStatuses(d: ProjectState): ProjectState {
   const today = todayStr();
@@ -108,22 +176,83 @@ function ensureWorkspace(d: LegacyData | Workspace): Workspace {
 }
 
 export default function App() {
+  const initialRouteRef = useRef<AppRoute | null>(null);
+  if (initialRouteRef.current === null) initialRouteRef.current = readRouteFromLocation();
+  const initialRoute = initialRouteRef.current;
   const [data, setData]         = useState<Workspace | null>(null);
   const [loading, setLoading]   = useState(true);
   const [serverOk, setServerOk] = useState(true);
   const [saveConflict, setSaveConflict] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [page, setPage]         = useState<NavTarget>('dashboard');
-  const [selectedTaskId, setSelectedTaskId]               = useState<string | null>(null);
-  const [selectedEngineerId, setSelectedEngineerId]       = useState<string | null>(null);
-  const [selectedEstimateTaskId, setSelectedEstimateTaskId] = useState<string | null>(null);
+  const [page, setPage]         = useState<NavTarget>(initialRoute.page);
+  const [selectedTaskId, setSelectedTaskId]               = useState<string | null>(initialRoute.taskId || null);
+  const [selectedEngineerId, setSelectedEngineerId]       = useState<string | null>(initialRoute.engineerId || null);
+  const [selectedEstimateTaskId, setSelectedEstimateTaskId] = useState<string | null>(initialRoute.estimateTaskId || null);
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('omg_theme') as Theme) || 'light');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const routeIndex = useRef(0);
+
+  function applyRoute(route: AppRoute) {
+    setPage(route.page);
+    setSelectedTaskId(route.taskId || null);
+    setSelectedEngineerId(route.engineerId || null);
+    setSelectedEstimateTaskId(route.estimateTaskId || null);
+  }
+
+  function commitRoute(route: AppRoute, replace = false) {
+    const hash = routeToHash(route);
+    const sameHash = window.location.hash === hash;
+    const index = replace || sameHash ? routeIndex.current : routeIndex.current + 1;
+    const state: AppRouteState = { ...route, omgRoute: true, index };
+
+    if (replace || sameHash) {
+      window.history.replaceState(state, '', hash);
+    } else {
+      window.history.pushState(state, '', hash);
+    }
+
+    routeIndex.current = index;
+    applyRoute(route);
+  }
+
+  function goBack(fallback: AppRoute) {
+    if (routeIndex.current > 0) {
+      window.history.back();
+      return;
+    }
+
+    commitRoute(fallback, true);
+  }
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('omg_theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    const initialState: AppRouteState = { ...initialRoute, omgRoute: true, index: 0 };
+    window.history.replaceState(initialState, '', routeToHash(initialRoute));
+
+    function handleBrowserNavigation(event: PopStateEvent | HashChangeEvent) {
+      const state = 'state' in event ? event.state : window.history.state;
+      if (isAppRouteState(state)) {
+        routeIndex.current = state.index;
+        applyRoute(state);
+        return;
+      }
+
+      const route = readRouteFromLocation();
+      routeIndex.current = 0;
+      applyRoute(route);
+    }
+
+    window.addEventListener('popstate', handleBrowserNavigation);
+    window.addEventListener('hashchange', handleBrowserNavigation);
+    return () => {
+      window.removeEventListener('popstate', handleBrowserNavigation);
+      window.removeEventListener('hashchange', handleBrowserNavigation);
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -153,10 +282,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (page === 'admin' && currentUser?.globalRole !== 'admin') {
-      setPage('dashboard');
+    if (!loading && page === 'admin' && currentUser?.globalRole !== 'admin') {
+      commitRoute(routeFromTarget('dashboard'), true);
     }
-  }, [page, currentUser]);
+  }, [loading, page, currentUser]);
 
   // Автосохранение — debounce 800ms
   useEffect(() => {
@@ -207,20 +336,17 @@ export default function App() {
 
   function navigate(target: NavTarget, id?: string) {
     if (target === 'admin' && currentUser?.globalRole !== 'admin') {
-      setPage('dashboard');
+      commitRoute(routeFromTarget('dashboard'), true);
       return;
     }
-    setPage(target);
-    if (target === 'task'     && id) setSelectedTaskId(id);
-    if (target === 'engineer' && id) setSelectedEngineerId(id);
-    if (target === 'estimate')       setSelectedEstimateTaskId(id || null);
+    commitRoute(routeFromTarget(target, id));
   }
 
   // ── Управление проектами ──────────────────────────────────────────────────
 
   function selectProject(id: string) {
     setData(prev => prev ? ({ ...prev, currentProjectId: id }) : prev);
-    setPage('dashboard');
+    commitRoute(routeFromTarget('dashboard'));
   }
 
   function addProject(name: string) {
@@ -230,7 +356,7 @@ export default function App() {
       projects: [...prev.projects, { id: newId, name, engineers: [], tasks: [], history: [], directions: [] }],
       currentProjectId: newId,
     }) : prev);
-    setPage('dashboard');
+    commitRoute(routeFromTarget('dashboard'));
   }
 
   function editProject(id: string, patch: {
@@ -272,7 +398,7 @@ export default function App() {
         ),
       };
     });
-    if (isCurrentProject) setPage('dashboard');
+    if (isCurrentProject) commitRoute(routeFromTarget('dashboard'), true);
   }
 
   function restoreProject(id: string) {
@@ -361,10 +487,10 @@ export default function App() {
         <div style={{ width:'100%', maxWidth:1680, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         {page==='dashboard' && <Dashboard {...ctx}/>}
         {page==='tasks'     && <Tasks     {...ctx}/>}
-        {page==='task'      && <TaskCard  {...ctx} taskId={selectedTaskId!}     onBack={()=>navigate('tasks')}/>}
+        {page==='task'      && <TaskCard  {...ctx} taskId={selectedTaskId!}     onBack={()=>goBack(routeFromTarget('tasks'))}/>}
         {page==='team'      && <Team      {...ctx}/>}
         {page==='absences'  && <Absences  {...ctx}/>}
-        {page==='engineer'  && <EngineerCard {...ctx} engineerId={selectedEngineerId!} onBack={()=>navigate('team')}/>}
+        {page==='engineer'  && <EngineerCard {...ctx} engineerId={selectedEngineerId!} onBack={()=>goBack(routeFromTarget('team'))}/>}
         {page==='gantt'     && <Gantt     {...ctx}/>}
         {page==='estimate'  && <Estimate  {...ctx} initialTaskId={selectedEstimateTaskId || undefined}/>}
         {page==='reports'   && <Reports   {...ctx}/>}

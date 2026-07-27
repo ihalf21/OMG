@@ -2,12 +2,13 @@ import React, { useState, useMemo, useRef } from 'react';
 import { getMonthDays, todayStr, formatDateShort } from '../utils/dates';
 import { isWorkingRole } from '../domain/availability';
 import { segmentByWeek } from '../domain/gantt';
-import { PageTopbar, useTooltip } from '../components/UI';
+import { PageTopbar, Select, useTooltip } from '../components/UI';
 import type { ISODate } from '../domain/types';
 import type { PageProps } from '../ui-types';
 import { getAbsencePeriods, type AbsencePeriod } from '../utils/absences';
 
 const LABEL_W = 160;
+const NO_DIRECTION_FILTER = '__no_direction__';
 
 // Палитра для раскраски по направлению (regularTask)
 const DIR_PALETTE = [
@@ -59,6 +60,7 @@ export default function Absences({ data, navigate }: PageProps) {
   const [month, setMonth] = useState(new Date().getMonth());
   const [hideOff, setHideOff] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  const [directionFilter, setDirectionFilter] = useState('all');
   const [hoveredCol, setHoveredCol] = useState<number | null>(null);
 
   const weekRowRef = useRef<HTMLDivElement>(null);
@@ -94,16 +96,49 @@ export default function Absences({ data, navigate }: PageProps) {
     [engineers]
   );
 
+  const directionOptions = useMemo(() => {
+    const dirs = new Set<string>();
+    (data.directions || []).forEach(dir => {
+      const value = dir.trim();
+      if (value) dirs.add(value);
+    });
+    return Array.from(dirs);
+  }, [data.directions]);
+
+  const hasDirectionlessEngineers = useMemo(
+    () => workingEngs.some(eng => !eng.regularTask?.trim()),
+    [workingEngs],
+  );
+
+  React.useEffect(() => {
+    if (
+      directionFilter !== 'all' &&
+      directionFilter !== NO_DIRECTION_FILTER &&
+      !directionOptions.includes(directionFilter)
+    ) {
+      setDirectionFilter('all');
+    }
+    if (directionFilter === NO_DIRECTION_FILTER && !hasDirectionlessEngineers) {
+      setDirectionFilter('all');
+    }
+  }, [directionFilter, directionOptions, hasDirectionlessEngineers]);
+
+  const filteredWorkingEngs = useMemo(() => {
+    if (directionFilter === 'all') return workingEngs;
+    if (directionFilter === NO_DIRECTION_FILTER) return workingEngs.filter(eng => !eng.regularTask?.trim());
+    return workingEngs.filter(eng => eng.regularTask?.trim() === directionFilter);
+  }, [workingEngs, directionFilter]);
+
   const visibleEngs = useMemo(() => {
-    if (showAll) return workingEngs;
-    return workingEngs.filter(eng =>
+    if (showAll) return filteredWorkingEngs;
+    return filteredWorkingEngs.filter(eng =>
       (absencesByEng[eng.id] || []).some(p => p.start <= monthLastStr && p.end >= monthFirstStr)
     );
-  }, [workingEngs, absencesByEng, showAll, monthFirstStr, monthLastStr]);
+  }, [filteredWorkingEngs, absencesByEng, showAll, monthFirstStr, monthLastStr]);
 
   const absentPerDay = useMemo(() =>
-    days.map(day => workingEngs.filter(eng => isAbsentOn(absencesByEng[eng.id] || [], day.str)).length),
-    [days, workingEngs, absencesByEng]
+    days.map(day => filteredWorkingEngs.filter(eng => isAbsentOn(absencesByEng[eng.id] || [], day.str)).length),
+    [days, filteredWorkingEngs, absencesByEng]
   );
 
   function prevMonth() { if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1); }
@@ -156,6 +191,19 @@ export default function Absences({ data, navigate }: PageProps) {
         <button onClick={prevMonth} style={{ padding: '7px 12px', border: '1.5px solid var(--border-mid)', borderRadius: 6, background: 'var(--bg-secondary)', fontSize: 14, cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 600 }}>‹</button>
         <div style={{ padding: '7px 16px', border: '1.5px solid var(--border-mid)', borderRadius: 6, fontSize: 14, fontWeight: 600, minWidth: 160, textAlign: 'center', background: 'var(--bg-secondary)', color: 'var(--text-primary)', textTransform: 'capitalize' }}>{monthName}</div>
         <button onClick={nextMonth} style={{ padding: '7px 12px', border: '1.5px solid var(--border-mid)', borderRadius: 6, background: 'var(--bg-secondary)', fontSize: 14, cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 600 }}>›</button>
+        <div style={{ width: 1, height: 24, background: 'var(--border-light)' }}/>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Направление</span>
+          <Select
+            value={directionFilter}
+            onChange={e => setDirectionFilter(e.target.value)}
+            style={{ width: 190, padding: '7px 10px', fontSize: 13 }}
+          >
+            <option value="all">Все направления</option>
+            {directionOptions.map(dir => <option key={dir} value={dir}>{dir}</option>)}
+            {hasDirectionlessEngineers && <option value={NO_DIRECTION_FILTER}>Без направления</option>}
+          </Select>
+        </div>
         <div style={{ width: 1, height: 24, background: 'var(--border-light)' }}/>
         <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 14, cursor: 'pointer', userSelect: 'none', padding: '6px 12px', border: '1.5px solid var(--border-mid)', borderRadius: 6, background: hideOff ? 'var(--accent-bg)' : 'var(--bg-secondary)', color: hideOff ? 'var(--accent)' : 'var(--text-secondary)' }}>
           <input type="checkbox" checked={hideOff} onChange={e => setHideOff(e.target.checked)} style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}/>
@@ -228,8 +276,8 @@ export default function Absences({ data, navigate }: PageProps) {
           {/* Строки инженеров */}
           {visibleEngs.length === 0 && (
             <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-tertiary)', fontSize: 14 }}>
-              Нет отсутствий в {monthName}
-              {!showAll && <div style={{ marginTop: 8, fontSize: 12 }}>
+              {filteredWorkingEngs.length === 0 ? 'Нет инженеров для выбранного направления' : `Нет отсутствий в ${monthName}`}
+              {!showAll && filteredWorkingEngs.length > 0 && <div style={{ marginTop: 8, fontSize: 12 }}>
                 <span style={{ color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setShowAll(true)}>Показать всех инженеров</span>
               </div>}
             </div>
@@ -296,20 +344,20 @@ export default function Absences({ data, navigate }: PageProps) {
           })}
 
           {/* Строка итогов: сколько человек отсутствует каждый день */}
-          {workingEngs.length > 0 && (
+          {filteredWorkingEngs.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', marginTop: 10, borderTop: '0.5px solid var(--border-light)', paddingTop: 6 }}>
               <div style={{ width: LABEL_W, minWidth: LABEL_W, flexShrink: 0, fontSize: 12, color: 'var(--text-tertiary)', paddingRight: 12 }}>Отсутствует</div>
               <div style={{ flex: 1, display: 'flex' }}>
                 {days.map((d, i) => {
                   const cnt   = absentPerDay[i];
-                  const total = workingEngs.length;
+                  const total = filteredWorkingEngs.length;
                   const p     = total > 0 ? cnt / total : 0;
                   let bg  = 'var(--bg-secondary)';
                   let col = 'var(--text-tertiary)';
                   if (cnt > 0) {
-                    if (p > 0.3)        { bg = 'var(--red-bg)';   col = 'var(--red)'; }
-                    else if (p >= 0.15) { bg = 'var(--amber-bg)'; col = 'var(--amber)'; }
-                    else                { bg = 'var(--blue-bg)';  col = 'var(--blue)'; }
+                    if (p > 0.2)       { bg = 'var(--red-bg)';   col = 'var(--red)'; }
+                    else if (p > 0.1)  { bg = 'var(--amber-bg)'; col = 'var(--amber)'; }
+                    else               { bg = 'var(--blue-bg)';  col = 'var(--blue)'; }
                   }
                   return (
                     <div key={i} style={{ flex: 1, height: 22, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: col, borderRight: i < DAYS - 1 ? '0.5px solid var(--bg-primary)' : 'none' }}>
@@ -322,12 +370,12 @@ export default function Absences({ data, navigate }: PageProps) {
           )}
 
           {/* Строка итогов: сколько человек на работе каждый день */}
-          {workingEngs.length > 0 && (
+          {filteredWorkingEngs.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', marginTop: 4, paddingTop: 2 }}>
               <div style={{ width: LABEL_W, minWidth: LABEL_W, flexShrink: 0, fontSize: 12, color: 'var(--text-tertiary)', paddingRight: 12 }}>На работе</div>
               <div style={{ flex: 1, display: 'flex' }}>
                 {days.map((d, i) => {
-                  const present = workingEngs.length - absentPerDay[i];
+                  const present = filteredWorkingEngs.length - absentPerDay[i];
                   const isOff   = d.off;
                   const bg  = isOff ? 'var(--bg-secondary)' : present > 0 ? 'var(--success-bg)' : 'var(--bg-secondary)';
                   const col = isOff ? 'var(--text-tertiary)' : present > 0 ? 'var(--success)' : 'var(--text-tertiary)';
@@ -362,9 +410,9 @@ export default function Absences({ data, navigate }: PageProps) {
         <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Цвет полоски = направление (regularTask) инженера</div>
         <div style={{ width: 1, height: 16, background: 'var(--border-light)' }}/>
         {[
-          { label: '1–14%', bg: 'var(--blue-bg)', col: 'var(--blue)' },
-          { label: '15–29%', bg: 'var(--amber-bg)', col: 'var(--amber)' },
-          { label: '30%+', bg: 'var(--red-bg)', col: 'var(--red)' },
+          { label: 'до 10%', bg: 'var(--blue-bg)', col: 'var(--blue)' },
+          { label: 'до 20%', bg: 'var(--amber-bg)', col: 'var(--amber)' },
+          { label: 'более 20%', bg: 'var(--red-bg)', col: 'var(--red)' },
         ].map(({ label, bg, col }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-secondary)' }}>
             <div style={{ width: 14, height: 10, borderRadius: 2, background: bg, border: `1px solid ${col}` }}/>

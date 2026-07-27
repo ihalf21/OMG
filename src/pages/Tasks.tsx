@@ -28,6 +28,7 @@ const emptyForm = (): NewTaskForm => ({ name:'', direction:'', startDate: todayS
 const hasEstimate = (task: Task) => (task.estimateHours || 0) > 0;
 
 type StatusFilter = 'all' | 'active' | 'done';
+const NO_DIRECTION_FILTER = '__no_direction__';
 
 function FilterBtn<T extends string>({ val, cur, set, children }: { val: T; cur: T; set: (v: T) => void; children: React.ReactNode }) {
   const active = cur === val;
@@ -52,6 +53,7 @@ function DoneIcon({ task }: { task: Task }) {
 export default function Tasks({ data, updateData, navigate }: PageProps) {
   const { engineers, tasks, history } = data;
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('active');
+  const [directionFilter, setDirectionFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<NewTaskForm>(emptyForm);
   const [showArchive, setShowArchive] = useState(false);
@@ -63,6 +65,40 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
   const inheritedEngIds = computeInheritedTeam(activeTasks);
   const dynamicStarts   = computeDynamicStarts(activeTasks, engineers, inheritedEngIds);
   const effectiveDls    = computeEffectiveDls(activeTasks, engineers, inheritedEngIds);
+
+  const directionOptions = React.useMemo(() => {
+    const dirs = new Set<string>();
+    (data.directions || []).forEach(dir => {
+      const value = dir.trim();
+      if (value) dirs.add(value);
+    });
+    return Array.from(dirs);
+  }, [data.directions]);
+
+  const hasDirectionlessTasks = React.useMemo(
+    () => tasks.some(task => task.status !== 'archived' && !task.direction?.trim()),
+    [tasks],
+  );
+
+  React.useEffect(() => {
+    if (
+      directionFilter !== 'all' &&
+      directionFilter !== NO_DIRECTION_FILTER &&
+      !directionOptions.includes(directionFilter)
+    ) {
+      setDirectionFilter('all');
+    }
+    if (directionFilter === NO_DIRECTION_FILTER && !hasDirectionlessTasks) {
+      setDirectionFilter('all');
+    }
+  }, [directionFilter, directionOptions, hasDirectionlessTasks]);
+
+  const directionMatches = React.useCallback((task: Task) => {
+    const taskDirection = task.direction?.trim() || '';
+    if (directionFilter === 'all') return true;
+    if (directionFilter === NO_DIRECTION_FILTER) return !taskDirection;
+    return taskDirection === directionFilter;
+  }, [directionFilter]);
 
   const forecasts: Record<string, Forecast> = {};
   tasks.forEach(t => {
@@ -82,6 +118,7 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
     if (t.status === 'archived') return false;
     if (filterStatus === 'active' && t.status !== 'active') return false;
     if (filterStatus === 'done'   && t.status !== 'done')   return false;
+    if (!directionMatches(t)) return false;
     return true;
   });
 
@@ -200,6 +237,15 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
             <FilterBtn<StatusFilter> val="active" cur={filterStatus} set={setFilterStatus}>В работе</FilterBtn>
             <FilterBtn<StatusFilter> val="done"   cur={filterStatus} set={setFilterStatus}>Завершены</FilterBtn>
           </div>
+          <Select
+            value={directionFilter}
+            onChange={e => setDirectionFilter(e.target.value)}
+            style={{ width:220, padding:'7px 34px 7px 11px', fontSize:13 }}
+          >
+            <option value="all">Все направления</option>
+            {directionOptions.map(dir => <option key={dir} value={dir}>{dir}</option>)}
+            {hasDirectionlessTasks && <option value={NO_DIRECTION_FILTER}>Без направления</option>}
+          </Select>
         </div>
 
         <div style={{ background:'var(--bg-primary)', border:'0.5px solid var(--border-light)', borderRadius:10, overflow:'hidden' }}>

@@ -289,13 +289,22 @@ interface SelectProps {
 }
 
 export function Select({ value, onChange, children, style = {} }: SelectProps) {
+  const selectStyle: StyleProp = {
+    width:'100%', padding:'9px 34px 9px 11px',
+    border:'1.5px solid var(--border-mid)', borderRadius:6,
+    fontSize:14, backgroundColor:'var(--bg-secondary)', color:'var(--text-primary)',
+    appearance:'none',
+    backgroundImage:'linear-gradient(45deg, transparent 50%, var(--text-tertiary) 50%), linear-gradient(135deg, var(--text-tertiary) 50%, transparent 50%)',
+    backgroundPosition:'calc(100% - 17px) calc(50% - 2px), calc(100% - 12px) calc(50% - 2px)',
+    backgroundSize:'5px 5px, 5px 5px',
+    backgroundRepeat:'no-repeat',
+    outline:'none',
+    ...style,
+    paddingRight: style.paddingRight ?? 34,
+  };
+
   return (
-    <select value={value} onChange={onChange} style={{
-      width:'100%', padding:'9px 11px',
-      border:'1.5px solid var(--border-mid)', borderRadius:6,
-      fontSize:14, background:'var(--bg-secondary)', color:'var(--text-primary)',
-      outline:'none', ...style,
-    }}>{children}</select>
+    <select value={value} onChange={onChange} style={selectStyle}>{children}</select>
   );
 }
 

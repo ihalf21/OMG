@@ -9,6 +9,7 @@ type RoleFilter = 'all' | EngineerRole;
 type StatusFilter = 'all' | EngineerStatus | 'switched' | 'free' | 'unavail';
 type SortCol = 'name' | 'role' | 'status' | 'task' | 'group';
 type SortDir = 'asc' | 'desc';
+const NO_DIRECTION_FILTER = '__no_direction__';
 
 interface NewEngineerForm {
   name: string;
@@ -20,6 +21,7 @@ export default function Team({ data, updateData, navigate }: PageProps) {
   const { engineers, tasks } = data;
   const [filterRole,   setFilterRole]   = useState<RoleFilter>('all');
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('all');
+  const [directionFilter, setDirectionFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<NewEngineerForm>({ name:'', role:'engineer', regularTask:'' });
@@ -52,10 +54,39 @@ export default function Team({ data, updateData, navigate }: PageProps) {
   const ROLE_ORDER: Record<EngineerRole, number> = { lead:0, responsible:1, engineer:2, intern:3 };
   const STATUS_ORDER: Record<EngineerStatus, number> = { active:0, dayoff:1, sick:2, vacation:3 };
   const TASK_ORDER: Record<string, number> = Object.fromEntries((data.directions ?? []).map((t, i) => [t, i]));
+  const directionOptions = React.useMemo(() =>
+    Array.from(new Set(
+      (data.directions ?? [])
+        .map(dir => dir.trim())
+        .filter(Boolean)
+    )),
+  [data.directions]);
+
+  const hasDirectionlessEngineers = React.useMemo(
+    () => engineers.some(e => isWorkingRole(e) && !e.regularTask?.trim()),
+    [engineers],
+  );
+
+  React.useEffect(() => {
+    if (
+      directionFilter !== 'all' &&
+      directionFilter !== NO_DIRECTION_FILTER &&
+      !directionOptions.includes(directionFilter)
+    ) {
+      setDirectionFilter('all');
+    }
+    if (directionFilter === NO_DIRECTION_FILTER && !hasDirectionlessEngineers) {
+      setDirectionFilter('all');
+    }
+  }, [directionFilter, directionOptions, hasDirectionlessEngineers]);
 
   const filteredAndSorted = engineers.filter(e => {
     if (e.role === 'lead') return false;
     if (filterRole !== 'all' && e.role !== filterRole) return false;
+    const engDirection = e.regularTask?.trim() || '';
+    if (directionFilter === NO_DIRECTION_FILTER) {
+      if (engDirection) return false;
+    } else if (directionFilter !== 'all' && engDirection !== directionFilter) return false;
     if (filterStatus === 'switched') {
       if (!isAvail(e) || !isOnTask(e)) return false;
     } else if (filterStatus === 'free') {
@@ -145,6 +176,15 @@ export default function Team({ data, updateData, navigate }: PageProps) {
             padding:'8px 12px', border:'1.5px solid var(--border-mid)', borderRadius:6,
             fontSize:14, background:'var(--bg-secondary)', color:'var(--text-primary)', width:220, outline:'none',
           }}/>
+          <Select
+            value={directionFilter}
+            onChange={e => setDirectionFilter(e.target.value)}
+            style={{ width:220, padding:'7px 34px 7px 11px', fontSize:13 }}
+          >
+            <option value="all">Все направления</option>
+            {directionOptions.map(dir => <option key={dir} value={dir}>{dir}</option>)}
+            {hasDirectionlessEngineers && <option value={NO_DIRECTION_FILTER}>Без направления</option>}
+          </Select>
           <div style={{ width:1, height:24, background:'var(--border-light)' }}/>
           <div style={{ display:'flex', gap:4 }}>
             <FilterBtn<RoleFilter> val="all"         cur={filterRole} set={setFilterRole}>Все роли</FilterBtn>

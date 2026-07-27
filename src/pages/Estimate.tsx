@@ -862,50 +862,87 @@ export default function Estimate({ data, updateData, initialTaskId }: EstimatePr
       )}
 
       {showPertInfo && (
-        <Modal title="Метод PERT: как считается оценка" onClose={() => setShowPertInfo(false)} width={540}>
-          <div style={{ fontSize:14, color:'var(--text-secondary)', lineHeight:1.7 }}>
+        <Modal title="Метод PERT: как считается оценка" onClose={() => setShowPertInfo(false)} width={720}>
+          <div style={{ fontSize:14, color:'var(--text-secondary)', lineHeight:1.7, display:'flex', flexDirection:'column', gap:16 }}>
 
-            <p style={{ marginTop:0 }}>
-              <strong>PERT</strong> (Program Evaluation and Review Technique) — метод взвешенной оценки, который учитывает неопределённость через три сценария.
+            <p style={{ margin:0 }}>
+              <strong>PERT</strong> (Program Evaluation and Review Technique) — метод оценки сроков через три сценария. В калькуляторе он применяется не к одному числу, а ко всей форме: сначала для каждого сценария отдельно считается полный объём работ, затем три итога сворачиваются в одну плановую оценку.
             </p>
 
-            <div style={{ background:'var(--bg-secondary)', borderRadius:8, padding:'12px 16px', marginBottom:16, fontFamily:'monospace', fontSize:13, textAlign:'center' }}>
-              E = (O + 4 × M + P) / 6
-            </div>
-
-            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:16 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:10 }}>
               {[
-                { label:'O — Оптимистичный', color:'#22c55e', desc:'Лучший случай: всё идёт идеально, без задержек и неожиданностей.' },
-                { label:'M — Реалистичный', color:'var(--accent)', desc:'Наиболее вероятный исход при нормальном ходе работ.' },
-                { label:'P — Пессимистичный', color:'#f97316', desc:'Худший случай: задержки, ошибки, нестабильная среда.' },
+                { label:'O — optimistic', color:'var(--success)', desc:'Минимально реалистичный объём: требования понятны, среда стабильна, блокеров нет.' },
+                { label:'M — most likely', color:'var(--accent)', desc:'Наиболее вероятный объём при нормальном ходе работ и типичных уточнениях.' },
+                { label:'P — pessimistic', color:'var(--amber)', desc:'Неблагоприятный, но правдоподобный объём: задержки, дефекты, ретесты, ожидания.' },
               ].map(({ label, color, desc }) => (
-                <div key={label} style={{ display:'flex', gap:10 }}>
-                  <div style={{ width:3, borderRadius:2, background:color, flexShrink:0 }}/>
-                  <div>
-                    <div style={{ fontWeight:600, color, fontSize:13 }}>{label}</div>
-                    <div style={{ fontSize:13, color:'var(--text-tertiary)' }}>{desc}</div>
-                  </div>
+                <div key={label} style={{ border:'0.5px solid var(--border-light)', borderRadius:8, padding:'10px 12px', background:'var(--bg-secondary)' }}>
+                  <div style={{ fontWeight:700, color, fontSize:13, marginBottom:4 }}>{label}</div>
+                  <div style={{ fontSize:12, color:'var(--text-tertiary)', lineHeight:1.5 }}>{desc}</div>
                 </div>
               ))}
             </div>
 
-            <p>
-              Реалистичный сценарий имеет вес <strong>4</strong>, поэтому PERT-оценка близка к M, но сдвинута в сторону пессимиста пропорционально разбросу. Чем больше разница между P и M — тем выше PERT относительно реалиста.
-            </p>
-
-            <div style={{ background:'var(--bg-secondary)', borderRadius:8, padding:'12px 16px', marginBottom:16 }}>
-              <div style={{ fontSize:12, fontWeight:600, color:'var(--text-secondary)', marginBottom:8 }}>Стандартное отклонение (σ)</div>
-              <div style={{ fontFamily:'monospace', fontSize:13, textAlign:'center', marginBottom:6 }}>σ = (P − O) / 6</div>
+            <div style={{ background:'var(--bg-secondary)', borderRadius:8, padding:'12px 16px' }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'var(--text-secondary)', marginBottom:8 }}>Главная формула</div>
+              <div style={{ fontFamily:'monospace', fontSize:14, textAlign:'center', marginBottom:8 }}>E = (O + 4M + P) / 6</div>
               <div style={{ fontSize:13, color:'var(--text-tertiary)' }}>
-                Показывает «разброс» оценки. Используется для доверительных интервалов:<br/>
-                <strong>68%</strong> вероятность укладывания в E ± σ<br/>
-                <strong>95%</strong> вероятность укладывания в E ± 2σ
+                <strong>E</strong> — итоговая PERT-оценка в часах. <strong>M</strong> имеет вес 4, поэтому расчёт держится ближе к наиболее вероятному сценарию, но учитывает риск через расстояние между оптимистичным и пессимистичным итогами.
               </div>
             </div>
 
-            <p style={{ marginBottom:0, color:'var(--text-tertiary)', fontSize:13 }}>
-              В задачу сохраняется PERT-оценка (E), а не реалистичный сценарий — она точнее отражает риски и служит основой для планирования сроков.
-            </p>
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:'var(--text-primary)', marginBottom:8 }}>Как форма превращается в O, M и P</div>
+              <p style={{ margin:'0 0 10px' }}>
+                Для каждого столбца сценария используется один и тот же набор формул. Ниже <span style={{ fontFamily:'monospace' }}>s</span> означает выбранный сценарий: <span style={{ fontFamily:'monospace' }}>o</span>, <span style={{ fontFamily:'monospace' }}>m</span> или <span style={{ fontFamily:'monospace' }}>p</span>. Процентные поля перед расчётом делятся на 100.
+              </p>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:6 }}>
+                {[
+                  ['Анализ задач', 'analysis_s = tasksCount_s × analysisTimeMin_s / 60'],
+                  ['Актуализация ТК', 'tcActualize_s = tcUpdateCount_s × tcUpdateTimeMin_s / 60'],
+                  ['Создание новых ТК', 'tcNew_s = tcNewCount_s × tcNewTimeMin_s / 60'],
+                  ['Прогон', 'run_s = tcTotalCount_s × tcRunTimeMin_s / 60'],
+                  ['Отчёты и коммуникации', 'overhead_s = run_s × (reportingPct_s + commsPct_s)'],
+                  ['Дефекты', 'defects_s = tcTotalCount_s × bugPct_s × defectTimeMin_s / 60'],
+                  ['Ретесты', 'retests_s = tcTotalCount_s × retestPct_s × tcRunTimeMin_s × retestCoeff_s / 60'],
+                ].map(([label, formula]) => (
+                  <div key={label} style={{ display:'grid', gridTemplateColumns:'minmax(120px, 180px) minmax(0, 1fr)', gap:12, padding:'8px 10px', border:'0.5px solid var(--border-light)', borderRadius:7, background:'var(--bg-primary)' }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:'var(--text-secondary)' }}>{label}</div>
+                    <div style={{ fontFamily:'monospace', fontSize:12, color:'var(--text-primary)', overflowWrap:'anywhere' }}>{formula}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ background:'var(--bg-secondary)', borderRadius:8, padding:'12px 16px' }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'var(--text-secondary)', marginBottom:8 }}>Сборка сценарного итога</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:5, fontFamily:'monospace', fontSize:12, color:'var(--text-primary)' }}>
+                <div>subtotal_s = analysis_s + tcActualize_s + tcNew_s + run_s + overhead_s + defects_s + retests_s</div>
+                <div>riskCoeff_s = 1 + envInstPct_s + inexperiencePct_s + parallelPct_s</div>
+                <div>withRisks_s = subtotal_s × riskCoeff_s</div>
+                <div>reserve_s = withRisks_s × reservePct_s</div>
+                <div>total_s = withRisks_s + reserve_s</div>
+              </div>
+              <div style={{ marginTop:8, fontSize:13, color:'var(--text-tertiary)' }}>
+                После этого <span style={{ fontFamily:'monospace' }}>O = total_o</span>, <span style={{ fontFamily:'monospace' }}>M = total_m</span>, <span style={{ fontFamily:'monospace' }}>P = total_p</span>. Именно эти три итоговых значения попадают в формулу PERT.
+              </div>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:10 }}>
+              <div style={{ background:'var(--bg-secondary)', borderRadius:8, padding:'12px 16px' }}>
+                <div style={{ fontSize:12, fontWeight:700, color:'var(--text-secondary)', marginBottom:8 }}>Разброс и интервалы</div>
+                <div style={{ fontFamily:'monospace', fontSize:13, marginBottom:6 }}>σ = (P − O) / 6</div>
+                <div style={{ fontSize:13, color:'var(--text-tertiary)' }}>
+                  <strong>σ</strong> показывает неопределённость оценки. Чем шире коридор между O и P, тем больше доверительные интервалы: примерно 68% — <span style={{ fontFamily:'monospace' }}>E ± σ</span>, примерно 95% — <span style={{ fontFamily:'monospace' }}>E ± 2σ</span>.
+                </div>
+              </div>
+
+              <div style={{ background:'var(--bg-secondary)', borderRadius:8, padding:'12px 16px' }}>
+                <div style={{ fontSize:12, fontWeight:700, color:'var(--text-secondary)', marginBottom:8 }}>Что сохраняется в задачу</div>
+                <div style={{ fontSize:13, color:'var(--text-tertiary)' }}>
+                  В задачу сохраняется округлённая PERT-оценка <span style={{ fontFamily:'monospace' }}>round(E)</span>, а полная форма остаётся рядом с задачей. Поэтому позже можно открыть калькулятор, увидеть исходные параметры и пересчитать оценку без потери детализации.
+                </div>
+              </div>
+            </div>
           </div>
         </Modal>
       )}

@@ -49,12 +49,8 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       const value = dir.trim();
       if (value) dirs.add(value);
     });
-    tasks.forEach(task => {
-      const value = task.direction?.trim();
-      if (value) dirs.add(value);
-    });
     return Array.from(dirs);
-  }, [data.directions, tasks]);
+  }, [data.directions]);
 
   const hasDirectionlessTasks = useMemo(
     () => tasks.some(task => !task.direction?.trim()),
