@@ -62,15 +62,29 @@ describe('task stages', () => {
     expect(result.every(stage => stage.state === 'completed')).toBe(true);
   });
 
-  test('раскладывает этапы по ширине полосы пропорционально оценкам', () => {
-    const result = buildTaskStageTimeline(task({ stages }), 20, 10, 46);
+  test('раскладывает этапы по полному расписанию и обрезает по видимому периоду', () => {
+    const date = (day) => `2026-07-${String(day).padStart(2, '0')}`;
+    const scheduleDates = Array.from({ length: 36 }, (_, i) => date(i + 1));
+    const visibleDates = scheduleDates.slice(0, 10);
+    const result = buildTaskStageTimeline(task({ stages }), 20, scheduleDates, visibleDates, date(15));
+
     expect(result.map(stage => [stage.id, stage.from, stage.to])).toEqual([
-      ['s1', 10, 14],
-      ['s2', 14, 22],
-      ['s3', 22, 42],
-      ['s4', 42, 46],
+      ['s1', 0, 4],
+      ['s2', 4, 10],
     ]);
-    expect(result.map(stage => stage.state)).toEqual(['completed', 'current', 'planned', 'planned']);
+    expect(result.map(stage => stage.state)).toEqual(['completed', 'current']);
+    expect(result.map(stage => stage.deadlineStatus)).toEqual(['ok', 'ok']);
+  });
+
+  test('помечает этапы после дедлайна как просроченные', () => {
+    const date = (day) => `2026-07-${String(day).padStart(2, '0')}`;
+    const scheduleDates = Array.from({ length: 36 }, (_, i) => date(i + 1));
+    const visibleDates = scheduleDates.slice(12, 20);
+    const result = buildTaskStageTimeline(task({ stages }), 20, scheduleDates, visibleDates, date(15));
+
+    expect(result.map(stage => [stage.id, stage.from, stage.to, stage.deadlineStatus])).toEqual([
+      ['s3', 0, 8, 'overdue'],
+    ]);
   });
 
   test('задача без этапов остаётся совместимой', () => {

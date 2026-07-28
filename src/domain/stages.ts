@@ -11,6 +11,9 @@ export interface TaskStageProgress extends TaskStage {
 export interface TaskStageTimelineItem extends TaskStageProgress {
   from: number;
   to: number;
+  startDate: string;
+  endDate: string;
+  deadlineStatus: 'ok' | 'overdue' | null;
 }
 
 export function sortTaskStages(stages: TaskStage[] | null | undefined): TaskStage[] {
@@ -82,19 +85,48 @@ export function currentTaskStage(task: Task, usedHours: number): TaskStageProgre
 export function buildTaskStageTimeline(
   task: Task,
   usedHours: number,
-  spanStart: number,
-  spanEnd: number,
+  scheduleDates: string[],
+  visibleDates: string[],
+  deadline: string | null = null,
 ): TaskStageTimelineItem[] {
   const stages = computeTaskStageProgress(task, usedHours);
   const total = taskStagesTotal(task.stages);
-  const span = Math.max(0, spanEnd - spanStart);
-  if (stages.length === 0 || total <= 0 || span <= 0) return [];
+  if (stages.length === 0 || total <= 0 || scheduleDates.length === 0 || visibleDates.length === 0) return [];
+
+  const scheduleIdxByDate = new Map(scheduleDates.map((date, index) => [date, index]));
 
   let consumedBefore = 0;
-  return stages.map(stage => {
-    const from = spanStart + (consumedBefore / total) * span;
+  return stages.flatMap(stage => {
+    const stageFrom = (consumedBefore / total) * scheduleDates.length;
     consumedBefore += stage.estimateHours;
-    const to = spanStart + (consumedBefore / total) * span;
-    return { ...stage, from, to };
+    const stageTo = (consumedBefore / total) * scheduleDates.length;
+    const startIdx = Math.max(0, Math.min(scheduleDates.length - 1, Math.floor(stageFrom)));
+    const endIdx = Math.max(0, Math.min(scheduleDates.length - 1, Math.ceil(stageTo) - 1));
+    const endDate = scheduleDates[endIdx];
+
+    let from: number | null = null;
+    let to: number | null = null;
+    visibleDates.forEach((date, visibleIdx) => {
+      const scheduleIdx = scheduleIdxByDate.get(date);
+      if (scheduleIdx === undefined) return;
+      const overlapFrom = Math.max(stageFrom, scheduleIdx);
+      const overlapTo = Math.min(stageTo, scheduleIdx + 1);
+      if (overlapTo <= overlapFrom) return;
+      const axisFrom = visibleIdx + (overlapFrom - scheduleIdx);
+      const axisTo = visibleIdx + (overlapTo - scheduleIdx);
+      from = from === null ? axisFrom : Math.min(from, axisFrom);
+      to = to === null ? axisTo : Math.max(to, axisTo);
+    });
+
+    if (from === null || to === null || to <= from) return [];
+
+    return [{
+      ...stage,
+      from,
+      to,
+      startDate: scheduleDates[startIdx],
+      endDate,
+      deadlineStatus: deadline ? (endDate <= deadline ? 'ok' : 'overdue') : null,
+    }];
   });
 }

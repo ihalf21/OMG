@@ -1,6 +1,6 @@
 // src/pages/Gantt.tsx
 import React, { useState, useMemo } from 'react';
-import { getMonthDays, todayStr, type MonthDay } from '../utils/dates';
+import { addCalendarDay, getMonthDays, isWorkday, todayStr, type MonthDay } from '../utils/dates';
 import { calcForecast, statusColor, getDerivedDeadline } from '../utils/forecast';
 import { isAvailableOn, isWorkingRole, leaveTypeOn } from '../domain/availability';
 import { computeInheritedTeam, computeDynamicStarts, getTaskChain, segmentByWeek, arrowAnchorOffset, sortTasksByChain } from '../domain/gantt';
@@ -294,6 +294,16 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       ? 'этапа'
       : 'этапов';
     return `${count} ${word}`;
+  }
+
+  function buildVisibleAxisDates(from: ISODate, to: ISODate): ISODate[] {
+    const result: ISODate[] = [];
+    let cursor = from;
+    for (let i = 0; i < 730 && cursor <= to; i++) {
+      if (!hideOff || isWorkday(cursor)) result.push(cursor);
+      cursor = addCalendarDay(cursor);
+    }
+    return result;
   }
 
   // Эффективная дата старта:
@@ -678,8 +688,18 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
             const hasStages = !!task.stages?.length && !isWaitingChild && hasEstimate;
             const isStagesExpanded = hasStages && expandedStageTasks.has(task.id);
             const stageUsedHours = taskHours * ((fc?.progressPct || 0) / 100);
+            const stageTimelineEnd = fc?.forecastDate || task.deadline || null;
+            const stageScheduleDates = isStagesExpanded && stageTimelineEnd
+              ? buildVisibleAxisDates(effectSt, stageTimelineEnd)
+              : [];
             const stageTimeline = isStagesExpanded
-              ? buildTaskStageTimeline(task, stageUsedHours, barStart, barEnd)
+              ? buildTaskStageTimeline(
+                task,
+                stageUsedHours,
+                stageScheduleDates,
+                days.map(day => day.str),
+                effectiveDls[task.id] || task.deadline || null,
+              )
               : [];
 
             return (
@@ -833,6 +853,11 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                 </div>
 
                 {stageTimeline.map(stage => {
+                  const stageColor = stage.deadlineStatus === 'overdue'
+                    ? 'var(--red)'
+                    : stage.deadlineStatus === 'ok'
+                    ? 'var(--success)'
+                    : 'var(--text-tertiary)';
                   const stageFillPct = stage.state === 'completed'
                     ? 100
                     : stage.state === 'current'
@@ -854,7 +879,8 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                       <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0, paddingRight:14, paddingLeft:48, display:'flex', alignItems:'center', gap:6 }}>
                         <span style={{
                           width:6, height:6, borderRadius:'50%',
-                          background:stage.state === 'planned' ? 'var(--border-mid)' : barColor,
+                          background:stageColor,
+                          opacity:stage.state === 'planned' ? 0.45 : 1,
                           flexShrink:0,
                         }}/>
                         <div style={{ minWidth:0 }}>
@@ -870,7 +896,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                         <BgCols/>
                         {stage.from < stage.to && (
                           <div
-                            title={`${stage.name}: ${stage.estimateHours} ч · ${stage.progressPct}%`}
+                            title={`${stage.name}: ${stage.estimateHours} ч · ${stage.progressPct}% · ${fmtDate(stage.startDate)}-${fmtDate(stage.endDate)}`}
                             style={{
                               position:'absolute',
                               left:L(stage.from),
@@ -887,7 +913,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                             <div style={{
                               position:'absolute',
                               inset:0,
-                              background:barColor,
+                              background:stageColor,
                               opacity:stageBaseOpacity,
                             }}/>
                             {stageFillPct > 0 && stageFillPct < 100 && (
@@ -895,7 +921,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                                 position:'absolute',
                                 inset:'0 auto 0 0',
                                 width:`${stageFillPct}%`,
-                                background:barColor,
+                                background:stageColor,
                               }}/>
                             )}
                           </div>
