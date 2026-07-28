@@ -833,7 +833,16 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                 </div>
 
                 {stageTimeline.map(stage => {
-                  const labelColor = stage.state === 'completed' ? 'var(--bar-contrast)' : 'var(--text-secondary)';
+                  const stageFillPct = stage.state === 'completed'
+                    ? 100
+                    : stage.state === 'current'
+                    ? stage.progressPct
+                    : 0;
+                  const stageBaseOpacity = stage.state === 'completed'
+                    ? 1
+                    : stage.state === 'current'
+                    ? 0.26
+                    : 0.16;
                   const stateLabel = stage.state === 'completed'
                     ? 'готово'
                     : stage.state === 'current'
@@ -866,39 +875,29 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                               position:'absolute',
                               left:L(stage.from),
                               width:W(stage.from, stage.to),
-                              top:5,
-                              height:20,
-                              borderRadius:5,
+                              top:3,
+                              height:24,
+                              borderRadius:6,
                               overflow:'hidden',
-                              border:'1px solid var(--border-mid)',
-                              background:stage.state === 'completed' ? barColor : 'var(--bg-secondary)',
+                              background:'transparent',
+                              boxShadow:'var(--shadow-sm)',
                               zIndex:3,
                             }}
                           >
-                            {stage.state === 'current' && stage.progressPct > 0 && (
+                            <div style={{
+                              position:'absolute',
+                              inset:0,
+                              background:barColor,
+                              opacity:stageBaseOpacity,
+                            }}/>
+                            {stageFillPct > 0 && stageFillPct < 100 && (
                               <div style={{
                                 position:'absolute',
                                 inset:'0 auto 0 0',
-                                width:`${stage.progressPct}%`,
+                                width:`${stageFillPct}%`,
                                 background:barColor,
                               }}/>
                             )}
-                            <span style={{
-                              position:'absolute',
-                              inset:0,
-                              display:'flex',
-                              alignItems:'center',
-                              justifyContent:'center',
-                              padding:'0 6px',
-                              color:labelColor,
-                              fontSize:10,
-                              fontWeight:700,
-                              whiteSpace:'nowrap',
-                              overflow:'hidden',
-                              textOverflow:'ellipsis',
-                            }}>
-                              {stage.name}
-                            </span>
                           </div>
                         )}
                       </div>
