@@ -8,6 +8,8 @@ import { getEngineerActiveTasks } from '../domain/task';
 import { formatDateShort } from '../utils/dates';
 import { genId } from '../utils/ids';
 import { Avatar, PageTopbar, Select, useTooltip, useConfirm, useDaySplit } from '../components/UI';
+import TaskStageBar from '../components/TaskStageBar';
+import { taskEstimateHours } from '../domain/stages';
 import type { Engineer, ISODate, Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
@@ -187,7 +189,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       const effStart = dynamicStarts[t.id] || todayStr();
       if (effStart > monthEnd) return false;
       const fc = forecasts[t.id];
-      const noEst = !(t.estimateHours || 0);
+      const noEst = taskEstimateHours(t) <= 0;
       const endDate = fc?.forecastDate || t.deadline || (noEst ? noEstFallbackEnd : monthEnd);
       if (endDate < monthStart) return false;
       return true;
@@ -592,7 +594,8 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
             const assignedEngs: Engineer[] = (inheritedEngIds[task.id] || task.assignedEngineers || []).map(id=>engineers.find(e=>e.id===id)).filter((e): e is Engineer => !!e);
 
             const hasEngineers   = assignedEngs.length > 0;
-            const hasEstimate    = (task.estimateHours || 0) > 0;
+            const taskHours      = taskEstimateHours(task);
+            const hasEstimate    = taskHours > 0;
             // Дочерняя задача, родитель ещё не завершён — ждёт, показываем штриховкой
             const isWaitingChild = !!task.dependsOn && allActiveTasks.some(t => t.id === task.dependsOn);
             const effectSt       = effectiveStart(task);
@@ -722,9 +725,12 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                           opacity: isWaitingChild ? 0.75 : 1,
                         }}
                       >
-                        <span style={{ fontSize:12, fontWeight:700, color:'var(--bar-contrast)', whiteSpace:'nowrap', flexShrink:0 }}>{progressLabel}</span>
+                        {task.stages?.length && !isWaitingChild && (
+                          <TaskStageBar task={task} usedHours={taskHours * ((fc?.progressPct || 0) / 100)} color={barColor} showLabels={colSpan >= 8}/>
+                        )}
+                        <span style={{ position:'relative', zIndex:1, fontSize:12, fontWeight:700, color:'var(--bar-contrast)', whiteSpace:'nowrap', flexShrink:0 }}>{progressLabel}</span>
                         {maxAvatars > 0 && (
-                          <div style={{ display:'flex', alignItems:'center', flexShrink:0 }}>
+                          <div style={{ position:'relative', zIndex:1, display:'flex', alignItems:'center', flexShrink:0 }}>
                             {assignedEngs.slice(0, maxAvatars).map((e,i) => {
                               const initials = e.name.split(' ').slice(0,2).map(p=>p[0]).join('');
                               const colors = ['#9FE1CB','#B5D4F4','#CECBF6','#F5C4B3','#FAC775','#C0DD97','#D3D1C7'];
@@ -884,7 +890,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
               const ids = new Set<string>();
               activeTasks.forEach(task => {
                 const fc  = forecasts[task.id];
-                const noEst = !(task.estimateHours || 0);
+                const noEst = taskEstimateHours(task) <= 0;
 
                 // Эффективная дата старта: зависимые — из dynamicStarts
                 const effStart = task.dependsOn

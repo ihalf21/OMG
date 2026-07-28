@@ -3,6 +3,7 @@
 
 import { addWorkdays, addCalendarDay, subtractCalendarDay, isWorkday, subtractWorkdays, workdaysElapsed, todayStr, workdaysBetween } from './dates';
 import { roleCoeff, capacityToday, capacityOn } from '../domain/availability';
+import { taskEstimateHours } from '../domain/stages';
 import { getAbsencePeriods } from './absences';
 import type { Engineer, HistoryEntry, ISODate, Task } from '../domain/types';
 
@@ -214,7 +215,7 @@ export function calcForecast(
 ): Forecast {
   const cap = currentCapacity(task, engineers);
   const capFull = nominalCapacity(task, engineers);
-  const totalHours = task.estimateHours || 0;
+  const totalHours = taskEstimateHours(task);
 
   const usedHours = history
     ? computeUsedHours(task, engineers, history)
@@ -353,7 +354,7 @@ export function calcPhaseInfo(task: Task, engineers: Engineer[], history?: Histo
   if (!est) return null;
 
   const { stage1, stage2, stage3, restHours, total, tcTotalCount } = est;
-  const totalHours = task.estimateHours;
+  const totalHours = taskEstimateHours(task);
 
   const phases: PhaseInfo['phases'] = [
     { id: 'analysis',   label: 'Анализ',          widthPct: (stage1               / total) * 100 },
@@ -429,7 +430,7 @@ export function calcDependentStart(parentTask: Task, parentEngineers: Engineer[]
  */
 export function calcScheduledChildStart(parentTask: Task, parentEngineers: Engineer[], parentDynStart: ISODate | null): ISODate | null {
   if (!parentDynStart) return null;
-  const totalHours = parentTask.estimateHours || 0;
+  const totalHours = taskEstimateHours(parentTask);
   if (totalHours <= 0) return parentDynStart;
   const sim = projectFinish(parentTask, parentEngineers, parentDynStart, totalHours);
   if (!sim.forecastDate) return null;
@@ -446,7 +447,7 @@ export function engineersNeeded(task: Task, engineers: Engineer[], deadlineOverr
   const fc = calcForecast(task, engineers, deadlineOverride, null, history);
   if (fc.deadlineStatus !== 'overdue') return 0;
 
-  const totalHours = task.estimateHours || 0;
+  const totalHours = taskEstimateHours(task);
   const today = todayStr();
   if (effectiveDl < today) return null;
 
@@ -492,7 +493,7 @@ export function getDerivedDeadline(task: Task, allTasks: Task[], engineers: Engi
   if (!childDl) return task.deadline || null;
 
   const childCap = currentCapacity(child, engineers);
-  const childTotalHours = child.estimateHours || 0;
+  const childTotalHours = taskEstimateHours(child);
   const childDays = childCap > 0
     ? Math.max(1, Math.ceil(childTotalHours / (childCap * HOURS_PER_DAY)))
     : (() => {

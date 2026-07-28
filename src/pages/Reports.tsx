@@ -8,6 +8,8 @@ import {
   computeInheritedTeam, computeDynamicStarts, segmentByWeek, arrowAnchorOffset, sortTasksByChain,
 } from '../domain/gantt';
 import { PageTopbar, BtnPrimary } from '../components/UI';
+import TaskStageBar from '../components/TaskStageBar';
+import { taskEstimateHours } from '../domain/stages';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const LABEL_W = 200;
@@ -180,7 +182,7 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
     return allActiveTasks.filter(t => {
       const effStart = dynamicStarts[t.id] || todayStr();
       if (effStart > me) return false;
-      const fc = forecasts[t.id]; const noEst = !(t.estimateHours||0);
+      const fc = forecasts[t.id]; const noEst = taskEstimateHours(t) <= 0;
       const endDate = fc?.forecastDate || t.deadline || (noEst ? noEstFallbackEnd : me);
       return endDate >= ms;
     });
@@ -243,7 +245,7 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
     const avail = nonLeadEngs.filter(e => isAvailableOn(e, day.str));
     const ids = new Set<string>();
     activeTasks.forEach(task => {
-      const fc = forecasts[task.id]; const noEst = !(task.estimateHours||0);
+      const fc = forecasts[task.id]; const noEst = taskEstimateHours(task) <= 0;
       const effStart = task.dependsOn?(dynamicStarts[task.id]??null):(task.startDate??todayStr());
       if (!effStart||effStart>day.str) return;
       const endDate = fc?.forecastDate||task.deadline||(noEst?noEstFallbackEnd:null);
@@ -294,7 +296,8 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
       {activeTasks.map(task => {
         const fc           = forecasts[task.id];
         const assignedEngs = (inheritedEngIds[task.id]||task.assignedEngineers||[]).map(id=>engineers.find(e=>e.id===id)).filter((e): e is Engineer=>!!e);
-        const hasEngineers = assignedEngs.length>0, hasEstimate=(task.estimateHours||0)>0;
+        const taskHours = taskEstimateHours(task);
+        const hasEngineers = assignedEngs.length>0, hasEstimate=taskHours>0;
         const isWaiting    = !!task.dependsOn&&allActiveTasks.some(t=>t.id===task.dependsOn);
         const effectSt     = effectiveStart(task);
         const isNotStartedYet = !isWaiting && effectSt > todayStr();
@@ -320,8 +323,9 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
               <BgCols/>
               {barStart<barEnd&&(
                 <div id={`rbar-${task.id}`} style={{ position:'absolute', left:L(barStart), width:W(barStart,barEnd), top:7, height:30, background:barBg, borderRadius:6, display:'flex', alignItems:'center', padding:colSpan<=2?'0 4px':'0 8px', gap:colSpan<=2?3:5, zIndex:3, overflow:'hidden', boxShadow:'0 1px 4px rgba(0,0,0,0.18)', opacity:isWaiting?0.75:1 }}>
-                  <span style={{ fontSize:12, fontWeight:700, color:'#fff', whiteSpace:'nowrap', flexShrink:0 }}>{fc?.progressPct||0}%</span>
-                  {assignedEngs.length>0&&colSpan>1&&<span style={{ fontSize:11, color:'rgba(255,255,255,0.88)', whiteSpace:'nowrap', flexShrink:0 }}>{pluralEng(assignedEngs.length)}</span>}
+                  {task.stages?.length && !isWaiting && <TaskStageBar task={task} usedHours={taskHours*((fc?.progressPct||0)/100)} color={barBg} separatorColor="#FFFFFF" labelColor="#FFFFFF" showLabels={colSpan>=8}/>}
+                  <span style={{ position:'relative', zIndex:1, fontSize:12, fontWeight:700, color:'#fff', whiteSpace:'nowrap', flexShrink:0 }}>{fc?.progressPct||0}%</span>
+                  {assignedEngs.length>0&&colSpan>1&&<span style={{ position:'relative', zIndex:1, fontSize:11, color:'rgba(255,255,255,0.88)', whiteSpace:'nowrap', flexShrink:0 }}>{pluralEng(assignedEngs.length)}</span>}
                 </div>
               )}
             </div>
@@ -500,7 +504,7 @@ export default function Reports({ data }: PageProps) {
       const effStart = t.dependsOn ? (dynamicStarts[t.id] ?? todayStr()) : (t.startDate ?? todayStr());
       if (effStart > monthEnd) return false;
       const fc = forecasts[t.id];
-      const noEst = !(t.estimateHours || 0);
+      const noEst = taskEstimateHours(t) <= 0;
       const endDate = fc?.forecastDate || t.deadline || (noEst ? monthEnd : monthEnd);
       return endDate >= monthStart;
     }),
@@ -511,7 +515,7 @@ export default function Reports({ data }: PageProps) {
     let ok=0, risk=0, overdue=0, queued=0, noFc=0, totalEst=0, totalLeft=0;
     activeTasksInMonth.forEach(t => {
       const fc=forecasts[t.id];
-      totalEst  += t.estimateHours||0;
+      totalEst  += taskEstimateHours(t);
       totalLeft += fc?.hoursLeft??0;
       if (!t.startDate||t.startDate>today_str) { queued++; return; }
       switch (fc?.deadlineStatus) {
@@ -552,7 +556,7 @@ export default function Reports({ data }: PageProps) {
       const k=t.direction||'Без направления';
       if (!m.has(k)) m.set(k,{engCnt:0,activeCnt:0,doneCnt:0,totalHrs:0});
       m.get(k)!.activeCnt++;
-      m.get(k)!.totalHrs+=t.estimateHours||0;
+      m.get(k)!.totalHrs+=taskEstimateHours(t);
     });
     doneTasks.forEach(t => {
       const k=t.direction||'Без направления';
@@ -881,7 +885,7 @@ export default function Reports({ data }: PageProps) {
                               <td style={{...tdStyle, fontSize:11, color:t.deadline?'var(--text-primary)':'var(--text-tertiary)'}}>{fmtDate(t.deadline)}</td>
                               <td style={{...tdStyle, fontSize:11}}>{fc?.forecastDate ? <span style={{ color:badgeCol }}>{fmtDate(fc.forecastDate)}</span> : <span style={{ color:'var(--text-tertiary)' }}>—</span>}</td>
                               <td style={{...tdStyle, fontSize:11, color:'var(--text-secondary)'}}>{engNames.length>0?engNames.join(', '):'—'}</td>
-                              <td style={{...tdStyle, fontSize:11, color:'var(--text-secondary)'}}>{fmtHours(t.estimateHours)}</td>
+                              <td style={{...tdStyle, fontSize:11, color:'var(--text-secondary)'}}>{fmtHours(taskEstimateHours(t))}</td>
                             </tr>
                           );
                         })}
