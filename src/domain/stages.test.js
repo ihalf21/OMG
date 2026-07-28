@@ -1,5 +1,6 @@
 import {
   computeTaskStageProgress,
+  buildTaskStageTimeline,
   currentTaskStage,
   normalizeTaskStages,
   taskEstimateHours,
@@ -59,6 +60,17 @@ describe('task stages', () => {
   test('завершённая задача завершает все этапы', () => {
     const result = computeTaskStageProgress(task({ stages, status: 'done' }), 0);
     expect(result.every(stage => stage.state === 'completed')).toBe(true);
+  });
+
+  test('раскладывает этапы по ширине полосы пропорционально оценкам', () => {
+    const result = buildTaskStageTimeline(task({ stages }), 20, 10, 46);
+    expect(result.map(stage => [stage.id, stage.from, stage.to])).toEqual([
+      ['s1', 10, 14],
+      ['s2', 14, 22],
+      ['s3', 22, 42],
+      ['s4', 42, 46],
+    ]);
+    expect(result.map(stage => stage.state)).toEqual(['completed', 'current', 'planned', 'planned']);
   });
 
   test('задача без этапов остаётся совместимой', () => {

@@ -8,6 +8,11 @@ export interface TaskStageProgress extends TaskStage {
   state: TaskStageState;
 }
 
+export interface TaskStageTimelineItem extends TaskStageProgress {
+  from: number;
+  to: number;
+}
+
 export function sortTaskStages(stages: TaskStage[] | null | undefined): TaskStage[] {
   return [...(stages || [])].sort((a, b) => a.sortOrder - b.sortOrder);
 }
@@ -72,4 +77,24 @@ export function computeTaskStageProgress(task: Task, usedHours: number): TaskSta
 export function currentTaskStage(task: Task, usedHours: number): TaskStageProgress | null {
   const stages = computeTaskStageProgress(task, usedHours);
   return stages.find(stage => stage.state === 'current') || null;
+}
+
+export function buildTaskStageTimeline(
+  task: Task,
+  usedHours: number,
+  spanStart: number,
+  spanEnd: number,
+): TaskStageTimelineItem[] {
+  const stages = computeTaskStageProgress(task, usedHours);
+  const total = taskStagesTotal(task.stages);
+  const span = Math.max(0, spanEnd - spanStart);
+  if (stages.length === 0 || total <= 0 || span <= 0) return [];
+
+  let consumedBefore = 0;
+  return stages.map(stage => {
+    const from = spanStart + (consumedBefore / total) * span;
+    consumedBefore += stage.estimateHours;
+    const to = spanStart + (consumedBefore / total) * span;
+    return { ...stage, from, to };
+  });
 }
