@@ -21,7 +21,6 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
   const [mode, setMode]         = useState<Mode>('tasks');
   const [year, setYear]         = useState(new Date().getFullYear());
   const [month, setMonth]       = useState(new Date().getMonth());
-  const [hideOff, setHideOff]   = useState(true);
   const [directionFilter, setDirectionFilter] = useState('all');
   const [hoveredTask, setHoveredTask] = useState<string | null>(null);
   const [freeModal, setFreeModal]     = useState<FreeModalState>(null);
@@ -41,7 +40,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
   const [hoveredCol, setHoveredCol]   = useState<number | null>(null);
 
   const allDays = useMemo(() => getMonthDays(year, month), [year, month]);
-  const days  = useMemo(() => hideOff ? allDays.filter(d => !d.off) : allDays, [allDays, hideOff]);
+  const days  = useMemo(() => allDays.filter(d => !d.off), [allDays]);
 
   const directionOptions = useMemo(() => {
     const dirs = new Set<string>();
@@ -230,7 +229,6 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
     if (dy !== year || dm - 1 !== month) return null;
     let idx = days.findIndex(d => d.day === dd);
     if (idx >= 0) return idx;
-    if (!hideOff) return null;
     if (fallback === 'next') {
       idx = days.findIndex(d => d.day > dd);
       return idx >= 0 ? idx : null;
@@ -412,7 +410,6 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
     return arrows;
   }
 
-  const workdaysCount = allDays.filter(d => !d.off).length;
   const depArrows = getDependencyArrows(hoveredTask);
   const hoveredChainIds = useMemo<Set<string>>(() => {
     if (!hoveredTask) return new Set<string>();
@@ -495,15 +492,10 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
           Завершённые
           {showDone && doneTasks.length > 0 && <span style={{ fontSize:12, color:'var(--text-tertiary)', fontWeight:400 }}>({doneTasks.length})</span>}
         </ToggleButton>
-        {/* Чекбокс скрыть выходные */}
-        <ToggleButton active={hideOff} onClick={() => setHideOff(v => !v)}>
-          Только рабочие дни
-          {hideOff && <span style={{ fontSize:12, color:'var(--text-tertiary)', fontWeight:400 }}>({workdaysCount} дн.)</span>}
-        </ToggleButton>
       </PageTopbar>
 
       <div style={{ flex:1, overflow:'auto', padding:'16px 20px' }} onMouseMove={move}>
-        <div ref={ganttBodyRef} style={{ minWidth: hideOff ? 600 : 860, position:'relative' }}
+        <div ref={ganttBodyRef} style={{ minWidth: 600, position:'relative' }}
           onMouseLeave={() => setHoveredCol(null)}
         >
           {/* Глобальный оверлей: подсветка сегодня и ховера колонки — от строки дат до низа */}
@@ -562,17 +554,16 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                       const jsDay   = new Date(yy, mm-1, dd).getDay();
                       const dowRu   = DOW_RU[jsDay];
                       const isToday = d.today;
-                      const isOff   = d.off && !hideOff;
                       return (
                         <div key={i}
                           onMouseEnter={() => setHoveredCol(i)}
                           style={{
                             flex:1, textAlign:'center', padding:'3px 0 2px', cursor:'default',
-                            background: isToday ? 'rgba(29,158,117,0.07)' : isOff ? 'var(--bg-secondary)' : 'transparent',
+                            background: isToday ? 'rgba(29,158,117,0.07)' : 'transparent',
                             borderRight: i<DAYS-1 ? `0.5px solid ${isToday?'rgba(29,158,117,0.25)':'var(--border-light)'}` : 'none',
                           }}>
-                          <div style={{ fontSize:12, fontWeight: isToday?700:400, color: isToday?'var(--accent)': isOff?'var(--text-tertiary)':'var(--text-secondary)', lineHeight:1.3 }}>{d.day}</div>
-                          <div style={{ fontSize:9, color: isToday?'var(--accent)': isOff?'var(--text-tertiary)':'var(--text-tertiary)', lineHeight:1.2, fontWeight: isToday?700:400 }}>{dowRu}</div>
+                          <div style={{ fontSize:12, fontWeight: isToday?700:400, color: isToday?'var(--accent)':'var(--text-secondary)', lineHeight:1.3 }}>{d.day}</div>
+                          <div style={{ fontSize:9, color: isToday?'var(--accent)':'var(--text-tertiary)', lineHeight:1.2, fontWeight: isToday?700:400 }}>{dowRu}</div>
                         </div>
                       );
                     })}
