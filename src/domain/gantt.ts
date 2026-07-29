@@ -3,7 +3,6 @@
 
 import { addWorkdays } from '../utils/dates';
 import { HOURS_PER_DAY, calcDependentStart, calcScheduledChildStart } from '../utils/forecast';
-import { taskEstimateHours } from './stages';
 import type { Engineer, ISODate, Task } from './types';
 import type { MonthDay } from '../utils/dates';
 
@@ -77,7 +76,7 @@ export function computeDynamicStarts(
       } else if (parent.deadline) {
         date = addWorkdays(parent.deadline, 1);
       } else {
-        const hrs = taskEstimateHours(parent) || HOURS_PER_DAY;
+        const hrs = parent.estimateHours || HOURS_PER_DAY;
         date = addWorkdays(parent.startDate, Math.round(hrs / HOURS_PER_DAY));
       }
     } else {
@@ -88,7 +87,7 @@ export function computeDynamicStarts(
       } else if (parent.deadline) {
         date = addWorkdays(parent.deadline, 1);
       } else {
-        const hrs = taskEstimateHours(parent) || HOURS_PER_DAY;
+        const hrs = parent.estimateHours || HOURS_PER_DAY;
         date = addWorkdays(parentDynStart, Math.round(hrs / HOURS_PER_DAY));
       }
     }

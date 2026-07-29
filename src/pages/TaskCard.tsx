@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { calcForecast, calcPhaseInfo, computeUsedHours, statusColor, statusLabel, statusBadgeStyle, fmtHours, getDerivedDeadline } from '../utils/forecast';
+import { calcForecast, calcPhaseInfo, statusColor, statusLabel, statusBadgeStyle, fmtHours, getDerivedDeadline } from '../utils/forecast';
 import { isAvailableToday, isWorkingRole } from '../domain/availability';
 import {
   getEffectiveTeam,
@@ -9,9 +9,8 @@ import {
 } from '../domain/task';
 import { formatDate, formatDateShort, todayStr } from '../utils/dates';
 import { genId } from '../utils/ids';
-import { computeTaskStageProgress, normalizeTaskStages, taskEstimateHours, taskStagesTotal } from '../domain/stages';
 import { Avatar, ProgressBar, Card, PageTopbar, BackBtn, BtnSecondary, BtnPrimary, BtnDanger, FieldRow, Modal, Select, ModalFooter, FormRow, Input, DatePicker, useConfirm, useDaySplit, DaySplitButtons, hoursToFraction } from '../components/UI';
-import type { Task, TaskStage, ExtraWorkEntry, HistoryType } from '../domain/types';
+import type { Task, ExtraWorkEntry, HistoryType } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
 interface Props extends PageProps {
@@ -30,7 +29,6 @@ interface EditForm {
   link: string;
   testOpsUrl: string;
   workDocUrl: string;
-  stages: TaskStage[];
 }
 
 type CompleteMode = 'today' | 'custom';
@@ -108,21 +106,19 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   function startEdit() {
     setEditForm({
       name: task!.name, direction: task!.direction || '',
-      estimateHours: taskEstimateHours(task!) || '',
+      estimateHours: task!.estimateHours || '',
       startDate: task!.startDate || '', deadline: task!.deadline || '',
       dependsOn:  task!.dependsOn || '',
       newChildId: '',
       link: task!.link || '',
       testOpsUrl: task!.testOpsUrl || '',
       workDocUrl: task!.workDocUrl || '',
-      stages: normalizeTaskStages(task!.stages),
     });
     setEditMode(true);
   }
 
   function saveEdit() {
     if (!editForm) return;
-    if (editForm.stages.some(stage => !stage.name.trim() || stage.estimateHours <= 0)) return;
     updateData(prev => {
       let effectiveDependsOn: string | null = editForm.dependsOn || null;
       if (editForm.newChildId && !effectiveDependsOn) {
@@ -131,23 +127,17 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
       }
 
       const newTasks: Task[] = prev.tasks.map(t => {
-        if (t.id === taskId) {
-          const stages = normalizeTaskStages(editForm.stages);
-          return {
+        if (t.id === taskId) return {
           ...t,
           name: editForm.name, direction: editForm.direction || null,
-          estimateHours: stages.length > 0
-            ? taskStagesTotal(stages)
-            : (parseInt(String(editForm.estimateHours)) > 0 ? parseInt(String(editForm.estimateHours)) : null),
-          stages: stages.length > 0 ? stages : undefined,
+          estimateHours: parseInt(String(editForm.estimateHours)) > 0 ? parseInt(String(editForm.estimateHours)) : null,
           startDate: effectiveDependsOn ? null : (editForm.startDate || null),
           deadline: editForm.deadline || null,
           dependsOn: effectiveDependsOn,
           link: editForm.link.trim() || undefined,
           testOpsUrl: editForm.testOpsUrl.trim() || undefined,
           workDocUrl: editForm.workDocUrl.trim() || undefined,
-          };
-        }
+        };
         if (editForm.newChildId && t.id === editForm.newChildId) {
           return { ...t, dependsOn: taskId, startDate: null };
         }
@@ -213,49 +203,8 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
   }
   function removeEngineer(engId: string) { updateData(prev => removeEngineerFromTask(prev, taskId, engId)); }
 
-  function addStage() {
-    setEditForm(form => form ? {
-      ...form,
-      stages: [...form.stages, {
-        id: genId('stage'),
-        name: '',
-        estimateHours: 8,
-        sortOrder: form.stages.length,
-      }],
-    } : form);
-  }
-
-  function updateStage(stageId: string, patch: Partial<TaskStage>) {
-    setEditForm(form => form ? {
-      ...form,
-      stages: form.stages.map(stage => stage.id === stageId ? { ...stage, ...patch } : stage),
-    } : form);
-  }
-
-  function removeStage(stageId: string) {
-    setEditForm(form => form ? {
-      ...form,
-      stages: form.stages.filter(stage => stage.id !== stageId)
-        .map((stage, sortOrder) => ({ ...stage, sortOrder })),
-    } : form);
-  }
-
-  function moveStage(stageId: string, delta: -1 | 1) {
-    setEditForm(form => {
-      if (!form) return form;
-      const stages = [...form.stages].sort((a, b) => a.sortOrder - b.sortOrder);
-      const from = stages.findIndex(stage => stage.id === stageId);
-      const to = from + delta;
-      if (from < 0 || to < 0 || to >= stages.length) return form;
-      [stages[from], stages[to]] = [stages[to], stages[from]];
-      return { ...form, stages: stages.map((stage, sortOrder) => ({ ...stage, sortOrder })) };
-    });
-  }
-
   const totalCount = assignedEngs.length;
-  const usedHours  = computeUsedHours(task, engineers, history);
-  const stageInfo  = computeTaskStageProgress(task, usedHours);
-  const phaseInfo  = stageInfo.length > 0 ? null : calcPhaseInfo(task, engineers, history);
+  const phaseInfo  = calcPhaseInfo(task, engineers, history);
 
   const parentTask      = task.dependsOn ? tasks.find(t => t.id === task.dependsOn) : null;
   const inheritedEngIds = parentTask ? getEffectiveTeam(parentTask, tasks) : [];
@@ -384,47 +333,8 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                       </Select>
                     </FormRow>
                     <FormRow label="Оценка (чч)" hint="человеко-часы">
-                      {editForm.stages.length > 0 ? (
-                        <div style={{ padding:'9px 11px', border:'1.5px solid var(--border-mid)', borderRadius:6, background:'var(--bg-tertiary)', color:'var(--text-secondary)', fontSize:14, fontWeight:600 }}>
-                          {taskStagesTotal(editForm.stages)} чч · сумма этапов
-                        </div>
-                      ) : (
-                        <Input type="number" value={editForm.estimateHours} onChange={e=>setEditForm(f=>f?{...f, estimateHours:e.target.value}:f)}/>
-                      )}
+                      <Input type="number" value={editForm.estimateHours} onChange={e=>setEditForm(f=>f?{...f, estimateHours:e.target.value}:f)}/>
                     </FormRow>
-                  </div>
-
-                  <div style={{ borderTop:'0.5px solid var(--border-light)', paddingTop:12, marginTop:2, marginBottom:14 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:12, fontWeight:600, color:'var(--text-tertiary)', textTransform:'uppercase', letterSpacing:'0.04em' }}>Этапы задачи</div>
-                        <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:3 }}>Выполняются последовательно общей командой задачи</div>
-                      </div>
-                      <BtnSecondary onClick={addStage} style={{ fontSize:12, padding:'6px 10px' }}>+ Этап</BtnSecondary>
-                    </div>
-                    {editForm.stages.length === 0 ? (
-                      <div style={{ padding:'10px 12px', borderRadius:7, background:'var(--bg-secondary)', color:'var(--text-tertiary)', fontSize:12 }}>
-                        Этапы не заданы — задача планируется одной полосой.
-                      </div>
-                    ) : (
-                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                        {[...editForm.stages].sort((a,b)=>a.sortOrder-b.sortOrder).map((stage, index, stages) => (
-                          <div key={stage.id} style={{ display:'grid', gridTemplateColumns:'28px minmax(160px,1fr) 100px auto', gap:8, alignItems:'center', padding:'8px', border:'1px solid var(--border-light)', borderRadius:7, background:'var(--bg-secondary)' }}>
-                            <div style={{ width:24, height:24, borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', background:'var(--accent-bg)', color:'var(--accent)', fontSize:12, fontWeight:700 }}>{index+1}</div>
-                            <Input value={stage.name} onChange={e=>updateStage(stage.id,{name:e.target.value})} placeholder="Название этапа" style={{ background:'var(--bg-primary)' }}/>
-                            <Input type="number" value={stage.estimateHours} onChange={e=>updateStage(stage.id,{estimateHours:Math.max(0,parseInt(e.target.value)||0)})} style={{ background:'var(--bg-primary)' }}/>
-                            <div style={{ display:'flex', gap:3 }}>
-                              <button type="button" onClick={()=>moveStage(stage.id,-1)} disabled={index===0} title="Выше" style={{ border:'1px solid var(--border-mid)', background:'var(--bg-primary)', color:'var(--text-secondary)', borderRadius:5, width:27, height:27, cursor:index===0?'default':'pointer', opacity:index===0?0.35:1 }}>↑</button>
-                              <button type="button" onClick={()=>moveStage(stage.id,1)} disabled={index===stages.length-1} title="Ниже" style={{ border:'1px solid var(--border-mid)', background:'var(--bg-primary)', color:'var(--text-secondary)', borderRadius:5, width:27, height:27, cursor:index===stages.length-1?'default':'pointer', opacity:index===stages.length-1?0.35:1 }}>↓</button>
-                              <button type="button" onClick={()=>removeStage(stage.id)} title="Удалить этап" style={{ border:'1px solid var(--red)', background:'transparent', color:'var(--red)', borderRadius:5, width:27, height:27, cursor:'pointer' }}>×</button>
-                            </div>
-                          </div>
-                        ))}
-                        {editForm.stages.some(stage => !stage.name.trim() || stage.estimateHours <= 0) && (
-                          <div style={{ color:'var(--red)', fontSize:12 }}>У каждого этапа должно быть название и положительная оценка.</div>
-                        )}
-                      </div>
-                    )}
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                     {!editForm.dependsOn ? (
@@ -528,16 +438,14 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                   <FieldRow label="Дата старта">{formatDate(task.startDate)}</FieldRow>
                   <FieldRow label="Дедлайн">{task.deadline?<span style={{ color:'var(--red)', fontWeight:600 }}>{formatDate(task.deadline)}</span>:'—'}</FieldRow>
                   <FieldRow label="Итоговая оценка">
-                    {taskEstimateHours(task) > 0 ? (
+                    {task.estimateHours && task.estimateHours > 0 ? (
                       <span style={{ display:'inline-flex', alignItems:'center', gap:8 }}>
                         <strong
-                          onClick={task.stages?.length ? undefined : () => navigate('estimate', task.id)}
-                          style={{ color: task.stages?.length ? 'var(--text-primary)' : task.estimateForm ? 'var(--accent)' : 'var(--blue)', cursor:task.stages?.length?'default':'pointer', textDecoration:task.stages?.length?'none':'underline dotted' }}
-                          title={task.stages?.length ? 'Оценка рассчитана как сумма этапов' : task.estimateForm ? 'Открыть в калькуляторе' : 'Уточнить оценку'}
-                        >{fmtHours(taskEstimateHours(task))}</strong>
-                        {task.stages?.length ? (
-                          <span style={{ fontSize:11, color:'var(--accent)', background:'var(--accent-bg)', borderRadius:10, padding:'1px 7px', fontWeight:700 }}>{task.stages.length} этапа</span>
-                        ) : !task.estimateForm && (
+                          onClick={() => navigate('estimate', task.id)}
+                          style={{ color: task.estimateForm ? 'var(--accent)' : 'var(--blue)', cursor:'pointer', textDecoration:'underline dotted' }}
+                          title={task.estimateForm ? 'Открыть в калькуляторе' : 'Уточнить оценку'}
+                        >{fmtHours(task.estimateHours)}</strong>
+                        {!task.estimateForm && (
                           <span style={{ fontSize:11, color:'var(--blue)', background:'var(--blue-bg)', borderRadius:10, padding:'1px 7px', fontWeight:700 }}>экспресс</span>
                         )}
                       </span>
@@ -585,24 +493,6 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                     <span style={{ fontWeight:600 }}>{phaseInfo ? phaseInfo.overallPct : (fc?.progressPct||0)}%</span>
                   </div>
 
-                  {stageInfo.length > 0 && (
-                    <div style={{ display:'flex', flexDirection:'column', gap:7, margin:'14px 0 12px' }}>
-                      {stageInfo.map((stage, index) => (
-                        <div key={stage.id} style={{ display:'grid', gridTemplateColumns:'24px minmax(120px,1fr) 90px 48px', gap:8, alignItems:'center' }}>
-                          <div style={{ width:22, height:22, borderRadius:11, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, background:stage.state==='completed'?'var(--success-bg)':stage.state==='current'?'var(--accent-bg)':'var(--bg-secondary)', color:stage.state==='completed'?'var(--success)':stage.state==='current'?'var(--accent)':'var(--text-tertiary)' }}>
-                            {stage.state==='completed'?'✓':stage.state==='current'?'▶':index+1}
-                          </div>
-                          <div style={{ minWidth:0 }}>
-                            <div style={{ fontSize:13, fontWeight:stage.state==='current'?700:500, color:stage.state==='planned'?'var(--text-tertiary)':'var(--text-primary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{stage.name}</div>
-                            <ProgressBar pct={stage.progressPct} color={stage.state==='completed'?'var(--success)':'var(--accent)'} height={4}/>
-                          </div>
-                          <div style={{ fontSize:12, color:'var(--text-tertiary)', textAlign:'right' }}>{fmtHours(stage.estimateHours)}</div>
-                          <div style={{ fontSize:12, fontWeight:700, color:stage.state==='current'?'var(--accent)':'var(--text-tertiary)', textAlign:'right' }}>{stage.progressPct}%</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
                   {/* Фазы (только если оценка из калькулятора) */}
                   {phaseInfo && (() => {
                     const curIdx = phaseInfo.phases.findIndex(ph => ph.id === phaseInfo.phase);
@@ -642,7 +532,7 @@ export default function TaskCard({ data, updateData, navigate, taskId, onBack }:
                     );
                   })()}
 
-                  <div style={{ marginTop: phaseInfo || stageInfo.length > 0 ? 0 : 12, background:'var(--bg-secondary)', borderRadius:8, padding:'12px 14px' }}>
+                  <div style={{ marginTop: phaseInfo ? 0 : 12, background:'var(--bg-secondary)', borderRadius:8, padding:'12px 14px' }}>
                     {([
                       ['Осталось работы', fmtHours(fc?.hoursLeft), false],
                       ['Рабочих дней до конца', fc?.daysLeft??'—', false],

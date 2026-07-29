@@ -5,7 +5,6 @@ import { REGULAR_TASKS } from '../domain/tasks';
 import { genId } from '../utils/ids';
 import { formatDateShort, todayStr } from '../utils/dates';
 import { restoreFromArchive } from '../domain/task';
-import { currentTaskStage, taskEstimateHours } from '../domain/stages';
 import { Avatar, Card, PageTopbar, BtnPrimary, BtnSecondary, Modal, FormRow, Input, Select, ModalFooter, ProgressBar, DatePicker, useTooltip, useResizableColumns, ResizeHandle, useConfirm } from '../components/UI';
 import type { Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
@@ -26,7 +25,7 @@ interface NewTaskForm {
 }
 
 const emptyForm = (): NewTaskForm => ({ name:'', direction:'', startDate: todayStr(), deadline:'', dependsOn:null, hoursAnalysis:'', hoursActualize:'', hoursDevelopment:'', hoursTesting:'', link:'', testOpsUrl:'', workDocUrl:'' });
-const hasEstimate = (task: Task) => taskEstimateHours(task) > 0;
+const hasEstimate = (task: Task) => (task.estimateHours || 0) > 0;
 
 type StatusFilter = 'all' | 'active' | 'done';
 const NO_DIRECTION_FILTER = '__no_direction__';
@@ -264,11 +263,9 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
             <tbody>
               {filtered.map(task => {
                 const fc = forecasts[task.id];
-                const taskHours = taskEstimateHours(task);
                 const estimated = hasEstimate(task);
                 const isQueued = !!(task.dependsOn && tasks.find(t => t.id === task.dependsOn)?.status === 'active')
                   || !!(task.startDate && task.startDate > todayStr());
-                const currentStage = isQueued ? null : currentTaskStage(task, taskHours * ((fc?.progressPct || 0) / 100));
                 const barColor = isQueued ? 'var(--text-tertiary)' : statusColor(fc?.deadlineStatus);
                 const bs = isQueued
                   ? { bg: 'var(--bg-secondary)', color: 'var(--text-secondary)' }
@@ -288,11 +285,7 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
                         <div style={{ width:8, height:8, borderRadius:'50%', background:barColor, flexShrink:0 }}/>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:14, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{task.name}</div>
-                          <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>
-                            старт {formatDateShort(task.startDate)}{taskHours ? ` · ${taskHours} чч` : ''}{task.direction ? ` · ${task.direction}` : ''}
-                            {task.stages?.length ? ` · ${task.stages.length} этапа` : ''}
-                          </div>
-                          {currentStage && <div style={{ fontSize:11, color:'var(--accent)', marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>▶ {currentStage.name}</div>}
+                          <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>старт {formatDateShort(task.startDate)}{task.estimateHours ? ` · ${task.estimateHours} чч` : ''}{task.direction ? ` · ${task.direction}` : ''}</div>
                         </div>
                         <DoneIcon task={task}/>
                       </div>
@@ -408,7 +401,7 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
                     <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:3, display:'flex', gap:8 }}>
                       {task.direction && <span>{task.direction}</span>}
                       {task.archivedDate && <span>удалена {formatDateShort(task.archivedDate)}</span>}
-                      {taskEstimateHours(task) > 0 && <span>{taskEstimateHours(task)} чч</span>}
+                      {task.estimateHours && <span>{task.estimateHours} чч</span>}
                     </div>
                   </div>
                   <BtnSecondary onClick={() => restoreTask(task.id)} style={{ fontSize:12, padding:'5px 12px', whiteSpace:'nowrap' }}>

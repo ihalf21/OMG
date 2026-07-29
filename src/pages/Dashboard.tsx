@@ -3,7 +3,6 @@ import { calcForecast, statusColor, statusLabel, statusBadgeStyle, engineersNeed
 import { computeInheritedTeam, computeDynamicStarts } from '../domain/gantt';
 import { isAvailableToday, isWorkingRole, leaveTypeToday } from '../domain/availability';
 import { formatDateShort, todayStr } from '../utils/dates';
-import { taskEstimateHours } from '../domain/stages';
 import { Avatar, Card, SectionTitle, PageTopbar, Modal } from '../components/UI';
 import type { Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
@@ -19,7 +18,7 @@ function byDeadline(
   return 0;
 }
 
-const hasEstimate = (task: Task) => taskEstimateHours(task) > 0;
+const hasEstimate = (task: Task) => (task.estimateHours || 0) > 0;
 
 export default function Dashboard({ data, navigate }: PageProps) {
   const { engineers, tasks, history } = data;

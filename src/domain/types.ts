@@ -35,13 +35,6 @@ export interface User {
   active: boolean;
 }
 
-export interface TaskStage {
-  id: string;
-  name: string;
-  estimateHours: number;
-  sortOrder: number;
-}
-
 export interface Task {
   id: string;
   name: string;
@@ -67,8 +60,6 @@ export interface Task {
   testOpsUrl?: string;
   workDocUrl?: string;
   extraWork?: ExtraWorkEntry[];
-  // Последовательные этапы внутри одной задачи. Команда, сроки и история остаются общими.
-  stages?: TaskStage[];
 }
 
 export interface ExtraWorkEntry {
