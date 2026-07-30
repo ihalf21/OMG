@@ -57,6 +57,7 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
   const [directionFilter, setDirectionFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<NewTaskForm>(emptyForm);
+  const [createAttempted, setCreateAttempted] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const { move, TooltipEl } = useTooltip();
   const { confirm, ConfirmEl } = useConfirm();
@@ -127,6 +128,16 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
     updateData(prev => restoreFromArchive(prev, taskId));
   }
 
+  function openCreateModal() {
+    setCreateAttempted(false);
+    setShowModal(true);
+  }
+
+  function closeCreateModal() {
+    setCreateAttempted(false);
+    setShowModal(false);
+  }
+
   async function deleteForever(taskId: string) {
     const ok = await confirm(
       'Удалить навсегда?',
@@ -141,7 +152,11 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
   }
 
   function createTask(skipHours = false) {
-    if (!form.name.trim()) return;
+    const taskName = form.name.trim();
+    if (!taskName) {
+      setCreateAttempted(true);
+      return;
+    }
     const hoursBreakdown = skipHours ? {} : {
       hoursAnalysis:    Math.max(0, parseInt(form.hoursAnalysis)    || 0),
       hoursActualize:   Math.max(0, parseInt(form.hoursActualize)   || 0),
@@ -160,7 +175,7 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
     const id = genId('t');
     const newTask: Task = {
       id,
-      name:        form.name,
+      name:        taskName,
       direction:   form.direction || null,
       status:      'active',
       startDate,
@@ -211,6 +226,7 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
         tasks: [...updatedTasks, { ...newTask, sortOrder: parentSortOrder + 1 }],
       };
     });
+    setCreateAttempted(false);
     setShowModal(false);
     setForm(emptyForm());
   }
@@ -228,7 +244,7 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
             </span>
           )}
         </BtnSecondary>
-        <BtnPrimary onClick={() => setShowModal(true)}>+ Новая задача</BtnPrimary>
+        <BtnPrimary onClick={openCreateModal}>+ Новая задача</BtnPrimary>
       </PageTopbar>
 
       <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
@@ -351,8 +367,15 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
       </div>
 
       {showModal && (
-        <Modal title="Новая задача" onClose={() => setShowModal(false)}>
-          <FormRow label="Название"><Input value={form.name} onChange={e=>setForm(f=>({...f, name:e.target.value}))} placeholder="Введите название задачи"/></FormRow>
+        <Modal title="Новая задача" onClose={closeCreateModal}>
+          <FormRow label="Название" required error={createAttempted && !form.name.trim() ? 'Поле является обязательным' : null}>
+            <Input
+              value={form.name}
+              onChange={e=>setForm(f=>({...f, name:e.target.value}))}
+              placeholder="Введите название задачи"
+              invalid={createAttempted && !form.name.trim()}
+            />
+          </FormRow>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
             <FormRow label="Направление">
               <Select value={form.direction} onChange={e=>setForm(f=>({...f, direction:e.target.value}))}>
@@ -389,7 +412,7 @@ export default function Tasks({ data, updateData, navigate }: PageProps) {
           <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:4, padding:'8px 12px', background:'var(--bg-secondary)', borderRadius:6 }}>
             💡 Оценку трудозатрат можно добавить в разделе <strong>Оценка</strong> после создания задачи
           </div>
-          <ModalFooter onCancel={()=>setShowModal(false)} onSave={()=>createTask(true)} saveLabel="Создать задачу"/>
+          <ModalFooter onCancel={closeCreateModal} onSave={()=>createTask(true)} saveLabel="Создать задачу"/>
         </Modal>
       )}
 

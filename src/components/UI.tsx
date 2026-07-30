@@ -248,11 +248,15 @@ export function Modal({ title, onClose, children, width = 480 }: ModalProps) {
   );
 }
 
-export function FormRow({ label, children, hint }: { label: React.ReactNode; children: React.ReactNode; hint?: React.ReactNode }) {
+export function FormRow({ label, children, hint, required = false, error }: { label: React.ReactNode; children: React.ReactNode; hint?: React.ReactNode; required?: boolean; error?: React.ReactNode }) {
   return (
     <div style={{ marginBottom:14 }}>
-      <div style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:5, fontWeight:500 }}>{label}</div>
+      <div style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:5, fontWeight:500 }}>
+        {label}
+        {required && <span style={{ color:'var(--red)', marginLeft:3 }}>*</span>}
+      </div>
       {children}
+      {error && <div style={{ fontSize:12, color:'var(--red)', marginTop:4 }}>{error}</div>}
       {hint && <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:4 }}>{hint}</div>}
     </div>
   );
@@ -264,18 +268,19 @@ interface InputProps {
   placeholder?: string;
   type?: string;
   style?: StyleProp;
+  invalid?: boolean;
 }
 
-export function Input({ value, onChange, placeholder, type = 'text', style = {} }: InputProps) {
+export function Input({ value, onChange, placeholder, type = 'text', style = {}, invalid = false }: InputProps) {
   return (
     <input value={value} onChange={onChange} placeholder={placeholder} type={type} style={{
       width:'100%', padding:'9px 11px',
-      border:'1.5px solid var(--border-mid)', borderRadius:6,
+      border:`1.5px solid ${invalid ? 'var(--red)' : 'var(--border-mid)'}`, borderRadius:6,
       fontSize:14, background:'var(--bg-secondary)', color:'var(--text-primary)',
       outline:'none', transition:'border-color 0.15s', ...style,
     }}
-    onFocus={e=>(e.target.style.borderColor='var(--accent)')}
-    onBlur={e=>(e.target.style.borderColor='var(--border-mid)')}
+    onFocus={e=>(e.target.style.borderColor=invalid ? 'var(--red)' : 'var(--accent)')}
+    onBlur={e=>(e.target.style.borderColor=invalid ? 'var(--red)' : 'var(--border-mid)')}
     />
   );
 }
