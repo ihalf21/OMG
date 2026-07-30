@@ -3,6 +3,7 @@ import {
   toDateStr, todayStr, isWorkday, isHoliday, isWeekend, isOff,
   addWorkdays, addCalendarDay, subtractWorkdays, workdaysBetween, workdaysElapsed,
   nextWorkday, formatDate, formatDateShort, getMonthDays,
+  isProductionCalendarSupported, isProductionCalendarDraft, productionCalendarNotice, SUPPORTED_CALENDAR_YEARS,
 } from './dates';
 
 describe('toDateStr', () => {
@@ -32,9 +33,26 @@ describe('isWorkday', () => {
   });
   test('праздники РФ — не рабочие', () => {
     expect(isWorkday('2026-01-01')).toBe(false); // Новый год
+    expect(isWorkday('2026-01-05')).toBe(false); // Новогодние каникулы
+    expect(isWorkday('2026-01-06')).toBe(false); // Новогодние каникулы
     expect(isWorkday('2026-05-01')).toBe(false); // Праздник весны
     expect(isWorkday('2026-05-11')).toBe(false); // Перенос с 9 мая
     expect(isWorkday('2026-06-12')).toBe(false); // День России
+    expect(isWorkday('2026-12-31')).toBe(false); // Перенос на конец года
+  });
+  test('переносы 2025 учитывают рабочие субботы и нерабочие будни', () => {
+    expect(isWorkday('2025-02-24')).toBe(true);
+    expect(isWorkday('2025-03-10')).toBe(true);
+    expect(isWorkday('2025-06-13')).toBe(false);
+    expect(isWorkday('2025-11-01')).toBe(true);
+    expect(isWorkday('2025-11-03')).toBe(false);
+  });
+  test('проект календаря 2027 учитывает переносы и рабочую субботу', () => {
+    expect(isWorkday('2027-01-04')).toBe(false);
+    expect(isWorkday('2027-02-20')).toBe(true);
+    expect(isWorkday('2027-02-22')).toBe(false);
+    expect(isWorkday('2027-11-05')).toBe(false);
+    expect(isWorkday('2027-12-31')).toBe(false);
   });
 });
 
@@ -46,6 +64,7 @@ describe('isHoliday', () => {
   test('обычные дни — false', () => {
     expect(isHoliday('2026-05-25')).toBe(false); // Пн без праздника
     expect(isHoliday('2026-05-23')).toBe(false); // Сб — выходной, но не праздник
+    expect(isHoliday('2027-02-20')).toBe(false); // Рабочая суббота
   });
 });
 
@@ -151,6 +170,30 @@ describe('nextWorkday', () => {
   test('перед длинными выходными — после', () => {
     // 30 апр (Чт) перед майскими: 1 мая (Пт) праздник, 2-3 (Сб-Вс), 4 мая (Пн) перенос → 5 мая (Вт)
     expect(nextWorkday('2026-04-30')).toBe('2026-05-05');
+  });
+  test('переход 2026 → 2027 пропускает новогодние каникулы', () => {
+    expect(nextWorkday('2026-12-30')).toBe('2027-01-11');
+  });
+  test('рабочая суббота 2027 участвует в прибавлении рабочих дней', () => {
+    expect(addWorkdays('2027-02-19', 1)).toBe('2027-02-20');
+  });
+});
+
+describe('production calendar support', () => {
+  test('поддерживаемые годы объявлены явно', () => {
+    expect(SUPPORTED_CALENDAR_YEARS).toEqual([2025, 2026, 2027]);
+    expect(isProductionCalendarSupported(2025)).toBe(true);
+    expect(isProductionCalendarSupported('2027-12-31')).toBe(true);
+    expect(isProductionCalendarSupported(2028)).toBe(false);
+  });
+  test('2027 помечен как проектный календарь', () => {
+    expect(isProductionCalendarDraft(2026)).toBe(false);
+    expect(isProductionCalendarDraft(2027)).toBe(true);
+  });
+  test('неподдержанный год виден через предупреждение', () => {
+    expect(productionCalendarNotice(2026)).toBe(null);
+    expect(productionCalendarNotice(2027)).toContain('проекту Минтруда');
+    expect(productionCalendarNotice(2028)).toContain('не задан');
   });
 });
 

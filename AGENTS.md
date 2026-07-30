@@ -81,4 +81,4 @@ Two independent Node.js processes:
 ## Workflow
 
 - **Language** — always respond in Russian. Code identifiers, comments in new code, and technical terms stay in English.
-- **Git push** — after every `git commit`, immediately run `git push` without asking for confirmation.
+- **Git push** — do not push automatically after commits. Keep development local by default; run `git push` only when the user explicitly asks to push changes.

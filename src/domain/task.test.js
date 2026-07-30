@@ -1,6 +1,7 @@
 // Тесты на domain/task.js — переходы состояния задачи.
 import {
   getEffectiveTeam,
+  getAvailableTeamMembers,
   addEngineerToTask, removeEngineerFromTask,
   getEngineerCurrentTask, getEngineerActiveTasks,
   unlinkParent, unlinkChild,
@@ -47,6 +48,18 @@ describe('getEffectiveTeam', () => {
     ];
     const result = getEffectiveTeam(cyclic[0], cyclic);
     expect(Array.isArray(result)).toBe(true);
+  });
+});
+
+describe('getAvailableTeamMembers', () => {
+  test('исключает назначенного инженера, если он в отпуске на дату задачи', () => {
+    const engineers = [
+      { id: 'e1', name: 'Анна', role: 'engineer', status: 'vacation', vacationFrom: '2026-07-20', vacationTo: '2026-08-02' },
+      { id: 'e2', name: 'Артем', role: 'engineer', status: 'active' },
+    ];
+
+    expect(getAvailableTeamMembers(['e1', 'e2'], engineers, '2026-07-29').map(e => e.id)).toEqual(['e2']);
+    expect(getAvailableTeamMembers(['e1', 'e2'], engineers, '2026-08-03').map(e => e.id)).toEqual(['e1', 'e2']);
   });
 });
 
@@ -332,4 +345,3 @@ describe('restoreFromArchive', () => {
     expect(s.tasks.find(t => t.id === 't1').archivedDate).toBe(null);
   });
 });
-

@@ -4,7 +4,7 @@ import {
   currentCapacity, nominalCapacity,
   calcForecast, statusColor, statusLabel,
   fmtHours, engineersNeeded, getDerivedDeadline,
-  projectFinish, computeUsedHours,
+  projectFinish, computeUsedHours, buildTaskWorkSchedule,
 } from './forecast';
 import { todayStr, addWorkdays, subtractWorkdays, addCalendarDay, workdaysBetween } from './dates';
 import { setVacation } from '../domain/engineer';
@@ -144,6 +144,22 @@ describe('calcForecast', () => {
     const t = task({ estimateHours: 80, assignedEngineers: ['e1', 'e2'] });
     const fc = calcForecast(t, engs);
     expect(fc.daysLeft).toBe(5);
+  });
+
+  test('задача с этапами прогнозируется по сумме этапов, а не по старому estimateHours', () => {
+    const e = eng({ id: 'e1' });
+    const t = task({
+      estimateHours: 8,
+      assignedEngineers: ['e1'],
+      stages: [
+        { id: 's1', name: 'Анализ', estimateHours: 8, sortOrder: 0 },
+        { id: 's2', name: 'Актуализация', estimateHours: 16, sortOrder: 1 },
+      ],
+    });
+    const fc = calcForecast(t, [e]);
+
+    expect(fc.hoursLeft).toBe(24);
+    expect(fc.daysLeft).toBe(3);
   });
 
   test('history-aware: усиление НЕ пересчитывает прошлый прогресс задним числом', () => {
@@ -355,6 +371,24 @@ describe('getDerivedDeadline', () => {
     expect(result < '2026-06-15').toBe(true);
   });
 
+  test('дедлайн родителя рассчитывается по сумме этапов дочерней задачи', () => {
+    const e = eng({ id: 'e1' });
+    const child = task({
+      id: 't2',
+      dependsOn: 't1',
+      estimateHours: 8,
+      deadline: '2026-06-10',
+      assignedEngineers: ['e1'],
+      stages: [
+        { id: 's1', name: 'Анализ', estimateHours: 8, sortOrder: 0 },
+        { id: 's2', name: 'Прогон', estimateHours: 16, sortOrder: 1 },
+      ],
+    });
+    const parent = task({ id: 't1', assignedEngineers: ['e1'] });
+
+    expect(getDerivedDeadline(parent, [parent, child], [e])).toBe('2026-06-05');
+  });
+
   test('защита от бесконечной рекурсии', () => {
     // Циклическая зависимость — depth limit должен остановить
     const t1 = task({ id: 't1', dependsOn: 't2' });
@@ -483,6 +517,46 @@ describe('projectFinish', () => {
     const t = task({ assignedEngineers: ['e1'] });
     const sim = projectFinish(t, [e], '2026-05-25', 8);
     expect(sim.forecastDate).toBe('2026-05-27');
+  });
+});
+
+describe('buildTaskWorkSchedule', () => {
+  test('строит дневной журнал с реальными часами и нулём на дейофе', () => {
+    const e = eng({ id: 'e1', dayoffDate: '2026-05-26' });
+    const t = task({ assignedEngineers: ['e1'] });
+
+    const schedule = buildTaskWorkSchedule(t, [e], '2026-05-25', 16);
+
+    expect(schedule.map(day => [day.date, day.capacity, day.hours, day.cumulativeHours])).toEqual([
+      ['2026-05-25', 1, 8, 8],
+      ['2026-05-26', 0, 0, 8],
+      ['2026-05-27', 1, 8, 16],
+    ]);
+  });
+
+  test('срезает последний день по оставшимся часам при высокой мощности команды', () => {
+    const e1 = eng({ id: 'e1' });
+    const e2 = eng({ id: 'e2' });
+    const e3 = eng({ id: 'e3' });
+    const t = task({ assignedEngineers: ['e1', 'e2', 'e3'] });
+
+    const schedule = buildTaskWorkSchedule(t, [e1, e2, e3], '2026-05-25', 32);
+
+    expect(schedule.map(day => [day.date, day.capacity, day.hours, day.cumulativeHours])).toEqual([
+      ['2026-05-25', 3, 24, 24],
+      ['2026-05-26', 3, 8, 32],
+    ]);
+  });
+
+  test('возвращает незавершённый журнал при нулевой мощности, а forecast остаётся null', () => {
+    const e = eng({ id: 'e1', role: 'lead' });
+    const t = task({ assignedEngineers: ['e1'] });
+
+    const schedule = buildTaskWorkSchedule(t, [e], '2026-05-25', 8);
+
+    expect(schedule.length).toBeGreaterThan(0);
+    expect(schedule.every(day => day.hours === 0)).toBe(true);
+    expect(projectFinish(t, [e], '2026-05-25', 8)).toEqual({ forecastDate: null, daysLeft: null });
   });
 });
 

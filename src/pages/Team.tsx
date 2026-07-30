@@ -51,7 +51,7 @@ export default function Team({ data, updateData, navigate }: PageProps) {
     return <span style={{ marginLeft:4, color:'var(--accent)' }}>{sortDir==='asc'?'↑':'↓'}</span>;
   }
 
-  const ROLE_ORDER: Record<EngineerRole, number> = { lead:0, responsible:1, engineer:2, intern:3 };
+  const ROLE_ORDER: Record<EngineerRole, number> = { lead:0, responsible:1, engineer:2 };
   const STATUS_ORDER: Record<EngineerStatus, number> = { active:0, dayoff:1, sick:2, vacation:3 };
   const TASK_ORDER: Record<string, number> = Object.fromEntries((data.directions ?? []).map((t, i) => [t, i]));
   const directionOptions = React.useMemo(() =>
@@ -190,7 +190,6 @@ export default function Team({ data, updateData, navigate }: PageProps) {
             <FilterBtn<RoleFilter> val="all"         cur={filterRole} set={setFilterRole}>Все роли</FilterBtn>
             <FilterBtn<RoleFilter> val="responsible" cur={filterRole} set={setFilterRole}>Ответственные</FilterBtn>
             <FilterBtn<RoleFilter> val="engineer"    cur={filterRole} set={setFilterRole}>Инженеры</FilterBtn>
-            <FilterBtn<RoleFilter> val="intern"      cur={filterRole} set={setFilterRole}>Стажёры</FilterBtn>
           </div>
         </div>
 
@@ -264,7 +263,6 @@ export default function Team({ data, updateData, navigate }: PageProps) {
                 <option value="lead">Лид</option>
                 <option value="responsible">Ответственный</option>
                 <option value="engineer">Инженер</option>
-                <option value="intern">Стажёр</option>
               </Select>
             </FormRow>
             <FormRow label="Регулярная задача">

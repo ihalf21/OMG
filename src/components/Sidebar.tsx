@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, ModalFooter, BtnSecondary, BtnDanger } from './UI';
 import CHANGELOG from '../changelog.json';
-import type { Project } from '../domain/types';
+import type { Project, ProjectRole } from '../domain/types';
 import type { NavTarget } from '../ui-types';
 
 interface IconProps { active: boolean }
@@ -156,6 +156,7 @@ interface SidebarProps {
   onRestoreProject: (id: string) => void;
   onDeleteProject: (id: string) => void;
   isGlobalAdmin?: boolean;
+  currentProjectRole?: ProjectRole | null;
 }
 
 export default function Sidebar({
@@ -171,6 +172,7 @@ export default function Sidebar({
   onRestoreProject,
   onDeleteProject,
   isGlobalAdmin = false,
+  currentProjectRole = null,
 }: SidebarProps) {
   const [showChangelog, setShowChangelog] = useState(false);
   const [hoveredProject, setHoveredProject] = useState<string | null>(null);
@@ -188,7 +190,8 @@ export default function Sidebar({
 
   const active: NavTarget = activePage === 'task' ? 'tasks' : activePage === 'engineer' ? 'team' : activePage;
   const currentVersion = CHANGELOG[0].version;
-  const navItems = isGlobalAdmin ? [...NAV, ADMIN_NAV] : NAV;
+  const visibleNav = NAV.filter(item => item.id !== 'reports' || isGlobalAdmin || currentProjectRole === 'admin');
+  const navItems = isGlobalAdmin ? [...visibleNav, ADMIN_NAV] : visibleNav;
 
   function openAdd() {
     setProjectName('');
@@ -365,7 +368,7 @@ export default function Sidebar({
         </nav>
 
         {/* Notes (временный раздел) */}
-        <div style={{ borderTop: '0.5px solid var(--border-light)' }}>
+        {isGlobalAdmin && <div style={{ borderTop: '0.5px solid var(--border-light)' }}>
           {(() => {
             const isActive = active === 'notes';
             return (
@@ -386,7 +389,7 @@ export default function Sidebar({
               </div>
             );
           })()}
-        </div>
+        </div>}
 
         {/* Version history */}
         <div style={{ borderTop: '0.5px solid var(--border-light)', padding: '12px 20px' }}>

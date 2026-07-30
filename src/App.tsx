@@ -16,6 +16,7 @@ import Absences from './pages/Absences';
 import Notes from './pages/Notes';
 import Admin from './pages/Admin';
 import { REGULAR_TASKS } from './domain/tasks';
+import { canAccessPage } from './utils/access';
 import type { Engineer, HistoryEntry, Project, ProjectState, Task, User, Workspace } from './domain/types';
 import type { NavTarget } from './ui-types';
 
@@ -88,10 +89,9 @@ function isAppRouteState(state: unknown): state is AppRouteState {
 }
 
 // Исправляет статусы инженеров на основе дат отпуска/дейофа (работает на одном проекте)
-function normalizeStatuses(d: ProjectState): ProjectState {
+export function normalizeStatuses(d: ProjectState): ProjectState {
   const today = todayStr();
   const extraHistory: HistoryEntry[] = [];
-  const removeFromTasks = new Set<string>();
 
   const engineers: Engineer[] = (d.engineers || []).map(eng => {
     // ── Дейоф ────────────────────────────────────────────────────────────────
@@ -105,7 +105,6 @@ function normalizeStatuses(d: ProjectState): ProjectState {
         return { ...eng, dayoffDate: null };
       }
       if (eng.dayoffDate === today && eng.status === 'active') {
-        removeFromTasks.add(eng.id);
         return { ...eng, status: 'dayoff' };
       }
     }
@@ -119,25 +118,16 @@ function normalizeStatuses(d: ProjectState): ProjectState {
       return { ...eng, status: 'active' };
     }
     if (eng.status === 'active' && eng.vacationFrom && eng.vacationFrom <= today) {
-      removeFromTasks.add(eng.id);
       return { ...eng, status: 'vacation' };
     }
     if (eng.status === 'sick' && eng.vacationFrom && eng.vacationFrom <= today) {
       extraHistory.push({ id: genId('h'), date: today, engineerId: eng.id, type: 'return', fromTask: null, toTask: null, note: 'Больничный закрыт: начался отпуск' });
-      removeFromTasks.add(eng.id);
       return { ...eng, status: 'vacation' };
     }
     return eng;
   });
 
-  const tasks: Task[] = removeFromTasks.size > 0
-    ? (d.tasks || []).map(t => ({
-        ...t,
-        assignedEngineers: (t.assignedEngineers || []).filter(id => !removeFromTasks.has(id)),
-      }))
-    : (d.tasks || []);
-
-  return { ...d, engineers, tasks, history: [...(d.history || []), ...extraHistory] };
+  return { ...d, engineers, tasks: d.tasks || [], history: [...(d.history || []), ...extraHistory] };
 }
 
 // Старый flat-формат (на случай если сервер вернёт legacy данные)
@@ -191,6 +181,12 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('omg_theme') as Theme) || 'light');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const routeIndex = useRef(0);
+  const accessProjectId = data?.projects.find(p => p.id === data.currentProjectId && !p.archived)?.id
+    ?? data?.projects.find(p => !p.archived)?.id
+    ?? data?.projects[0]?.id;
+  const accessProjectRole = data?.projectMembers?.find(member =>
+    member.userId === currentUser?.id && member.projectId === accessProjectId
+  )?.role ?? null;
 
   function applyRoute(route: AppRoute) {
     setPage(route.page);
@@ -282,10 +278,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!loading && page === 'admin' && currentUser?.globalRole !== 'admin') {
+    if (!loading && !canAccessPage(page, currentUser?.globalRole, accessProjectRole)) {
       commitRoute(routeFromTarget('dashboard'), true);
     }
-  }, [loading, page, currentUser]);
+  }, [loading, page, currentUser, accessProjectRole]);
 
   // Автосохранение — debounce 800ms
   useEffect(() => {
@@ -335,7 +331,7 @@ export default function App() {
   }
 
   function navigate(target: NavTarget, id?: string) {
-    if (target === 'admin' && currentUser?.globalRole !== 'admin') {
+    if (!canAccessPage(target, currentUser?.globalRole, accessProjectRole)) {
       commitRoute(routeFromTarget('dashboard'), true);
       return;
     }
@@ -447,10 +443,9 @@ export default function App() {
   if (!data) return null;
   const isGlobalAdmin = currentUser?.globalRole === 'admin';
 
-  const currentProject = data.projects.find(p => p.id === data.currentProjectId && !p.archived)
-    ?? data.projects.find(p => !p.archived)
-    ?? data.projects[0];
+  const currentProject = data.projects.find(p => p.id === accessProjectId);
   if (!currentProject) return null;
+  const canViewReports = canAccessPage('reports', currentUser?.globalRole, accessProjectRole);
 
   const ctx = { data: currentProject, updateData: updateProjectData, navigate };
 
@@ -469,6 +464,7 @@ export default function App() {
         onRestoreProject={restoreProject}
         onDeleteProject={deleteProject}
         isGlobalAdmin={isGlobalAdmin}
+        currentProjectRole={accessProjectRole}
       />
       <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         <Topbar theme={theme} onToggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')}/>
@@ -493,9 +489,9 @@ export default function App() {
         {page==='engineer'  && <EngineerCard {...ctx} engineerId={selectedEngineerId!} onBack={()=>goBack(routeFromTarget('team'))}/>}
         {page==='gantt'     && <Gantt     {...ctx}/>}
         {page==='estimate'  && <Estimate  {...ctx} initialTaskId={selectedEstimateTaskId || undefined}/>}
-        {page==='reports'   && <Reports   {...ctx}/>}
+        {page==='reports'   && canViewReports && <Reports {...ctx}/>}
         {page==='admin'     && isGlobalAdmin && <Admin projects={data.projects} currentUser={currentUser!}/>}
-        {page==='notes'     && <Notes/>}
+        {page==='notes'     && isGlobalAdmin && <Notes/>}
         </div>
         </div>
       </div>

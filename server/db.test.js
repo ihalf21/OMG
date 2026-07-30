@@ -71,6 +71,25 @@ test('imports JSON workspace into SQLite and normalizes security metadata', () =
   }
 });
 
+test('normalizes unsupported engineer roles to engineer', () => {
+  const tempDir = tempWorkspace();
+  const legacyProject = project('p1', 'Legacy roles');
+  legacyProject.engineers = [
+    { id: 'e1', name: 'Legacy', role: 'unsupported-role', status: 'active', regularTask: null },
+  ];
+  const db = loadDb(tempDir, {
+    currentProjectId: 'p1',
+    projects: [legacyProject],
+  });
+
+  try {
+    const data = db.getAllData();
+    assert.equal(data.projects[0].engineers[0].role, 'engineer');
+  } finally {
+    cleanupDb(db, tempDir);
+  }
+});
+
 test('filters visible workspace for regular project member', () => {
   const tempDir = tempWorkspace();
   const db = loadDb(tempDir, {
@@ -92,7 +111,9 @@ test('filters visible workspace for regular project member', () => {
     assert.equal(workspace.projects[0].id, 'p2');
     assert.equal(workspace.currentProjectId, 'p2');
     assert.equal(workspace.users, undefined);
-    assert.equal(workspace.projectMembers, undefined);
+    assert.deepEqual(workspace.projectMembers, [
+      { projectId: 'p2', userId: 'u-lead', role: 'lead' },
+    ]);
   } finally {
     cleanupDb(db, tempDir);
   }

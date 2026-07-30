@@ -22,10 +22,9 @@ describe('isWorkingRole', () => {
   test('лид — не работает в задачах', () => {
     expect(isWorkingRole(eng({ role: 'lead' }))).toBe(false);
   });
-  test('engineer, responsible, intern — работают', () => {
+  test('engineer и responsible работают', () => {
     expect(isWorkingRole(eng({ role: 'engineer' }))).toBe(true);
     expect(isWorkingRole(eng({ role: 'responsible' }))).toBe(true);
-    expect(isWorkingRole(eng({ role: 'intern' }))).toBe(true);
   });
 });
 
@@ -33,10 +32,9 @@ describe('roleCoeff', () => {
   test('лид — 0', () => {
     expect(roleCoeff('lead')).toBe(0);
   });
-  test('остальные — 1', () => {
+  test('инженеры и ответственные — 1', () => {
     expect(roleCoeff('engineer')).toBe(1);
     expect(roleCoeff('responsible')).toBe(1);
-    expect(roleCoeff('intern')).toBe(1);
   });
 });
 

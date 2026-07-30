@@ -1,13 +1,15 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PageProps } from '../ui-types';
 import type { Engineer, HistoryEntry, ISODate, Task } from '../domain/types';
-import { calcForecast, fmtHours, statusColor } from '../utils/forecast';
-import { getMonthDays, todayStr } from '../utils/dates';
+import { buildTaskWorkSchedule, calcForecast, fmtHours, statusColor } from '../utils/forecast';
+import { getMonthDays, productionCalendarNotice, todayStr } from '../utils/dates';
 import { isAvailableOn, isWorkingRole } from '../domain/availability';
 import {
   computeInheritedTeam, computeDynamicStarts, segmentByWeek, arrowAnchorOffset, sortTasksByChain,
 } from '../domain/gantt';
+import { getAvailableTeamMembers } from '../domain/task';
 import { PageTopbar, BtnPrimary } from '../components/UI';
+import { buildTaskStageTimeline, taskEstimateHours } from '../domain/stages';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const LABEL_W = 200;
@@ -27,7 +29,7 @@ type ReportBlockId = typeof REPORT_BLOCKS[number]['id'];
 const DEFAULT_REPORT_BLOCK_IDS = REPORT_BLOCKS.map(block => block.id);
 
 const ROLE_LABEL: Record<string, string> = {
-  lead: 'Лид', responsible: 'Ответственный', engineer: 'Инженер', intern: 'Стажёр',
+  lead: 'Лид', responsible: 'Ответственный', engineer: 'Инженер',
 };
 
 const ENG_STATUS_LABEL: Record<string, string> = {
@@ -180,7 +182,7 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
     return allActiveTasks.filter(t => {
       const effStart = dynamicStarts[t.id] || todayStr();
       if (effStart > me) return false;
-      const fc = forecasts[t.id]; const noEst = !(t.estimateHours||0);
+      const fc = forecasts[t.id]; const noEst = taskEstimateHours(t) <= 0;
       const endDate = fc?.forecastDate || t.deadline || (noEst ? noEstFallbackEnd : me);
       return endDate >= ms;
     });
@@ -243,7 +245,7 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
     const avail = nonLeadEngs.filter(e => isAvailableOn(e, day.str));
     const ids = new Set<string>();
     activeTasks.forEach(task => {
-      const fc = forecasts[task.id]; const noEst = !(task.estimateHours||0);
+      const fc = forecasts[task.id]; const noEst = taskEstimateHours(task) <= 0;
       const effStart = task.dependsOn?(dynamicStarts[task.id]??null):(task.startDate??todayStr());
       if (!effStart||effStart>day.str) return;
       const endDate = fc?.forecastDate||task.deadline||(noEst?noEstFallbackEnd:null);
@@ -293,10 +295,13 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
 
       {activeTasks.map(task => {
         const fc           = forecasts[task.id];
-        const assignedEngs = (inheritedEngIds[task.id]||task.assignedEngineers||[]).map(id=>engineers.find(e=>e.id===id)).filter((e): e is Engineer=>!!e);
-        const hasEngineers = assignedEngs.length>0, hasEstimate=(task.estimateHours||0)>0;
+        const teamIds      = inheritedEngIds[task.id]||task.assignedEngineers||[];
         const isWaiting    = !!task.dependsOn&&allActiveTasks.some(t=>t.id===task.dependsOn);
         const effectSt     = effectiveStart(task);
+        const availabilityDate = effectSt > todayStr() ? effectSt : todayStr();
+        const assignedEngs = getAvailableTeamMembers(teamIds, engineers, availabilityDate);
+        const taskHours = taskEstimateHours(task);
+        const hasEngineers = assignedEngs.length>0, hasEstimate=taskHours>0;
         const isNotStartedYet = !isWaiting && effectSt > todayStr();
         let barBg: string;
         if (isWaiting) barBg='repeating-linear-gradient(45deg,#A8A6A0,#A8A6A0 4px,#C8C7C3 4px,#C8C7C3 8px)';
@@ -310,6 +315,15 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
         if (!hasEstimate) { const ne=task.deadline||noEstFallbackEnd; barEnd=ne>noEstFallbackEnd?DAYS:(dateToIdx(ne,'prev')!==null?Math.min(DAYS,dateToIdx(ne,'prev')!+1):DAYS); }
         else barEnd=rawFcIdx!==null?Math.min(DAYS,rawFcIdx+1):fcBeyond?DAYS:dlCapIdx!==null?Math.min(DAYS,dlCapIdx+1):barStart+2;
         const colSpan=barEnd-barStart;
+        const stageTimeline = task.stages?.length && !isWaiting && hasEstimate && colSpan > 0
+          ? buildTaskStageTimeline(
+            task,
+            taskHours * ((fc?.progressPct || 0) / 100),
+            buildTaskWorkSchedule({ ...task, assignedEngineers: teamIds }, engineers, effectSt, taskHours),
+            days.map(day => day.str),
+            null,
+          )
+          : [];
         return (
           <div key={task.id} style={{ display:'flex', alignItems:'center', marginBottom:9 }}>
             <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0, paddingRight:14 }}>
@@ -320,8 +334,30 @@ function ReportGanttView({ tasks, engineers, history, year, month }: ReportGantt
               <BgCols/>
               {barStart<barEnd&&(
                 <div id={`rbar-${task.id}`} style={{ position:'absolute', left:L(barStart), width:W(barStart,barEnd), top:7, height:30, background:barBg, borderRadius:6, display:'flex', alignItems:'center', padding:colSpan<=2?'0 4px':'0 8px', gap:colSpan<=2?3:5, zIndex:3, overflow:'hidden', boxShadow:'0 1px 4px rgba(0,0,0,0.18)', opacity:isWaiting?0.75:1 }}>
-                  <span style={{ fontSize:12, fontWeight:700, color:'#fff', whiteSpace:'nowrap', flexShrink:0 }}>{fc?.progressPct||0}%</span>
-                  {assignedEngs.length>0&&colSpan>1&&<span style={{ fontSize:11, color:'rgba(255,255,255,0.88)', whiteSpace:'nowrap', flexShrink:0 }}>{pluralEng(assignedEngs.length)}</span>}
+                  {stageTimeline.map((stage, index) => {
+                    const from = Math.max(stage.from, barStart);
+                    const to = Math.min(stage.to, barEnd);
+                    if (to <= from) return null;
+                    return (
+                      <div
+                        key={stage.id}
+                        title={`${stage.name}: ${stage.estimateHours} чч · ${stage.progressPct}%`}
+                        style={{
+                          position:'absolute',
+                          left:`${((from - barStart) / colSpan * 100).toFixed(4)}%`,
+                          width:`${((to - from) / colSpan * 100).toFixed(4)}%`,
+                          top:0,
+                          bottom:0,
+                          background:barBg,
+                          opacity:stage.state === 'completed' ? 0.88 : 0.38,
+                          borderRight:index < stageTimeline.length - 1 ? '2px solid #FFFFFF' : 'none',
+                          zIndex:0,
+                        }}
+                      />
+                    );
+                  })}
+                  <span style={{ position:'relative', zIndex:1, fontSize:12, fontWeight:700, color:'#fff', whiteSpace:'nowrap', flexShrink:0 }}>{fc?.progressPct||0}%</span>
+                  {assignedEngs.length>0&&colSpan>1&&<span style={{ position:'relative', zIndex:1, fontSize:11, color:'rgba(255,255,255,0.88)', whiteSpace:'nowrap', flexShrink:0 }}>{pluralEng(assignedEngs.length)}</span>}
                 </div>
               )}
             </div>
@@ -469,6 +505,7 @@ export default function Reports({ data }: PageProps) {
   const monthStart = `${year}-${String(month+1).padStart(2,'0')}-01`;
   const monthEnd   = (() => { const ld=new Date(year,month+1,0).getDate(); return `${year}-${String(month+1).padStart(2,'0')}-${String(ld).padStart(2,'0')}`; })();
   const today_str  = todayStr();
+  const calendarNotice = productionCalendarNotice(year);
 
   // ── Active tasks & forecasts ─────────────────────────────────────────────
   const allActiveTasks = useMemo(() =>
@@ -500,7 +537,7 @@ export default function Reports({ data }: PageProps) {
       const effStart = t.dependsOn ? (dynamicStarts[t.id] ?? todayStr()) : (t.startDate ?? todayStr());
       if (effStart > monthEnd) return false;
       const fc = forecasts[t.id];
-      const noEst = !(t.estimateHours || 0);
+      const noEst = taskEstimateHours(t) <= 0;
       const endDate = fc?.forecastDate || t.deadline || (noEst ? monthEnd : monthEnd);
       return endDate >= monthStart;
     }),
@@ -511,7 +548,7 @@ export default function Reports({ data }: PageProps) {
     let ok=0, risk=0, overdue=0, queued=0, noFc=0, totalEst=0, totalLeft=0;
     activeTasksInMonth.forEach(t => {
       const fc=forecasts[t.id];
-      totalEst  += t.estimateHours||0;
+      totalEst  += taskEstimateHours(t);
       totalLeft += fc?.hoursLeft??0;
       if (!t.startDate||t.startDate>today_str) { queued++; return; }
       switch (fc?.deadlineStatus) {
@@ -552,7 +589,7 @@ export default function Reports({ data }: PageProps) {
       const k=t.direction||'Без направления';
       if (!m.has(k)) m.set(k,{engCnt:0,activeCnt:0,doneCnt:0,totalHrs:0});
       m.get(k)!.activeCnt++;
-      m.get(k)!.totalHrs+=t.estimateHours||0;
+      m.get(k)!.totalHrs+=taskEstimateHours(t);
     });
     doneTasks.forEach(t => {
       const k=t.direction||'Без направления';
@@ -651,6 +688,20 @@ export default function Reports({ data }: PageProps) {
       </PageTopbar>
 
       <div style={{ flex:1, overflow:'auto', padding:'20px 24px' }}>
+        {calendarNotice && (
+          <div style={{
+            marginBottom:16,
+            padding:'10px 12px',
+            border:'1px solid var(--amber)',
+            borderRadius:7,
+            background:'var(--amber-bg)',
+            color:'var(--text-secondary)',
+            fontSize:13,
+            lineHeight:1.4,
+          }}>
+            {calendarNotice}
+          </div>
+        )}
         <div style={{
           display:'flex',
           alignItems:'center',
@@ -881,7 +932,7 @@ export default function Reports({ data }: PageProps) {
                               <td style={{...tdStyle, fontSize:11, color:t.deadline?'var(--text-primary)':'var(--text-tertiary)'}}>{fmtDate(t.deadline)}</td>
                               <td style={{...tdStyle, fontSize:11}}>{fc?.forecastDate ? <span style={{ color:badgeCol }}>{fmtDate(fc.forecastDate)}</span> : <span style={{ color:'var(--text-tertiary)' }}>—</span>}</td>
                               <td style={{...tdStyle, fontSize:11, color:'var(--text-secondary)'}}>{engNames.length>0?engNames.join(', '):'—'}</td>
-                              <td style={{...tdStyle, fontSize:11, color:'var(--text-secondary)'}}>{fmtHours(t.estimateHours)}</td>
+                              <td style={{...tdStyle, fontSize:11, color:'var(--text-secondary)'}}>{fmtHours(taskEstimateHours(t))}</td>
                             </tr>
                           );
                         })}

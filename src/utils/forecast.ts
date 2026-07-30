@@ -3,6 +3,7 @@
 
 import { addWorkdays, addCalendarDay, subtractCalendarDay, isWorkday, subtractWorkdays, workdaysElapsed, todayStr, workdaysBetween } from './dates';
 import { roleCoeff, capacityToday, capacityOn } from '../domain/availability';
+import { taskEstimateHours } from '../domain/stages';
 import { getAbsencePeriods } from './absences';
 import type { Engineer, HistoryEntry, ISODate, Task } from '../domain/types';
 
@@ -34,6 +35,47 @@ export function nominalCapacity(task: Task, engineers: Engineer[]): number {
 // (никто никогда не работает) или неподъёмной задачи.
 const MAX_SIM_DAYS = 730;
 
+export interface DailyWork {
+  date: ISODate;
+  capacity: number;
+  hours: number;
+  cumulativeHours: number;
+}
+
+export function buildTaskWorkSchedule(
+  task: Task,
+  engineers: Engineer[],
+  startDate: ISODate,
+  remainingHours: number,
+): DailyWork[] {
+  if (remainingHours <= 0) return [];
+
+  const assigned = (task.assignedEngineers || [])
+    .map(id => engineers.find(e => e.id === id))
+    .filter((eng): eng is Engineer => !!eng);
+  if (assigned.length === 0) return [];
+
+  const schedule: DailyWork[] = [];
+  let cursor = startDate;
+  let hoursLeft = remainingHours;
+  let cumulativeHours = 0;
+
+  for (let i = 0; i < MAX_SIM_DAYS && hoursLeft > 0; i++) {
+    if (isWorkday(cursor)) {
+      const dailyCapacity = assigned.reduce((sum, eng) => sum + capacityOn(eng, cursor), 0);
+      const availableHours = dailyCapacity * HOURS_PER_DAY;
+      const hours = Math.max(0, Math.min(hoursLeft, availableHours));
+      cumulativeHours += hours;
+      schedule.push({ date: cursor, capacity: dailyCapacity, hours, cumulativeHours });
+      hoursLeft -= hours;
+    }
+    if (hoursLeft <= 0) break;
+    cursor = addCalendarDay(cursor);
+  }
+
+  return schedule;
+}
+
 /**
  * Симулирует выполнение задачи день за днём от startDate.
  * Учитывает запланированные на будущее отпуска и дейофы инженеров —
@@ -50,32 +92,12 @@ export function projectFinish(
 ): { forecastDate: ISODate | null; daysLeft: number | null } {
   if (remainingHours <= 0) return { forecastDate: startDate, daysLeft: 0 };
 
-  const assignedIds = task.assignedEngineers || [];
-  const assigned: Engineer[] = [];
-  for (const id of assignedIds) {
-    const eng = engineers.find(e => e.id === id);
-    if (eng) assigned.push(eng);
-  }
-  if (assigned.length === 0) return { forecastDate: null, daysLeft: null };
-
-  let cursor = startDate;
-  let hoursLeft = remainingHours;
-  let lastWorkday: ISODate | null = null;
-
-  for (let i = 0; i < MAX_SIM_DAYS && hoursLeft > 0; i++) {
-    if (isWorkday(cursor)) {
-      const dailyCap = assigned.reduce((sum, eng) => sum + capacityOn(eng, cursor), 0);
-      if (dailyCap > 0) {
-        hoursLeft -= dailyCap * HOURS_PER_DAY;
-        lastWorkday = cursor;
-      }
-    }
-    if (hoursLeft <= 0) break;
-    cursor = addCalendarDay(cursor);
-  }
-
-  if (!lastWorkday) return { forecastDate: null, daysLeft: null };
-  return { forecastDate: lastWorkday, daysLeft: workdaysBetween(startDate, lastWorkday) };
+  const schedule = buildTaskWorkSchedule(task, engineers, startDate, remainingHours);
+  if (schedule.length === 0) return { forecastDate: null, daysLeft: null };
+  const producedHours = schedule[schedule.length - 1].cumulativeHours;
+  if (producedHours < remainingHours) return { forecastDate: null, daysLeft: null };
+  const forecastDate = schedule[schedule.length - 1].date;
+  return { forecastDate, daysLeft: workdaysBetween(startDate, forecastDate) };
 }
 
 export type DeadlineStatus = 'ok' | 'risk' | 'overdue';
@@ -214,7 +236,7 @@ export function calcForecast(
 ): Forecast {
   const cap = currentCapacity(task, engineers);
   const capFull = nominalCapacity(task, engineers);
-  const totalHours = task.estimateHours || 0;
+  const totalHours = taskEstimateHours(task);
 
   const usedHours = history
     ? computeUsedHours(task, engineers, history)
@@ -353,7 +375,7 @@ export function calcPhaseInfo(task: Task, engineers: Engineer[], history?: Histo
   if (!est) return null;
 
   const { stage1, stage2, stage3, restHours, total, tcTotalCount } = est;
-  const totalHours = task.estimateHours;
+  const totalHours = taskEstimateHours(task);
 
   const phases: PhaseInfo['phases'] = [
     { id: 'analysis',   label: 'Анализ',          widthPct: (stage1               / total) * 100 },
@@ -429,7 +451,7 @@ export function calcDependentStart(parentTask: Task, parentEngineers: Engineer[]
  */
 export function calcScheduledChildStart(parentTask: Task, parentEngineers: Engineer[], parentDynStart: ISODate | null): ISODate | null {
   if (!parentDynStart) return null;
-  const totalHours = parentTask.estimateHours || 0;
+  const totalHours = taskEstimateHours(parentTask);
   if (totalHours <= 0) return parentDynStart;
   const sim = projectFinish(parentTask, parentEngineers, parentDynStart, totalHours);
   if (!sim.forecastDate) return null;
@@ -446,7 +468,7 @@ export function engineersNeeded(task: Task, engineers: Engineer[], deadlineOverr
   const fc = calcForecast(task, engineers, deadlineOverride, null, history);
   if (fc.deadlineStatus !== 'overdue') return 0;
 
-  const totalHours = task.estimateHours || 0;
+  const totalHours = taskEstimateHours(task);
   const today = todayStr();
   if (effectiveDl < today) return null;
 
@@ -492,7 +514,7 @@ export function getDerivedDeadline(task: Task, allTasks: Task[], engineers: Engi
   if (!childDl) return task.deadline || null;
 
   const childCap = currentCapacity(child, engineers);
-  const childTotalHours = child.estimateHours || 0;
+  const childTotalHours = taskEstimateHours(child);
   const childDays = childCap > 0
     ? Math.max(1, Math.ceil(childTotalHours / (childCap * HOURS_PER_DAY)))
     : (() => {

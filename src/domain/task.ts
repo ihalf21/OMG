@@ -3,7 +3,8 @@
 
 import { todayStr } from '../utils/dates';
 import { genId } from '../utils/ids';
-import type { HistoryEntry, ISODate, ProjectState, Task } from './types';
+import { isAvailableOn } from './availability';
+import type { Engineer, HistoryEntry, ISODate, ProjectState, Task } from './types';
 
 function appendHistory(state: ProjectState, entry: Omit<HistoryEntry, 'id'>): HistoryEntry[] {
   return [...state.history, { id: genId('h'), ...entry }];
@@ -22,6 +23,11 @@ export function getEffectiveTeam(task: Task | undefined, allTasks: Task[], depth
   const parentTeam = getEffectiveTeam(parent, allTasks, depth + 1);
   if (own.length === 0) return parentTeam;
   return [...new Set([...parentTeam, ...own])];
+}
+
+export function getAvailableTeamMembers(engineerIds: string[], engineers: Engineer[], date: ISODate): Engineer[] {
+  const idSet = new Set(engineerIds);
+  return engineers.filter(eng => idSet.has(eng.id) && isAvailableOn(eng, date));
 }
 
 // ─── Назначение инженеров ─────────────────────────────────────────────────────
@@ -193,4 +199,3 @@ export function restoreFromArchive(state: ProjectState, taskId: string): Project
     tasks: patchTask(state, taskId, { status: 'active', archivedDate: null }),
   };
 }
-

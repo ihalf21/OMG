@@ -25,7 +25,6 @@ export function RoleBadge({ role }: { role: EngineerRole }) {
     lead:        { bg:'#EEEDFE', color:'#3C3489', label:'Лид' },
     responsible: { bg:'var(--amber-bg)', color:'var(--amber)', label:'Ответственный' },
     engineer:    { bg:'var(--bg-secondary)', color:'var(--text-secondary)', label:'Инженер' },
-    intern:      { bg:'var(--blue-bg)', color:'var(--blue)', label:'Стажёр' },
   };
   const s = map[role] || map.engineer;
   return <Badge bg={s.bg} color={s.color}>{s.label}</Badge>;

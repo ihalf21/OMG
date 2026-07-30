@@ -135,6 +135,27 @@ describe('computeDynamicStarts', () => {
     expect(result.child > '2026-05-01').toBe(true);
   });
 
+  test('зависимая задача стартует после суммы этапов родителя', () => {
+    const engineers = [eng({ id: 'e1' })];
+    const tasks = [
+      task({
+        id: 'parent',
+        startDate: '2026-08-03',
+        estimateHours: 8,
+        assignedEngineers: ['e1'],
+        stages: [
+          { id: 's1', name: 'Анализ', estimateHours: 8, sortOrder: 0 },
+          { id: 's2', name: 'Прогон', estimateHours: 16, sortOrder: 1 },
+        ],
+      }),
+      task({ id: 'child', dependsOn: 'parent', estimateHours: 8 }),
+    ];
+    const inherited = { parent: ['e1'], child: ['e1'] };
+    const result = computeDynamicStarts(tasks, engineers, inherited);
+
+    expect(result.child).toBe('2026-08-06');
+  });
+
   test('зависимая задача без startDate родителя — null', () => {
     const engineers = [eng({ id: 'e1' })];
     const tasks = [

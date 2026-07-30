@@ -2,36 +2,78 @@
 
 import type { ISODate } from '../domain/types';
 
-// Праздники РФ 2025 (YYYY-MM-DD)
-const RU_HOLIDAYS_2025 = new Set<string>([
-  // Январь — Новогодние каникулы + Рождество
-  '2025-01-01','2025-01-02','2025-01-03','2025-01-06','2025-01-07','2025-01-08',
-  // Февраль — День защитника Отечества (24-е, перенос с 23-го вс)
-  '2025-02-24',
-  // Март — Международный женский день (10-е, перенос с 8-го сб)
-  '2025-03-10',
-  // Май — Праздник весны и труда + День Победы
-  '2025-05-01','2025-05-02',
-  '2025-05-08','2025-05-09',
-  // Июнь — День России
-  '2025-06-12','2025-06-13',
-  // Ноябрь — День народного единства
-  '2025-11-04',
-  // Декабрь — перенос
-  '2025-12-31',
-]);
+export const SUPPORTED_CALENDAR_YEARS = [2025, 2026, 2027] as const;
+export type ProductionCalendarStatus = 'official' | 'draft';
 
-// Праздники РФ 2026
-const RU_HOLIDAYS_2026 = new Set<string>([
-  '2026-01-01','2026-01-02','2026-01-07','2026-01-08','2026-01-09',
-  '2026-02-23',
-  '2026-03-09',
-  '2026-05-01','2026-05-04','2026-05-11',
-  '2026-06-12',
-  '2026-11-04',
-]);
+const PRODUCTION_CALENDAR_STATUS_BY_YEAR: Record<number, ProductionCalendarStatus> = {
+  2025: 'official',
+  2026: 'official',
+  // На 29.07.2026 календарь 2027 опубликован как проект Минтруда, не как постановление Правительства РФ.
+  2027: 'draft',
+};
 
-const ALL_HOLIDAYS = new Set<string>([...RU_HOLIDAYS_2025, ...RU_HOLIDAYS_2026]);
+// Нерабочие исключения из обычной пятидневки (YYYY-MM-DD).
+const NON_WORKING_DAYS_BY_YEAR: Record<number, Set<string>> = {
+  2025: new Set([
+    '2025-01-01','2025-01-02','2025-01-03','2025-01-06','2025-01-07','2025-01-08',
+    '2025-05-01','2025-05-02','2025-05-08','2025-05-09',
+    '2025-06-12','2025-06-13',
+    '2025-11-03','2025-11-04',
+    '2025-12-31',
+  ]),
+  2026: new Set([
+    '2026-01-01','2026-01-02','2026-01-05','2026-01-06','2026-01-07','2026-01-08','2026-01-09',
+    '2026-02-23',
+    '2026-03-09',
+    '2026-05-01','2026-05-04','2026-05-11',
+    '2026-06-12',
+    '2026-11-04',
+    '2026-12-31',
+  ]),
+  2027: new Set([
+    '2027-01-01','2027-01-04','2027-01-05','2027-01-06','2027-01-07','2027-01-08',
+    '2027-02-22','2027-02-23',
+    '2027-03-08',
+    '2027-05-03','2027-05-10',
+    '2027-06-14',
+    '2027-11-04','2027-11-05',
+    '2027-12-31',
+  ]),
+};
+
+// Рабочие выходные исключения из обычной пятидневки (YYYY-MM-DD).
+const WORKING_WEEKENDS_BY_YEAR: Record<number, Set<string>> = {
+  2025: new Set(['2025-11-01']),
+  2026: new Set(),
+  2027: new Set(['2027-02-20']),
+};
+
+function yearOf(dateStr: ISODate): number {
+  return Number(dateStr.slice(0, 4));
+}
+
+export function productionCalendarStatus(year: number): ProductionCalendarStatus | null {
+  return PRODUCTION_CALENDAR_STATUS_BY_YEAR[year] || null;
+}
+
+export function isProductionCalendarSupported(dateOrYear: ISODate | number): boolean {
+  const year = typeof dateOrYear === 'number' ? dateOrYear : yearOf(dateOrYear);
+  return productionCalendarStatus(year) !== null;
+}
+
+export function isProductionCalendarDraft(year: number): boolean {
+  return productionCalendarStatus(year) === 'draft';
+}
+
+export function productionCalendarNotice(year: number): string | null {
+  if (!isProductionCalendarSupported(year)) {
+    return `Производственный календарь на ${year} год не задан: расчёты используют обычную пятидневку без праздничных переносов.`;
+  }
+  if (isProductionCalendarDraft(year)) {
+    return `Производственный календарь на ${year} год добавлен по проекту Минтруда; после утверждения переносов его нужно сверить.`;
+  }
+  return null;
+}
 
 // ВАЖНО: используем локальное время пользователя, не UTC
 export function toDateStr(d: Date): ISODate {
@@ -46,7 +88,9 @@ export function todayStr(): ISODate {
 }
 
 export function isWorkday(dateStr: ISODate): boolean {
-  if (ALL_HOLIDAYS.has(dateStr)) return false;
+  const year = yearOf(dateStr);
+  if (WORKING_WEEKENDS_BY_YEAR[year]?.has(dateStr)) return true;
+  if (NON_WORKING_DAYS_BY_YEAR[year]?.has(dateStr)) return false;
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   const dow  = date.getDay();
@@ -54,7 +98,7 @@ export function isWorkday(dateStr: ISODate): boolean {
 }
 
 export function isHoliday(dateStr: ISODate): boolean {
-  return ALL_HOLIDAYS.has(dateStr);
+  return NON_WORKING_DAYS_BY_YEAR[yearOf(dateStr)]?.has(dateStr) || false;
 }
 
 export function isWeekend(dateStr: ISODate): boolean {

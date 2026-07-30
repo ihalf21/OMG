@@ -1,13 +1,14 @@
 // src/pages/Gantt.tsx
 import React, { useState, useMemo } from 'react';
-import { getMonthDays, todayStr, type MonthDay } from '../utils/dates';
-import { calcForecast, statusColor, getDerivedDeadline } from '../utils/forecast';
+import { getMonthDays, productionCalendarNotice, todayStr, type MonthDay } from '../utils/dates';
+import { buildTaskWorkSchedule, calcForecast, statusColor, getDerivedDeadline } from '../utils/forecast';
 import { isAvailableOn, isWorkingRole, leaveTypeOn } from '../domain/availability';
 import { computeInheritedTeam, computeDynamicStarts, getTaskChain, segmentByWeek, arrowAnchorOffset, sortTasksByChain } from '../domain/gantt';
-import { getEngineerActiveTasks } from '../domain/task';
+import { getAvailableTeamMembers, getEngineerActiveTasks } from '../domain/task';
 import { formatDateShort } from '../utils/dates';
 import { genId } from '../utils/ids';
 import { Avatar, PageTopbar, Select, useTooltip, useConfirm, useDaySplit } from '../components/UI';
+import { buildTaskStageTimeline, taskEstimateHours } from '../domain/stages';
 import type { Engineer, ISODate, Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
 
@@ -29,6 +30,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
   const [dragChainIds, setDragChainIds] = useState<Set<string>>(new Set());
   const [dragEng, setDragEng]         = useState<DragEngState>(null);
   const [dragEngOver, setDragEngOver] = useState<string | null>(null);
+  const [expandedStageTasks, setExpandedStageTasks] = useState<Set<string>>(new Set());
   const ganttBodyRef = React.useRef<HTMLDivElement>(null);
   const weekRowRef   = React.useRef<HTMLDivElement>(null);
   const [weekRowH, setWeekRowH] = useState(0);
@@ -186,7 +188,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       const effStart = dynamicStarts[t.id] || todayStr();
       if (effStart > monthEnd) return false;
       const fc = forecasts[t.id];
-      const noEst = !(t.estimateHours || 0);
+      const noEst = taskEstimateHours(t) <= 0;
       const endDate = fc?.forecastDate || t.deadline || (noEst ? noEstFallbackEnd : monthEnd);
       if (endDate < monthStart) return false;
       return true;
@@ -209,9 +211,19 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
   }, [tasks, year, month, showDone, directionMatches]);
 
   const monthName = new Date(year, month, 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+  const calendarNotice = productionCalendarNotice(year);
 
   function prevMonth() { if (month === 0) { setMonth(11); setYear(y => y-1); } else setMonth(m => m-1); }
   function nextMonth() { if (month === 11) { setMonth(0);  setYear(y => y+1); } else setMonth(m => m+1); }
+
+  function toggleTaskStages(taskId: string) {
+    setExpandedStageTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }
 
   // Переводим дату в индекс среди ВИДИМЫХ дней
   function dateToIdx(dateStr: ISODate | null | undefined): number | null {
@@ -270,6 +282,17 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
     if (!str) return '—';
     const [y,m,d] = str.split('-').map(Number);
     return new Date(y, m-1, d).toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
+  }
+
+  function fmtStageCount(count: number): string {
+    const mod10 = count % 10;
+    const mod100 = count % 100;
+    const word = mod10 === 1 && mod100 !== 11
+      ? 'этап'
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+      ? 'этапа'
+      : 'этапов';
+    return `${count} ${word}`;
   }
 
   // Эффективная дата старта:
@@ -495,6 +518,20 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
       </PageTopbar>
 
       <div style={{ flex:1, overflow:'auto', padding:'16px 20px' }} onMouseMove={move}>
+        {calendarNotice && (
+          <div style={{
+            marginBottom:12,
+            padding:'10px 12px',
+            border:'1px solid var(--amber)',
+            borderRadius:7,
+            background:'var(--amber-bg)',
+            color:'var(--text-secondary)',
+            fontSize:13,
+            lineHeight:1.4,
+          }}>
+            {calendarNotice}
+          </div>
+        )}
         <div ref={ganttBodyRef} style={{ minWidth: 600, position:'relative' }}
           onMouseLeave={() => setHoveredCol(null)}
         >
@@ -579,14 +616,15 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
           {/* Task rows */}
           {activeTasks.map((task, rowIdx) => {
             const fc = forecasts[task.id];
-            // Эффективная команда: унаследованные + дополнительные на этой задаче
-            const assignedEngs: Engineer[] = (inheritedEngIds[task.id] || task.assignedEngineers || []).map(id=>engineers.find(e=>e.id===id)).filter((e): e is Engineer => !!e);
-
-            const hasEngineers   = assignedEngs.length > 0;
-            const hasEstimate    = (task.estimateHours || 0) > 0;
+            const teamIds = inheritedEngIds[task.id] || task.assignedEngineers || [];
+            const taskHours      = taskEstimateHours(task);
+            const hasEstimate    = taskHours > 0;
             // Дочерняя задача, родитель ещё не завершён — ждёт, показываем штриховкой
             const isWaitingChild = !!task.dependsOn && allActiveTasks.some(t => t.id === task.dependsOn);
             const effectSt       = effectiveStart(task);
+            const availabilityDate = effectSt > todayStr() ? effectSt : todayStr();
+            const assignedEngs: Engineer[] = getAvailableTeamMembers(teamIds, engineers, availabilityDate);
+            const hasEngineers   = assignedEngs.length > 0;
 
             const isNotStartedYet = !isWaitingChild && effectSt > todayStr();
 
@@ -643,6 +681,21 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
             const progressLabel = hasEstimate
               ? `${fc?.progressPct || 0}%`
               : colSpan <= 3 ? 'Оценить' : 'Нужна оценка';
+            const hasStages = !!task.stages?.length && !isWaitingChild && hasEstimate;
+            const isStagesExpanded = hasStages && expandedStageTasks.has(task.id);
+            const stageUsedHours = taskHours * ((fc?.progressPct || 0) / 100);
+            const stageScheduleDays = isStagesExpanded
+              ? buildTaskWorkSchedule({ ...task, assignedEngineers: teamIds }, engineers, effectSt, taskHours)
+              : [];
+            const stageTimeline = isStagesExpanded
+              ? buildTaskStageTimeline(
+                task,
+                stageUsedHours,
+                stageScheduleDays,
+                days.map(day => day.str),
+                effectiveDls[task.id] || task.deadline || null,
+              )
+              : [];
 
             return (
               <React.Fragment key={task.id}>
@@ -667,7 +720,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                   }}
                   style={{
                     display:'flex', alignItems:'center',
-                    marginBottom: mode==='team' ? 3 : 9,
+                    marginBottom: mode==='team' || isStagesExpanded ? 3 : 9,
                     opacity: isDragging ? 0.4 : 1,
                     borderTop: isEngTarget ? '2px solid var(--success)' : isOver ? '2px solid var(--accent)' : '2px solid transparent',
                     transition: 'border-color 0.1s, background 0.15s',
@@ -677,19 +730,47 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                   }}
                 >
                   <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0, paddingRight:14, display:'flex', alignItems:'center', gap:8 }}>
+                    {hasStages ? (
+                      <button
+                        type="button"
+                        title={isStagesExpanded ? 'Свернуть этапы' : 'Показать этапы'}
+                        onClick={e => { e.stopPropagation(); toggleTaskStages(task.id); }}
+                        style={{
+                          width:20, height:20, borderRadius:5,
+                          border:'1px solid var(--border-mid)',
+                          background:isStagesExpanded ? 'var(--accent-bg)' : 'var(--bg-secondary)',
+                          color:isStagesExpanded ? 'var(--accent)' : 'var(--text-tertiary)',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                          fontSize:13, fontWeight:700, lineHeight:1,
+                          cursor:'pointer', flexShrink:0, padding:0,
+                        }}
+                      >
+                        {isStagesExpanded ? '-' : '+'}
+                      </button>
+                    ) : (
+                      <span style={{ width:20, flexShrink:0 }}/>
+                    )}
                     <span style={{ color:'var(--text-tertiary)', fontSize:14, cursor:'grab', flexShrink:0 }}>⠿</span>
                     <div style={{ minWidth:0 }}
                       onMouseEnter={e => show(e, task.name, [
                         [assignedEngs.length, 'инж.', task.direction].filter(Boolean).join(' · '),
+                        hasStages ? fmtStageCount(task.stages?.length || 0) : '',
                         task.dependsOn ? '↳ зависит от другой задачи' : '',
                       ].filter(Boolean))}
                       onMouseLeave={hide}
                     >
-                      <div title={task.name} style={{ fontSize:14, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                      <div
+                        title={task.name}
+                        onClick={e => { e.stopPropagation(); navigate('task', task.id); }}
+                        style={{ fontSize:14, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', cursor:'pointer' }}
+                        onMouseEnter={e=>e.currentTarget.style.color='var(--accent)'}
+                        onMouseLeave={e=>e.currentTarget.style.color='var(--text-primary)'}
+                      >
                         {task.name}
                       </div>
                       <div style={{ fontSize:12, color:'var(--text-tertiary)', marginTop:2 }}>
                         {assignedEngs.length} инж. · {task.direction||''}
+                        {hasStages && <span style={{ marginLeft:6 }}>· {fmtStageCount(task.stages?.length || 0)}</span>}
                         {task.dependsOn && <span style={{ marginLeft:6 }}>↳ зависит</span>}
                       </div>
                     </div>
@@ -699,7 +780,10 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                     {barStart < barEnd && (
                       <div
                         id={`bar-${task.id}`}
-                        onClick={() => navigate('task', task.id)}
+                        onClick={() => {
+                          if (hasStages) toggleTaskStages(task.id);
+                          else navigate('task', task.id);
+                        }}
                         onMouseEnter={() => setHoveredTask(task.id)}
                         onMouseLeave={() => setHoveredTask(null)}
                         style={{
@@ -713,9 +797,9 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                           opacity: isWaitingChild ? 0.75 : 1,
                         }}
                       >
-                        <span style={{ fontSize:12, fontWeight:700, color:'var(--bar-contrast)', whiteSpace:'nowrap', flexShrink:0 }}>{progressLabel}</span>
+                        <span style={{ position:'relative', zIndex:1, fontSize:12, fontWeight:700, color:'var(--bar-contrast)', whiteSpace:'nowrap', flexShrink:0 }}>{progressLabel}</span>
                         {maxAvatars > 0 && (
-                          <div style={{ display:'flex', alignItems:'center', flexShrink:0 }}>
+                          <div style={{ position:'relative', zIndex:1, display:'flex', alignItems:'center', flexShrink:0 }}>
                             {assignedEngs.slice(0, maxAvatars).map((e,i) => {
                               const initials = e.name.split(' ').slice(0,2).map(p=>p[0]).join('');
                               const colors = ['#9FE1CB','#B5D4F4','#CECBF6','#F5C4B3','#FAC775','#C0DD97','#D3D1C7'];
@@ -763,13 +847,90 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                   </div>
                 </div>
 
+                {stageTimeline.map(stage => {
+                  const stageColor = stage.deadlineStatus === 'overdue'
+                    ? 'var(--red)'
+                    : stage.deadlineStatus === 'ok'
+                    ? 'var(--success)'
+                    : 'var(--text-tertiary)';
+                  const stageFillPct = stage.state === 'completed'
+                    ? 100
+                    : stage.state === 'current'
+                    ? stage.progressPct
+                    : 0;
+                  const stageBaseOpacity = stage.state === 'completed'
+                    ? 1
+                    : stage.state === 'current'
+                    ? 0.26
+                    : 0.16;
+                  const stateLabel = stage.state === 'completed'
+                    ? 'готово'
+                    : stage.state === 'current'
+                    ? 'в работе'
+                    : 'план';
+
+                  return (
+                    <div key={`${task.id}-${stage.id}`} style={{ display:'flex', alignItems:'center', marginBottom:3 }}>
+                      <div style={{ width:LABEL_W, minWidth:LABEL_W, flexShrink:0, paddingRight:14, paddingLeft:48, display:'flex', alignItems:'center', gap:6 }}>
+                        <span style={{
+                          width:6, height:6, borderRadius:'50%',
+                          background:stageColor,
+                          opacity:stage.state === 'planned' ? 0.45 : 1,
+                          flexShrink:0,
+                        }}/>
+                        <div style={{ minWidth:0 }}>
+                          <div title={stage.name} style={{ fontSize:12, fontWeight:600, color:'var(--text-secondary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                            {stage.name}
+                          </div>
+                          <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:1 }}>
+                            {stage.estimateHours} ч · {stateLabel} · {stage.progressPct}%
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ flex:1, position:'relative', height:30 }}>
+                        <BgCols/>
+                        {stage.from < stage.to && (
+                          <div
+                            title={`${stage.name}: ${stage.estimateHours} ч · ${stage.progressPct}% · ${fmtDate(stage.startDate)}-${fmtDate(stage.endDate)}`}
+                            style={{
+                              position:'absolute',
+                              left:L(stage.from),
+                              width:W(stage.from, stage.to),
+                              top:3,
+                              height:24,
+                              borderRadius:6,
+                              overflow:'hidden',
+                              background:'transparent',
+                              boxShadow:'var(--shadow-sm)',
+                              zIndex:3,
+                            }}
+                          >
+                            <div style={{
+                              position:'absolute',
+                              inset:0,
+                              background:stageColor,
+                              opacity:stageBaseOpacity,
+                            }}/>
+                            {stageFillPct > 0 && stageFillPct < 100 && (
+                              <div style={{
+                                position:'absolute',
+                                inset:'0 auto 0 0',
+                                width:`${stageFillPct}%`,
+                                background:stageColor,
+                              }}/>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
                 {mode==='team' && [
                   ...assignedEngs.filter(e=>e.role==='responsible'),
-                  ...assignedEngs.filter(e=>e.role!=='responsible'&&e.role!=='intern'&&e.role!=='lead'),
-                  ...assignedEngs.filter(e=>e.role==='intern'),
+                  ...assignedEngs.filter(e=>e.role!=='responsible'&&e.role!=='lead'),
                 ].map(eng => {
                   const baseColor = eng.role==='responsible' ? '#F5A830'
-                    : eng.role==='intern' ? '#C0BEFC'
                     : '#9FE1CB';
 
                   function leaveColor(lt: ReturnType<typeof leaveTypeOn>) {
@@ -826,7 +987,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
                                 : tooltipLeave === 'sick' ? '🤒 На больничном'
                                 : tooltipLeave === 'dayoff' ? '🏖️ Дейоф'
                                 : '✅ На задаче',
-                              eng.role === 'responsible' ? 'Ответственный' : eng.role === 'intern' ? 'Стажёр' : '',
+                              eng.role === 'responsible' ? 'Ответственный' : '',
                               eng.regularTask ? `Регулярная: ${eng.regularTask}` : '',
                               '⠿ Перетащите на другую задачу',
                             ].filter(Boolean))}
@@ -875,7 +1036,7 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
               const ids = new Set<string>();
               activeTasks.forEach(task => {
                 const fc  = forecasts[task.id];
-                const noEst = !(task.estimateHours || 0);
+                const noEst = taskEstimateHours(task) <= 0;
 
                 // Эффективная дата старта: зависимые — из dynamicStarts
                 const effStart = task.dependsOn
@@ -1076,7 +1237,6 @@ export default function Gantt({ data, updateData, navigate }: PageProps) {
         {[
           ['#F5A830','Ответственный'],
           ['#9FE1CB','Инженер'],
-          ['#C0BEFC','Стажёр'],
           ['repeating-linear-gradient(45deg,#FAEEDA,#FAEEDA 3px,#FAC775 3px,#FAC775 6px)','Отпуск'],
           ['repeating-linear-gradient(45deg,#FCEBEB,#FCEBEB 3px,#F09595 3px,#F09595 6px)','Больничный'],
           ['repeating-linear-gradient(45deg,#E2ECFB,#E2ECFB 3px,#A3C6F2 3px,#A3C6F2 6px)','Дейоф'],

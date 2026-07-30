@@ -233,12 +233,12 @@ describe('setVacation', () => {
     const s = setVacation(baseState(), 'e1', from, to);
     expect(s.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
   });
-  test('текущий отпуск — статус vacation, снимает с задачи', () => {
+  test('текущий отпуск — статус vacation, не снимает с задачи', () => {
     const today = todayStr();
     const tomorrow = addWorkdays(today, 1);
     const s = setVacation(baseState(), 'e1', today, tomorrow);
     expect(s.engineers.find(e => e.id === 'e1').status).toBe('vacation');
-    expect(s.tasks.find(t => t.id === 't1').assignedEngineers).toEqual([]);
+    expect(s.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
   });
   test('исторический отпуск — задачи не трогает, пишет пару vacation→return', () => {
     const from = subtractWorkdays(todayStr(), 10);
@@ -285,11 +285,11 @@ describe('setDayoff', () => {
     expect(e.status).toBe('active');
     expect(e.dayoffDate).toBe(future);
   });
-  test('сегодня — статус dayoff, снимает с задачи', () => {
+  test('сегодня — статус dayoff, не снимает с задачи', () => {
     const today = todayStr();
     const s = setDayoff(baseState(), 'e1', today);
     expect(s.engineers.find(e => e.id === 'e1').status).toBe('dayoff');
-    expect(s.tasks.find(t => t.id === 't1').assignedEngineers).toEqual([]);
+    expect(s.tasks.find(t => t.id === 't1').assignedEngineers).toContain('e1');
   });
   test('исторический — чистит dayoffDate, оставляет историю', () => {
     const past = subtractWorkdays(todayStr(), 5);

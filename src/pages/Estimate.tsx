@@ -463,19 +463,21 @@ export default function Estimate({ data, updateData, initialTaskId }: EstimatePr
 
   // Tasks visible in the selector: только активные задачи.
   // Архивные/завершённые не показываем, даже если у них сохранена оценка.
-  const displayTasks = allTasks.filter(t => t.status === 'active');
+  const displayTasks = allTasks.filter(t => t.status === 'active' && !(t.stages?.length));
   const withEstimate    = displayTasks.filter(t =>  t.estimateForm);
   const expressEstimate = displayTasks.filter(t => !t.estimateForm && (t.estimateHours || 0) > 0);
   const withoutEst      = displayTasks.filter(t => !t.estimateForm && !(t.estimateHours || 0));
 
+  const initialEligibleTaskId = initialTaskId && displayTasks.some(t => t.id === initialTaskId) ? initialTaskId : '';
+
   const [form, setForm] = useState<ScenarioForm>(() => {
-    if (initialTaskId) {
+    if (initialEligibleTaskId) {
       const t = allTasks.find(t => t.id === initialTaskId);
       if (t?.estimateForm) return { ...DEFAULT_FORM, ...(t.estimateForm as ScenarioForm) };
     }
     return DEFAULT_FORM;
   });
-  const [selectedTaskId, setSelectedTaskId] = useState(initialTaskId || '');
+  const [selectedTaskId, setSelectedTaskId] = useState(initialEligibleTaskId);
   const [activeTplId,    setActiveTplId] = useState('');
   const [showManager,    setShowManager] = useState(false);
   const [showPertInfo,   setShowPertInfo] = useState(false);
@@ -483,8 +485,8 @@ export default function Estimate({ data, updateData, initialTaskId }: EstimatePr
   const [expressSaved,   setExpressSaved] = useState(false);
   const [confirmSave,    setConfirmSave] = useState(false);
   const [expressHours,   setExpressHours] = useState(() => {
-    if (!initialTaskId) return '';
-    const t = allTasks.find(t => t.id === initialTaskId);
+    if (!initialEligibleTaskId) return '';
+    const t = allTasks.find(t => t.id === initialEligibleTaskId);
     return t?.estimateHours && !t.estimateForm ? String(t.estimateHours) : '';
   });
 

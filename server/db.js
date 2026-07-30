@@ -16,6 +16,7 @@ const DEFAULT_USER = {
 
 const GLOBAL_ROLES = new Set(['admin', 'user']);
 const PROJECT_ROLES = new Set(['admin', 'lead']);
+const ENGINEER_ROLES = new Set(['lead', 'responsible', 'engineer']);
 
 const SEED_DATA = {
   currentProjectId: 'p1',
@@ -109,7 +110,12 @@ function normalizeProject(project, fallbackUserId = DEFAULT_USER_ID) {
   if (!Number.isInteger(normalized.revision) || normalized.revision < 1) normalized.revision = 1;
   if (!normalized.updatedAt) normalized.updatedAt = nowIso();
   if (!normalized.updatedBy) normalized.updatedBy = fallbackUserId;
-  if (!Array.isArray(normalized.engineers)) normalized.engineers = [];
+  normalized.engineers = Array.isArray(normalized.engineers)
+    ? normalized.engineers.map(engineer => ({
+        ...engineer,
+        role: ENGINEER_ROLES.has(engineer?.role) ? engineer.role : 'engineer',
+      }))
+    : [];
   if (!Array.isArray(normalized.tasks)) normalized.tasks = [];
   if (!Array.isArray(normalized.history)) normalized.history = [];
   return normalized;
@@ -522,7 +528,9 @@ function getVisibleWorkspace(user) {
     currentProjectId,
     projects,
     users: isGlobalAdmin(user) ? data.users : undefined,
-    projectMembers: isGlobalAdmin(user) ? data.projectMembers : undefined,
+    projectMembers: isGlobalAdmin(user)
+      ? data.projectMembers
+      : data.projectMembers.filter(member => member.userId === user.id && canReadProject(data, user, member.projectId)),
   };
 }
 

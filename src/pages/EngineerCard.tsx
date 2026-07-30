@@ -289,7 +289,6 @@ export default function EngineerCard({ data, updateData, navigate, engineerId, o
                           <option value="lead">Лид</option>
                           <option value="responsible">Ответственный</option>
                           <option value="engineer">Инженер</option>
-                          <option value="intern">Стажёр</option>
                         </select>
                       : <RoleBadge role={eng.role}/>
                     }

@@ -1,0 +1,150 @@
+import type { Task, TaskStage } from './types';
+
+export type TaskStageState = 'completed' | 'current' | 'planned';
+
+export interface TaskStageProgress extends TaskStage {
+  usedHours: number;
+  progressPct: number;
+  state: TaskStageState;
+}
+
+export interface TaskStageTimelineItem extends TaskStageProgress {
+  from: number;
+  to: number;
+  startDate: string;
+  endDate: string;
+  deadlineStatus: 'ok' | 'overdue' | null;
+}
+
+export interface WorkScheduleDay {
+  date: string;
+  hours: number;
+}
+
+export function sortTaskStages(stages: TaskStage[] | null | undefined): TaskStage[] {
+  return [...(stages || [])].sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+export function normalizeTaskStages(stages: TaskStage[] | null | undefined): TaskStage[] {
+  return sortTaskStages(stages)
+    .map(stage => ({
+      ...stage,
+      name: stage.name.trim(),
+      estimateHours: Math.max(0, Number(stage.estimateHours) || 0),
+    }))
+    .filter(stage => stage.name.length > 0 && stage.estimateHours > 0)
+    .map((stage, sortOrder) => ({ ...stage, sortOrder }));
+}
+
+export function taskStagesTotal(stages: TaskStage[] | null | undefined): number {
+  return normalizeTaskStages(stages).reduce((sum, stage) => sum + stage.estimateHours, 0);
+}
+
+export function taskEstimateHours(task: Task): number {
+  const total = taskStagesTotal(task.stages);
+  return total > 0 ? total : (task.estimateHours || 0);
+}
+
+export function withTaskStages(task: Task, stages: TaskStage[]): Task {
+  const normalized = normalizeTaskStages(stages);
+  return {
+    ...task,
+    stages: normalized.length > 0 ? normalized : undefined,
+    estimateHours: normalized.length > 0
+      ? normalized.reduce((sum, stage) => sum + stage.estimateHours, 0)
+      : task.estimateHours,
+  };
+}
+
+export function computeTaskStageProgress(task: Task, usedHours: number): TaskStageProgress[] {
+  const stages = normalizeTaskStages(task.stages);
+  if (stages.length === 0) return [];
+
+  const total = stages.reduce((sum, stage) => sum + stage.estimateHours, 0);
+  const effectiveUsed = task.status === 'done'
+    ? total
+    : Math.max(0, Math.min(usedHours, total));
+  let consumedBefore = 0;
+
+  return stages.map(stage => {
+    const stageUsed = Math.max(0, Math.min(stage.estimateHours, effectiveUsed - consumedBefore));
+    consumedBefore += stage.estimateHours;
+    const progressPct = stage.estimateHours > 0
+      ? Math.min(100, Math.round((stageUsed / stage.estimateHours) * 100))
+      : 100;
+    const state: TaskStageState = progressPct >= 100
+      ? 'completed'
+      : stageUsed > 0 || effectiveUsed === consumedBefore - stage.estimateHours
+        ? 'current'
+        : 'planned';
+
+    return { ...stage, usedHours: stageUsed, progressPct, state };
+  });
+}
+
+export function currentTaskStage(task: Task, usedHours: number): TaskStageProgress | null {
+  const stages = computeTaskStageProgress(task, usedHours);
+  return stages.find(stage => stage.state === 'current') || null;
+}
+
+export function buildTaskStageTimeline(
+  task: Task,
+  usedHours: number,
+  scheduleDays: WorkScheduleDay[],
+  visibleDates: string[],
+  deadline: string | null = null,
+): TaskStageTimelineItem[] {
+  const stages = computeTaskStageProgress(task, usedHours);
+  const total = taskStagesTotal(task.stages);
+  if (stages.length === 0 || total <= 0 || scheduleDays.length === 0 || visibleDates.length === 0) return [];
+
+  const visibleIdxByDate = new Map(visibleDates.map((date, index) => [date, index]));
+  const totalScheduledHours = scheduleDays.reduce((sum, day) => sum + Math.max(0, day.hours), 0);
+  if (totalScheduledHours <= 0) return [];
+
+  let consumedBefore = 0;
+  return stages.flatMap(stage => {
+    const stageFrom = consumedBefore;
+    consumedBefore += stage.estimateHours;
+    const stageTo = consumedBefore;
+
+    let from: number | null = null;
+    let to: number | null = null;
+    let startDate: string | null = null;
+    let endDate: string | null = null;
+    let scheduleCursor = 0;
+
+    for (const day of scheduleDays) {
+      const dayHours = Math.max(0, day.hours);
+      const dayFrom = scheduleCursor;
+      const dayTo = scheduleCursor + dayHours;
+      scheduleCursor = dayTo;
+      if (dayHours <= 0) continue;
+
+      const overlapFrom = Math.max(stageFrom, dayFrom);
+      const overlapTo = Math.min(stageTo, dayTo);
+      if (overlapTo <= overlapFrom) continue;
+
+      startDate = startDate || day.date;
+      endDate = day.date;
+
+      const visibleIdx = visibleIdxByDate.get(day.date);
+      if (visibleIdx === undefined) continue;
+      const axisFrom = visibleIdx + (overlapFrom - dayFrom) / dayHours;
+      const axisTo = visibleIdx + (overlapTo - dayFrom) / dayHours;
+      from = from === null ? axisFrom : Math.min(from, axisFrom);
+      to = to === null ? axisTo : Math.max(to, axisTo);
+    }
+
+    if (from === null || to === null || to <= from || !startDate || !endDate) return [];
+
+    return [{
+      ...stage,
+      from,
+      to,
+      startDate,
+      endDate,
+      deadlineStatus: deadline ? (endDate <= deadline ? 'ok' : 'overdue') : null,
+    }];
+  });
+}

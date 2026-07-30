@@ -183,7 +183,6 @@ export function setVacation(state: ProjectState, engineerId: string, vacationFro
       ...(isOngoing ? { status: 'vacation' as const } : {}),
       vacationFrom, vacationTo,
     }),
-    tasks: isOngoing ? removeEngineerFromAllTasks(state, engineerId) : state.tasks,
     history: appendHistory(state, {
       date: vacationFrom, engineerId, type: 'vacation',
       fromTask: preTask?.id || null, toTask: null, note: noteRange,
@@ -222,7 +221,6 @@ export function setDayoff(state: ProjectState, engineerId: string, dayoffDate: I
     return {
       ...state,
       engineers: patchEngineer(state, engineerId, { status: 'dayoff', dayoffDate }),
-      tasks: removeEngineerFromAllTasks(state, engineerId),
       history: appendHistory(state, hist),
     };
   }

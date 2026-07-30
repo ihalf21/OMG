@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { calcForecast, statusColor, statusLabel, statusBadgeStyle, engineersNeeded, computeEffectiveDls, type Forecast } from '../utils/forecast';
 import { computeInheritedTeam, computeDynamicStarts } from '../domain/gantt';
 import { isAvailableToday, isWorkingRole, leaveTypeToday } from '../domain/availability';
+import { getAvailableTeamMembers } from '../domain/task';
 import { formatDateShort, todayStr } from '../utils/dates';
+import { taskEstimateHours } from '../domain/stages';
 import { Avatar, Card, SectionTitle, PageTopbar, Modal } from '../components/UI';
 import type { Task } from '../domain/types';
 import type { PageProps } from '../ui-types';
@@ -18,7 +20,7 @@ function byDeadline(
   return 0;
 }
 
-const hasEstimate = (task: Task) => (task.estimateHours || 0) > 0;
+const hasEstimate = (task: Task) => taskEstimateHours(task) > 0;
 
 export default function Dashboard({ data, navigate }: PageProps) {
   const { engineers, tasks, history } = data;
@@ -139,7 +141,11 @@ export default function Dashboard({ data, navigate }: PageProps) {
               : !estimated
                 ? { bg: 'var(--blue-bg)', color: 'var(--blue)' }
               : statusBadgeStyle(fc?.deadlineStatus);
-            const assignedEngs = engineers.filter(e => task.assignedEngineers?.includes(e.id));
+            const teamIds = inheritedEngIds[task.id] || task.assignedEngineers || [];
+            const availabilityDate = (dynamicStarts[task.id] || task.startDate || today) > today
+              ? (dynamicStarts[task.id] || task.startDate || today)
+              : today;
+            const assignedEngs = getAvailableTeamMembers(teamIds, engineers, availabilityDate);
             return (
               <div style={{ position:'relative', marginBottom:8 }}
                 onMouseEnter={() => setHoveredId(task.id)}

@@ -105,6 +105,9 @@ test('global admin manages users and project members through API', async () => {
     assert.equal(visible.status, 200);
     assert.deepEqual(visible.data.projects.map(item => item.id), ['p1']);
     assert.equal(visible.data.users, undefined);
+    assert.deepEqual(visible.data.projectMembers, [
+      { projectId: 'p1', userId: 'u-lead', role: 'lead' },
+    ]);
   });
 });
 
